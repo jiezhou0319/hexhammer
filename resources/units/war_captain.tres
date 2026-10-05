@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="UnitProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/unit_profile.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/weapons/hand_sword.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "War Captain"
+role = 1
+weapon_skill = 5
+ballistic_skill = 5
+strength = 4
+toughness = 4
+wounds = 3
+initiative = 5
+attacks = 3
+leadership = 9
+armor_save = 4
+melee_weapon = ExtResource("2")
+points = 120

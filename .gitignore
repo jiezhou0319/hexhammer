@@ -1,0 +1,18 @@
+# Godot 4
+.godot/
+*.translation
+export.cfg
+export_presets.cfg
+
+# 导出产物
+/builds/
+/export/
+*.apk
+*.exe
+
+# 系统
+Thumbs.db
+.DS_Store
+
+# mimosa scan output
+.mimosa/

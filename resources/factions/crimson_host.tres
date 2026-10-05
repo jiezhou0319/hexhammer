@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="FactionDef" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/faction_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Crimson Host"
+color = Color(0.86, 0.08, 0.24, 1)

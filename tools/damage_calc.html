@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Hexhammer · 伤害计算台</title>
+<style>
+  :root {
+    --bg: #14171c; --panel: #1d222b; --line: #2c333f;
+    --fg: #d8dee9; --dim: #8b94a3; --gold: #d9a441; --red: #d96a5a; --blue: #6aa8d9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 18px; color: var(--gold); margin-bottom: 4px; }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 14px; align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .panel h2 { font-size: 14px; margin-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
+  input[type=number] { width: 100%; background: #12151b; border: 1px solid var(--line); color: var(--fg);
+    border-radius: 4px; padding: 4px 6px; font-size: 14px; }
+  input[type=number]:focus { outline: 1px solid var(--gold); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .card .k { font-size: 12px; color: var(--dim); }
+  .card .v { font-size: 22px; color: var(--gold); margin-top: 2px; }
+  .card .v small { font-size: 12px; color: var(--dim); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: right; }
+  th { background: #232a35; color: var(--dim); font-weight: 600; }
+  td.a { color: var(--red); } td.b { color: var(--blue); }
+  tr.dead td { background: #3a2325; }
+  canvas { width: 100%; background: #12151b; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .flexrow { display: flex; gap: 14px; align-items: flex-start; }
+  .flexrow > .panel { flex: 1; }
+  .unithead { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; }
+  .mirror { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--gold); cursor: pointer; }
+  .mirror input { accent-color: var(--gold); }
+  input[type=number]:disabled { opacity: 0.45; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<h1>Hexhammer · 伤害计算台</h1>
+<div class="sub">
+  公式：最终伤害 = ATK²/(ATK+DEF) × 血量修正√(当前/满血) × 克制 × 增减伤% × 暴击 × 地形 × 浮动（期望口径：暴击取均值，浮动取均值，命中按期望折算）——改任意参数立即重算
+</div>
+
+<div class="layout">
+  <!-- ============ 参数区 ============ -->
+  <div class="panel">
+    <h2>⚔ 单位 A（默认：刀盾 120/50/320 定稿）</h2>
+    <div class="grid">
+      <label>攻击力 ATK<input type="number" id="atkA" value="120"></label>
+      <label>防御力 DEF<input type="number" id="defA" value="50"></label>
+      <label>生命 HP<input type="number" id="hpA" value="320"></label>
+      <label>速度（先手用）<input type="number" id="spdA" value="4"></label>
+      <label>命中率 %<input type="number" id="hitA" value="90"></label>
+      <label>暴击率 %<input type="number" id="critA" value="8"></label>
+      <label>暴击倍率<input type="number" id="critMA" value="1.5" step="0.1"></label>
+    </div>
+    <div class="unithead">
+      <h2>🛡 单位 B（默认：刀盾）</h2>
+      <label class="mirror"><input type="checkbox" id="mirror" checked> B 镜像 A（取消后各自填写）</label>
+    </div>
+    <div class="grid">
+      <label>攻击力 ATK<input type="number" id="atkB" value="120"></label>
+      <label>防御力 DEF<input type="number" id="defB" value="50"></label>
+      <label>生命 HP<input type="number" id="hpB" value="320"></label>
+      <label>速度（先手用）<input type="number" id="spdB" value="4"></label>
+      <label>命中率 %<input type="number" id="hitB" value="90"></label>
+      <label>暴击率 %<input type="number" id="critB" value="8"></label>
+      <label>暴击倍率<input type="number" id="critMB" value="1.5" step="0.1"></label>
+    </div>
+    <h2 style="margin-top:12px">🎲 全局</h2>
+    <div class="note">伤害随机浮动 ±15%、"100 局模拟"卡片中的命中与暴击均为真实掷骰；
+      命中/暴击/暴击倍率已移至各单位面板，A 和 B 可各自设置。逐轮表仍为期望口径（命中与暴击取均值）。</div>
+    <details>
+      <summary>高级修正（克制 / 增减伤 / 地形）</summary>
+      <div class="grid" style="margin-top:8px">
+        <label>A→B 克制<input type="number" id="kA" value="1" step="0.05"></label>
+        <label>B→A 克制<input type="number" id="kB" value="1" step="0.05"></label>
+        <label>A 增减伤 %<input type="number" id="pA" value="0"></label>
+        <label>B 增减伤 %<input type="number" id="pB" value="0"></label>
+        <label>A 地形<input type="number" id="tA" value="1" step="0.05"></label>
+        <label>B 地形<input type="number" id="tB" value="1" step="0.05"></label>
+      </div>
+    </details>
+    <div class="note" id="hint"></div>
+  </div>
+
+  <!-- ============ 结果区 ============ -->
+  <div>
+    <div class="cards">
+      <div class="card"><div class="k">A 击杀 B 需要</div><div class="v" id="cKill">–</div></div>
+      <div class="card"><div class="k">B 击杀 A 需要</div><div class="v" id="cDie">–</div></div>
+      <div class="card"><div class="k">100 局模拟胜率（真实掷骰）</div><div class="v" id="cResult" style="font-size:15px; line-height:1.6">–</div></div>
+    </div>
+    <div class="flexrow">
+      <div class="panel">
+        <h2>逐轮互砍表（同速同时出手；速度快者先手）</h2>
+        <table id="tbl"><thead><tr>
+          <th>轮</th><th>A 血量</th><th>A 修正</th><th>A 刀伤</th>
+          <th>B 血量</th><th>B 修正</th><th>B 刀伤</th>
+        </tr></thead><tbody></tbody></table>
+        <div class="note">伤害为期望值（含命中与暴击均值）；实战每刀有 ±15% 浮动与 miss，死亡轮数通常 ±1~2</div>
+      </div>
+      <div class="panel" style="max-width:420px">
+        <h2>血量曲线</h2>
+        <canvas id="cv" width="400" height="260"></canvas>
+        <h2 style="margin-top:12px">敏感性：A 杀 B 刀数</h2>
+        <table id="sens"><thead><tr>
+          <th></th><th>−20%</th><th>−10%</th><th>基准</th><th>+10%</th><th>+20%</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const num = (id, fb = 0) => { const v = parseFloat($(id).value); return isNaN(v) ? fb : v; };
+
+// ---- B 镜像 A：勾选时 B 全部参数跟随 A（置灰），取消后各自填写 ----
+const MIRROR_PAIRS = [
+  ['atkA','atkB'], ['defA','defB'], ['hpA','hpB'], ['spdA','spdB'],
+  ['hitA','hitB'], ['critA','critB'], ['critMA','critMB'],
+];
+function syncMirror() {
+  const on = $('mirror').checked;
+  for (const [a, b] of MIRROR_PAIRS) {
+    $(b).disabled = on;
+    $(b).title = on ? '镜像中：跟随 A 的数值' : '';
+    if (on) $(b).value = $(a).value;
+  }
+}
+$('mirror').addEventListener('change', render);
+
+// ---- 从输入框构建单位（A/B 参数完全独立） ----
+function buildUnits() {
+  const U = s => ({
+    atk: num('atk' + s), def: num('def' + s),
+    hp: num('hp' + s), max: num('hp' + s), spd: num('spd' + s, 4),
+    hit: num('hit' + s, 90) / 100, crit: num('crit' + s, 8) / 100,
+    critM: num('critM' + s, 1.5),
+    m: { k: num('k' + s, 1), pct: num('p' + s, 0), t: num('t' + s, 1) },
+  });
+  return [U('A'), U('B')];
+}
+
+// ---- 核心公式（与 docs/07 同源；期望口径：命中按概率折算、暴击取均值） ----
+function perHit(u, d, hpCur) {
+  const base = u.atk * u.atk / (u.atk + d.def);              // 基础伤害 = ATK²/(ATK+DEF)
+  const hpMod = Math.sqrt(Math.max(hpCur, 0) / u.max);       // 血量修正
+  const critAvg = 1 + u.crit * (u.critM - 1);                // 暴击期望
+  return base * hpMod * u.m.k * (1 + u.m.pct / 100) * u.m.t * critAvg * u.hit;
+}
+
+// ---- 逐轮模拟（同时出手：按各自出刀前血量计算，同轮同时扣血） ----
+function simulate(A, B) {
+  A = { ...A }; B = { ...B };
+  const rows = [];
+  const aFirst = A.spd > B.spd;               // 同速同时；速度快者先手
+  for (let r = 1; r <= 60 && A.hp > 0 && B.hp > 0; r++) {
+    const hpA0 = A.hp, hpB0 = B.hp;
+    const dmgA = perHit(A, B, hpA0);          // A 打 B
+    const dmgB = perHit(B, A, hpB0);          // B 打 A
+    const row = { r, hpA0, hpB0, dmgA, dmgB,
+      mA: Math.sqrt(hpA0 / A.max), mB: Math.sqrt(hpB0 / B.max) };
+    if (aFirst) { B.hp -= dmgA; if (B.hp > 0) A.hp -= dmgB; }  // 先手击杀则免还手
+    else if (B.spd > A.spd) { A.hp -= dmgB; if (A.hp > 0) B.hp -= dmgA; }
+    else { A.hp -= dmgB; B.hp -= dmgA; }                        // 同速同时
+    row.hpA1 = A.hp; row.hpB1 = B.hp;
+    rows.push(row);
+  }
+  return { rows, A, B };
+}
+
+// ---- 单视角：u 杀 d 需几刀（静态口径：目标不还手、攻击者满血 → 血量修正恒 1） ----
+function hitsToKill(u, d) {
+  let cur = d.hp;
+  for (let i = 1; i <= 60; i++) {
+    cur -= perHit(u, d, u.hp);
+    if (cur <= 0) return i;
+  }
+  return 60;
+}
+
+// ---- 蒙特卡洛：真实掷骰（命中 roll / 暴击 roll / ±15% 浮动）打完整一局 ----
+function fightOnce(A, B) {
+  const a = { ...A }, b = { ...B };
+  const rollDmg = (u, d, hpCur) => {
+    if (Math.random() >= u.hit) return 0;                     // miss
+    const base = u.atk * u.atk / (u.atk + d.def);
+    const hpMod = Math.sqrt(Math.max(hpCur, 0) / u.max);
+    let dmg = base * hpMod * u.m.k * (1 + u.m.pct / 100) * u.m.t;
+    if (Math.random() < u.crit) dmg *= u.critM;               // 暴击掷骰
+    dmg *= 1 + (Math.random() * 2 - 1) * 0.15;                // 浮动 ±15%
+    return dmg;
+  };
+  const aFirst = a.spd > b.spd;
+  let r = 0;
+  for (; r < 60 && a.hp > 0 && b.hp > 0; r++) {
+    const dmgA = rollDmg(a, b, a.hp), dmgB = rollDmg(b, a, b.hp);
+    if (aFirst) { b.hp -= dmgA; if (b.hp > 0) a.hp -= dmgB; }
+    else if (b.spd > a.spd) { a.hp -= dmgB; if (a.hp > 0) b.hp -= dmgA; }
+    else { a.hp -= dmgB; b.hp -= dmgA; }
+  }
+  const aD = a.hp <= 0, bD = b.hp <= 0;
+  const outcome = aD && bD ? 'draw' : bD ? 'A' : aD ? 'B' : 'none';
+  return { outcome, rounds: Math.max(r, 1) };
+}
+
+function monteCarlo(A, B, n = 100) {
+  const c = { A: 0, B: 0, draw: 0, none: 0 };
+  let roundsSum = 0;
+  for (let i = 0; i < n; i++) {
+    const f = fightOnce(A, B);
+    c[f.outcome]++;
+    roundsSum += f.rounds;
+  }
+  c.roundsAvg = roundsSum / n;
+  return c;
+}
+
+function render() {
+  syncMirror();
+  const [A, B] = buildUnits();
+
+  const kill = hitsToKill(A, B);   // A 杀 B
+  const die  = hitsToKill(B, A);   // B 杀 A
+  $('cKill').innerHTML = kill + ' <small>刀</small>';
+  $('cDie').innerHTML  = die  + ' <small>刀</small>';
+
+  const mc = monteCarlo(A, B, 100);
+  $('cResult').innerHTML =
+    `<span style="color:var(--red)">A 胜 ${mc.A}</span> · <span style="color:var(--blue)">B 胜 ${mc.B}</span>` +
+    (mc.draw ? ` · 同归 ${mc.draw}` : '') + (mc.none ? ` · 未分 ${mc.none}` : '') +
+    `<small style="color:var(--dim)"> / 100 局</small><br>` +
+    `<small style="color:var(--dim)">平均 ${mc.roundsAvg.toFixed(1)} 轮分胜负（掷骰实战口径）</small>`;
+
+  const { rows, A: eA, B: eB } = simulate(A, B);
+  const tb = $('tbl').querySelector('tbody');
+  tb.innerHTML = rows.map(r => {
+    const deadA = r.hpA1 <= 0, deadB = r.hpB1 <= 0;
+    return `<tr class="${deadA || deadB ? 'dead' : ''}">
+      <td>${r.r}</td>
+      <td class="a">${Math.round(r.hpA0)}</td><td class="a">${r.mA.toFixed(2)}</td><td class="a">${Math.round(r.dmgA)}</td>
+      <td class="b">${Math.round(r.hpB0)}</td><td class="b">${r.mB.toFixed(2)}</td><td class="b">${Math.round(r.dmgB)}</td>
+    </tr>`;
+  }).join('');
+
+  drawChart(rows, A.max, B.max);
+
+  // 敏感性：只动一个参数，A 杀 B 刀数（期望口径）
+  const sensRows = [
+    ['A 攻击力', v => hitsToKill({ ...A, atk: A.atk * v }, B)],
+    ['B 防御力', v => hitsToKill(A, { ...B, def: B.def * v })],
+    ['B 生命',   v => hitsToKill(A, { ...B, hp: B.hp * v, max: B.max * v })],
+    ['A 克制',   v => hitsToKill({ ...A, m: { ...A.m, k: A.m.k * v } }, B)],
+  ];
+  $('sens').querySelector('tbody').innerHTML = sensRows.map(([name, f]) =>
+    `<tr><td style="text-align:left">${name}</td>` +
+    [0.8, 0.9, 1, 1.1, 1.2].map(v => `<td>${f(v)}</td>`).join('') + '</tr>'
+  ).join('');
+
+  $('hint').textContent = `A 打 B 首刀期望 ${Math.round(perHit(A, B, A.max))} · B 打 A 首刀期望 ${Math.round(perHit(B, A, B.max))}（满血、含各自命中与暴击均值）`;
+}
+
+function drawChart(rows, hpA, hpB) {
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height, pad = 24;
+  ctx.clearRect(0, 0, W, H);
+  const maxHp = Math.max(hpA, hpB), n = rows.length;
+  const x = i => pad + (W - 2 * pad) * (i / Math.max(n - 1, 1));
+  const y = h => H - pad - (H - 2 * pad) * (Math.max(h, 0) / maxHp);
+  // 网格与轴
+  ctx.strokeStyle = '#2c333f'; ctx.fillStyle = '#8b94a3'; ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 4; i++) {
+    const gy = pad + (H - 2 * pad) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(W - pad, gy); ctx.stroke();
+    ctx.fillText(Math.round(maxHp * (1 - i / 4)), 2, gy + 3);
+  }
+  // 血量线（用出刀前血量，含第 0 轮=满血）
+  const series = [ ['#d96a5a', [hpA, ...rows.map(r => r.hpA0)]],
+                   ['#6aa8d9', [hpB, ...rows.map(r => r.hpB0)] ] ];
+  for (const [color, pts] of series) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach((v, i) => i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v)));
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#d96a5a'; ctx.fillText('A', W - pad + 2, y(rows[rows.length-1].hpA0) + 3);
+  ctx.fillStyle = '#6aa8d9'; ctx.fillText('B', W - pad + 2, y(rows[rows.length-1].hpB0) + 3);
+}
+
+document.querySelectorAll('input[type=number]').forEach(el => el.addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

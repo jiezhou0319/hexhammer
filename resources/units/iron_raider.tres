@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="UnitProfile" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/unit_profile.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/weapons/great_axe.tres" id="2"]
+[ext_resource type="Resource" path="res://resources/rules/fear.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Iron Raider"
+movement = 3
+weapon_skill = 4
+ballistic_skill = 2
+strength = 4
+toughness = 4
+initiative = 2
+leadership = 7
+armor_save = 4
+melee_weapon = ExtResource("2")
+special_rules = [ExtResource("3")]
+points = 50
