@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="SpecialRule" load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://scripts/core/data/special_rule.gd" id="1"]
-
-[resource]
-script = ExtResource("1")
-rule_id = &"fear"
-display_name = "Fear"
-description = "Enemies must pass a Fear test or strike at WS1."
