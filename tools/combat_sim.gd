@@ -1,6 +1,8 @@
-## 战斗数值校准模拟器 v6（8 兵种恢复 + 差异化机制层，docs/08 配套）
+## 战斗数值校准模拟器 v6.1（法师定值 ATK，docs/08 v6.1 配套）
 ## 用法:
 ##   "E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
+## v6.1 变更（2026-10-06）：法师取消 3d6×8 掷骰 ATK，改定值 84（原期望值），
+##   并入统一伤害公式（docs/08 v6.1 裁决）；其余与 v6 一致。
 ## v6 变更（公式结构与既有常量零改动，只恢复 8 兵种数值带 + 新机制挂靠既有修正层）:
 ##   - 公式/常量 = v5 定稿原样（比值基础伤害 ATK²/(ATK+DEF) + 纯乘法修正链，无保底）
 ##   - 8 兵种数值带按 docs/08 重锚；刀盾 120/50/320 定稿不动
@@ -9,7 +11,7 @@
 ##       增减伤层 : 贴脸×0.5（远程被近战钉住时自身出手）；盾墙（刀盾邻伴减远程伤）；
 ##                  校射（弓箭对同目标第 2 轮起+20%）；帕提亚（骑弓移动后射击+20%，以常数近似验证）
 ##       先手层   : 迎击（长枪被骑类攻击时反转先手；B 变体同时抵消冲锋加成——待用户裁决）
-##       单位属性 : 法师掷骰 ATK（3d6×8，均值 84）；秘法穿甲（无视目标 DEF）
+##       单位属性 : 法师定值 ATK 84（v6.1 起不再掷骰）；秘法穿甲（无视目标 DEF）
 ##   - 新增单方面远程压制测试 _volley（射击场口径：目标不还手）
 ## 数值三同步纪律: docs/07 + 本文件 + damage_calc.html 默认值
 extends SceneTree
@@ -17,7 +19,7 @@ extends SceneTree
 # ---------------- 兵种数值带 v6（docs/08-troop-design.md） ----------------
 # atk 攻 def 防 hp 血 spd 速度(格/回合) rng 射程(1=近战) dodge 闪避(小数)
 # 机制旗标: spear 反骑克制 / intercept 迎击 / mount 骑类 / melee_weak 被贴脸还手减半 /
-#           pierce 无视防御 / dice 掷骰攻击 / sustained 校射 / siege_mult 攻城倍率
+#           pierce 无视防御 / sustained 校射 / siege_mult 攻城倍率
 const TROOPS := {
 	"刀盾": {"atk": 120.0, "def": 50.0, "hp": 320.0, "spd": 4, "rng": 1, "dodge": 0.0},
 	"长枪": {"atk": 105.0, "def": 70.0, "hp": 300.0, "spd": 4, "rng": 1, "dodge": 0.0,
@@ -29,7 +31,7 @@ const TROOPS := {
 	"弓箭": {"atk": 130.0, "def": 45.0, "hp": 160.0, "spd": 4, "rng": 4, "dodge": 0.0,
 		"melee_weak": true, "sustained": 0.20},
 	"法师": {"atk": 84.0, "def": 45.0, "hp": 120.0, "spd": 4, "rng": 3, "dodge": 0.0,
-		"melee_weak": true, "pierce": true, "dice": true, "dice_n": 3, "dice_faces": 6, "dice_mult": 8.0},
+		"melee_weak": true, "pierce": true},
 	"器械": {"atk": 85.0, "def": 130.0, "hp": 300.0, "spd": 2, "rng": 5, "dodge": 0.0,
 		"melee_weak": true, "siege_mult": 3.0},
 	"医疗": {"atk": 0.0, "def": 55.0, "hp": 150.0, "spd": 4, "rng": 2, "dodge": 0.0,
@@ -63,7 +65,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _init() -> void:
 	_rng.seed = 20261005
-	print("=== v6 校准：8 兵种（刀盾 120/50/320 锚点不动，2000 次/组，迎击变体 %s） ===\n" % INTERCEPT_MODE)
+	print("=== v6.1 校准：8 兵种（刀盾 120/50/320 锚点不动，法师定值 ATK，2000 次/组，迎击变体 %s） ===\n" % INTERCEPT_MODE)
 
 	print("--- A. 硬目标校准 ---")
 	print("%-30s %6s %6s %8s %7s %8s" % ["对局", "A胜率", "均轮", "存活HP%", "双亡%", "实际挨刀"])
@@ -112,13 +114,6 @@ func strike(a: Dictionary, b: Dictionary,
 	if _rng.randf() > hit_chance:
 		return {"hit": false, "dmg": 0.0}
 	var atk_val: float = a["atk"]
-	if a.get("dice", false):                          # 法师掷骰 ATK（每次出手重掷）
-		var faces: int = a["dice_faces"]
-		var rolls := 0
-		for i in int(a["dice_n"]):
-			rolls += _rng.randi_range(1, faces)
-		var mult: float = a["dice_mult"]
-		atk_val = float(rolls) * mult
 	var def_val: float = b["def"]
 	if a.get("pierce", false):                        # 秘法穿甲：无视目标防御
 		def_val = 0.0

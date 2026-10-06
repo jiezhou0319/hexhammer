@@ -14,9 +14,9 @@ skirmish 定位被推翻，大地图征服方向确立（docs/00，现 v4）。
 待审 ≠ 冻结。** 原 docs/archive/ 的 02~05 已取回 docs/ 顶层。
 **下一步：以 00 为基准逐个敲定其余文档的冲突项，再重写架构与路线图。**
 
-> 2026-10-06：已移除可玩灰色原型（`scenes/`、`scripts/ui/`、`scripts/core/demo_battle.gd`
-> 及仅供 demo 使用的 `resources/`），仓库只保留计算核心：`scripts/core/`（引擎与规则）、
-> `tests/`、`tools/`（数值模拟器与伤害计算台）。需要时从 git 历史找回。
+> 2026-10-06：已移除全部 M0 旧实现——`scenes/`、`scripts/`（含 demo 与计算核心）、
+> `resources/`、`tests/` 均与当前设计撕裂，需要时从 git 历史（`9719eba`）找回。
+> 仓库现仅保留 `docs/` 与 `tools/`（数值模拟器 + 伤害计算台）。
 >
 > 2026-10-06 **三项设计裁决**（已回写 docs/00 v4 / 06 v0.4 / 07 / 08 v6.1）：
 > ① **棋子即兵**，删除 HOMM 带兵表述；② 接战全自动，去留与施法**只在回合前意图阶段**
@@ -37,19 +37,18 @@ skirmish 定位被推翻，大地图征服方向确立（docs/00，现 v4）。
 | [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：原则大体仍成立） |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
-## 已有代码（M0 spike，按 v3 大部分将重构）
+## 仓库代码
 
-- 保留：`scripts/core/hex/`（六边形数学/地图/寻路，粒度无关）、命令层结构、测试基建
-- 保留：`tools/combat_sim.gd`（战斗数值校准模拟器，docs/08 配套）、`tools/damage_calc.html`（伤害计算台）
-- 已移除：demo 原型（`scenes/`、`scripts/ui/`、`resources/`，2026-10-06，git 历史可找回）
+- `tools/combat_sim.gd`：战斗数值校准模拟器 **v6.1**（docs/08 配套，法师定值 ATK 口径）
+- `tools/damage_calc.html`：伤害计算台（浏览器直接打开）
+- 其余 M0 spike 代码（引擎/UI/单测）已于 2026-10-06 移除，git 历史 `9719eba` 可找回
 - 重构方向：**棋子即兵**（无带兵/编制/兵数条）、WeGo 结算、经济系统、8 兵种（详见 docs/06/08）
 
 ## 环境与运行
 
-- Godot 4.3+（本机 4.6.2 位于 `E:\Godot\`）。项目无主场景，只跑测试与模拟器：
+- Godot 4.3+（本机 4.6.2 位于 `E:\Godot\`）。项目无主场景，当前仅运行数值模拟器：
 
 ```
-"E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tests/run_tests.gd
 "E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
 ```
 
