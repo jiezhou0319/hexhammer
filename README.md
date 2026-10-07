@@ -31,6 +31,7 @@ skirmish 定位被推翻，大地图征服方向确立（docs/00，现 v4）。
 | [docs/07-combat-math.md](docs/07-combat-math.md) | **战斗数值唯一权威**（v5）：伤害公式、刀盾定稿、校准锚点 |
 | [docs/08-troop-design.md](docs/08-troop-design.md) | 兵种设计（v6.1）：8 兵种数值带 + 校准报告 |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
+| [docs/09-research-wc4.md](docs/09-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（战斗数值/科技链/经济/AI 可设计性/平衡手法，含 07 增减伤层负伤害风险） |
 | [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~11（**待审**：ADR-10 已废止，ADR-11 待对齐 WeGo） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 里程碑 M0~M5（**待审 + 待重写**：M1/M3 按 skirmish 定位所写） |
 | [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**待审**：T1/T8/T9/T11/T12 可复用，余者失效） |
