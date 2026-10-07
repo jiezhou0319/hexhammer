@@ -16,7 +16,8 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 建筑 + 每城 7 格落兵区**；**随机性全部归入将领 RPG 线**；不做对战/热座/玩家回放。
 **当前权威：docs/00 v5、06 v0.5、07 v6（公式不变+机制处置表）、08 §0.5（重锚预告）；
 09 v0.3 含改向裁决台账（117 题约 1/3 已收口/作废）。**
-**下一步：拍 06 v0.5 附清单的新 P0 参数（双费表/反击系数/时钟账期）→ 重写 03/04。**
+**下一步：按 [docs/10-params-test.md](docs/10-params-test.md)（双费/反击/时钟测试版 v0）
+开工 M1 内核实现，边开发边调参 → 同步重写 03/04。**
 
 > 2026-10-06：已移除全部 M0 旧实现——`scenes/`、`scripts/`（含 demo 与计算核心）、
 > `resources/`、`tests/` 均与当前设计撕裂，需要时从 git 历史（`9719eba`）找回。
@@ -34,9 +35,10 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/07-combat-math.md](docs/07-combat-math.md) | **战斗数值唯一权威**（v6）：伤害公式不变 + 实时化机制处置表、校准锚点 |
 | [docs/08-troop-design.md](docs/08-troop-design.md) | 兵种设计（v6.1 + §0.5 实时化重锚预告）：8 兵种机制与旧数值带、待重锚清单 |
 | [docs/09-open-questions.md](docs/09-open-questions.md) | 开放问题清单（**v0.3 改向裁决台账**：117 题的收口/作废/仍有效处置 + 新参数题） |
+| [docs/10-params-test.md](docs/10-params-test.md) | **参数测试版 v0**：双费表 / 反击系数 / 时钟与账期（开发期持续调整） |
 | [docs/09-research-wc4.md](docs/09-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
-| [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~12（**ADR-12 时间与指令模型为当前有效**；ADR-10/11 已废止） |
+| [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**ADR-12 时间与指令模型、ADR-13 表现层 3D 化为当前有效**；ADR-10/11 已废止） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 里程碑 M0~M5（**待重写**：证伪对象已改 RTwP 内核，见文首横幅） |
 | [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**待审 + 大部分失效**：T9 回放已废，横幅有处置） |
 | [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：原则大体仍成立） |
@@ -49,14 +51,16 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 - `tools/damage_calc.html`：伤害计算台（浏览器直接打开；公式本体仍有效）
 - 其余 M0 spike 代码（引擎/UI/单测）已于 2026-10-06 移除，git 历史 `9719eba` 可找回
 - 重构方向：**实时暂停制内核**（脉冲时钟+双充能轴+暂停指令）、棋子即兵、
-  多资源经济、8 兵种双费表重锚（详见 docs/00 v5 / 06 v0.5 / 08 §0.5）
+  多资源经济、8 兵种双费表重锚（详见 docs/00 v5 / 06 v0.5 / 08 §0.5）；
+  **表现层 3D 化**（3D 地形+3D 棋子+策略相机，第一代即用 3D 原语，见 docs/02 ADR-13）
 
 ## 环境与运行
 
-- Godot 4.3+（本机 4.6.2 位于 `E:\Godot\`）。项目无主场景，当前仅运行数值模拟器：
+- **Godot 4.7.2（2026-10-07 起钉死，最低兼容 4.3）**。本机位于 `C:\Users\zerat\godot_tmp\`
+  （4.6.3 同目录保留备回退；旧记录 `E:\Godot` 已失效）。项目无主场景，当前仅运行数值模拟器：
 
 ```
-"E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
+"C:\Users\zerat\godot_tmp\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
 ```
 
 - 伤害计算台直接用浏览器打开 `tools/damage_calc.html`。
