@@ -41,10 +41,10 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/10-params-test.md](docs/10-params-test.md) | **参数测试版 v0**：双费表 / 反击系数 / 时钟与账期（开发期持续调整） |
 | [docs/11-research-wc4.md](docs/11-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
-| [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**ADR-12 时间与指令模型、ADR-13 表现层 3D 化为当前有效**；ADR-10/11 已废止） |
+| [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**现行口径：ADR-12 时间模型、ADR-13 3D 表现**；ADR-7 消费端收缩、ADR-8 二代 TileMapLayer 废止、ADR-9 钉 4.7.2、ADR-10/11 废止；§1/§3/§5 旧口径已就地标注） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |
 | [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T14，半天~两天粒度 |
-| [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：原则大体仍成立） |
+| [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：门 1/2/4/6/7/8 成立；门 3 跨局、门 5 对外已关闭——2026-10-09 对账） |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
 ## 仓库代码
