@@ -151,11 +151,13 @@ function buildUnits() {
 }
 
 // ---- 核心公式（与 docs/07 同源；期望口径：命中按概率折算、暴击取均值） ----
+const MOD_MIN = 0.2, MOD_MAX = 4;   // 增减伤聚合钳制（2026-10-09 拍板，07 §1）
+const modF = pct => Math.min(Math.max(1 + pct / 100, MOD_MIN), MOD_MAX);
 function perHit(u, d, hpCur) {
   const base = u.atk * u.atk / (u.atk + d.def);              // 基础伤害 = ATK²/(ATK+DEF)
   const hpMod = Math.sqrt(Math.max(hpCur, 0) / u.max);       // 血量修正
   const critAvg = 1 + u.crit * (u.critM - 1);                // 暴击期望
-  return base * hpMod * u.m.k * (1 + u.m.pct / 100) * u.m.t * critAvg * u.hit;
+  return base * hpMod * u.m.k * modF(u.m.pct) * u.m.t * critAvg * u.hit;
 }
 
 // ---- 逐轮模拟（同时出手：按各自出刀前血量计算，同轮同时扣血） ----
@@ -195,7 +197,7 @@ function fightOnce(A, B) {
     if (Math.random() >= u.hit) return 0;                     // miss
     const base = u.atk * u.atk / (u.atk + d.def);
     const hpMod = Math.sqrt(Math.max(hpCur, 0) / u.max);
-    let dmg = base * hpMod * u.m.k * (1 + u.m.pct / 100) * u.m.t;
+    let dmg = base * hpMod * u.m.k * modF(u.m.pct) * u.m.t;
     if (Math.random() < u.crit) dmg *= u.critM;               // 暴击掷骰
     dmg *= 1 + (Math.random() * 2 - 1) * 0.15;                // 浮动 ±15%
     return dmg;

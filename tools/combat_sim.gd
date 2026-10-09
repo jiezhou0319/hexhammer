@@ -46,6 +46,8 @@ const BASE_HIT := 0.90          # 基础命中率（带宽钳制 5%~95%）
 const CRIT_RATE := 0.08         # 基础暴击率（各单位可独立，此处为默认值）
 const CRIT_MULT := 1.5          # 暴击倍率
 const FLOAT_RANGE := 0.15       # 随机浮动 ±15%
+const MOD_CLAMP_MIN := 0.2      # 增减伤聚合钳制下限（2026-10-09 拍板，07 §1）
+const MOD_CLAMP_MAX := 4.0      # 增减伤聚合钳制上限（净增减伤 ∈ [−80%, +300%]）
 
 # ---------------- 修正层（v5 定稿常量，不动） ----------------
 const CHARGE_MULT := 2.0        # 冲锋首轮（对非防守目标）
@@ -136,7 +138,7 @@ func strike(a: Dictionary, b: Dictionary,
 		var guard: float = b.get("guard_ranged", 0.0) # 盾墙：仅挡远程物理，魔法跳过
 		if guard > 0.0:
 			dmg *= 1.0 - guard
-	dmg *= extra                                      # 校射/帕thian 等增减伤（测试注入）
+	dmg *= clampf(extra, MOD_CLAMP_MIN, MOD_CLAMP_MAX)  # 增减伤聚合钳制 [0.2,4.0]（2026-10-09 拍板，07 §1；v7 重写时按 07 单层聚合+钳制口径统一）
 	# ---- 暴击 / 冲锋 / 围攻 / 浮动（v5 顺序原样） ----
 	if _rng.randf() < CRIT_RATE:
 		dmg *= CRIT_MULT
