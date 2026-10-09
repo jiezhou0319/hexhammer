@@ -17,8 +17,9 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 小幅方差，2026-10-09 拍板，见 07 §1）；不做对战/热座/玩家回放。
 **当前权威：docs/00 v5、06 v0.5、07 v6（公式不变+机制处置表）、08 §0.5（重锚预告）；
 09 v0.3 含改向裁决台账（117 题约 1/3 已收口/作废）。**
-**下一步：按 [docs/10-params-test.md](docs/10-params-test.md)（双费/反击/时钟测试版 v0）
-开工 M1 内核实现，边开发边调参 → 同步重写 03/04。**
+**下一步：开工 M1a 地形地基（文明6 式连续网格+高程，见 03 v2）——03/04 已于
+2026-10-09 按 P0-范围-1~6 拍板重写；M1b 起按 [docs/10-params-test.md](docs/10-params-test.md)
+边开发边调参。**
 
 > 2026-10-06：已移除全部 M0 旧实现——`scenes/`、`scripts/`（含 demo 与计算核心）、
 > `resources/`、`tests/` 均与当前设计撕裂，需要时从 git 历史（`9719eba`）找回。
@@ -40,8 +41,8 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/09-research-wc4.md](docs/09-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
 | [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**ADR-12 时间与指令模型、ADR-13 表现层 3D 化为当前有效**；ADR-10/11 已废止） |
-| [docs/03-roadmap.md](docs/03-roadmap.md) | 里程碑 M0~M5（**待重写**：证伪对象已改 RTwP 内核，见文首横幅） |
-| [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**待审 + 大部分失效**：T9 回放已废，横幅有处置） |
+| [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |
+| [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T14，半天~两天粒度 |
 | [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：原则大体仍成立） |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
