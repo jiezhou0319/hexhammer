@@ -1,3 +1,6 @@
+## 【已归档 · 回合制口径】本文件 = v6.1 回合制模拟器，仅作历史校准参考（07 §2 旧回合
+##   锚的产生工具）；现行脉冲制 v7 随 04 M1b-T13 以【新文件】另建、不覆盖本文件，
+##   "数值三同步"自 v7 起以 v7 为准——勿在本文件上继续迭代（2026-10-09 标注，评审 P2-5）。
 ## 战斗数值校准模拟器 v6.1（法师定值 ATK，docs/08 v6.1 配套）
 ## 用法:
 ##   "C:\Users\zerat\godot_tmp\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
