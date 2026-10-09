@@ -47,6 +47,15 @@ static func dir_unit_world(dir: int) -> Vector3:
 	var a := dir_angle_rad(dir)
 	return Vector3(cos(a), 0.0, sin(a))
 
+
+## 方向 i 的边界平边切向（世界 XZ 单位向量；M1a-T8 侧面 UV 的 u 轴参数源）：
+## 边 i = 顶点 i 与 i+1 的连线（中点朝方向 i），沿本切向展开。
+## 口径写死 = dir_unit_world(i) 绕 +Y 旋转 90°（(x,z) → (−z,x)）：方向 0（东）的
+## 边切向 = +z（南）。翻案须同步改 tests/test_hex_terrain_materials.gd 的侧面 UV 锚。
+static func edge_tangent_world(dir: int) -> Vector3:
+	var u := dir_unit_world(dir)
+	return Vector3(-u.z, 0.0, u.x)
+
 # ---------------- 邻居 ----------------
 
 static func neighbor(cell: Vector2i, dir: int) -> Vector2i:

@@ -16,12 +16,14 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 var chunk_nodes: Array[MeshInstance3D] = []
 var build_info: Dictionary = {}
 
-## 按默认色板构建（terrain_colors 可覆盖类型→Color 表；elevation_step/solid_factor 透传
-## T4 高程几何参数）。构建失败（色表缺 id、参数非法等）→ false。
-func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, terrain_colors := {},
+## 按材质表构建（materials = 地形 id → Material 映射；.tres 载体 =
+## TerrainMaterialLibrary.materials，主线默认表 resources/terrain/terrain_materials_default.tres
+## ——M1a-T8 材质槽；elevation_step/solid_factor 透传 T4 高程几何参数）。
+## 构建失败（材质表缺图内 id、表值非 Material、参数非法等）→ false。
+func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, materials := {},
 		size := 1.0, elevation_step := 1.0, solid_factor := 0.8) -> bool:
 	clear()
-	var result: Variant = Builder.build_map(map, chunk_cols, chunk_rows, terrain_colors,
+	var result: Variant = Builder.build_map(map, chunk_cols, chunk_rows, materials,
 		size, elevation_step, solid_factor)
 	if not (result is Dictionary):
 		return false

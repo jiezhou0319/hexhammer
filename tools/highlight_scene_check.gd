@@ -36,6 +36,7 @@ func _boot() -> void:
 class Checker extends Node:
 	const Hex := preload("res://addons/hexhammer/hex_math.gd")
 	const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+	const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 	const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 	const HL := preload("res://addons/hexhammer/hex_highlight.gd")
 	const MapViewClass := preload("res://scripts/ui/map_view.gd")
@@ -78,7 +79,8 @@ class Checker extends Node:
 		var view: MapViewClass = MapViewClass.new()
 		view.name = "MapView"
 		get_tree().root.add_child(view)
-		var ok := view.build(map, 10, 10, {}, SIZE, STEP, SOLID)
+		var ok := view.build(map, 10, 10, Lib.materials_from_colors({0: Color(0.5, 0.5, 0.5)}),
+			SIZE, STEP, SOLID)
 		if not ok:
 			_check(false, "场景构建（MapView.build）")
 			return [null, null]

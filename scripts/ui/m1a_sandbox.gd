@@ -19,6 +19,7 @@ extends Node3D
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const HexHighlight := preload("res://addons/hexhammer/hex_highlight.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const TerrainMaterialLibraryClass := preload("res://scripts/core/data/terrain_material_library.gd")
 const MapViewClass := preload("res://scripts/ui/map_view.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const MapPickerClass := preload("res://scripts/ui/map_picker.gd")
@@ -30,6 +31,9 @@ const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
 @export var chunk_cols := 10
 @export var chunk_rows := 10
 @export var elevation_step := 1.0
+## 材质槽表（M1a-T8）：检查器可直接指认任意 .tres 库——换库即换观感、零代码改动；
+## 留空 = 载入主线默认色块库（TerrainMaterialLibrary.DEFAULT_PATH）。
+@export var material_library: TerrainMaterialLibraryClass
 
 ## M1a-T7 高亮状态（点击选择 = hover 格确认；Vector2i 不可空，用标志位）
 var _map: MapDataClass = null
@@ -46,13 +50,24 @@ func _ready() -> void:
 	_fill_pattern(map)
 	_fill_elevation(map)
 	_map = map
+	# M1a-T8 材质槽：渲染管线走 .tres 映射表（检查器可换库；留空 = 主线默认色块库）
+	if material_library == null:
+		material_library = TerrainMaterialLibraryClass.load_default()
+	if material_library == null:
+		print("[M1a 沙盒] 材质库载入失败：", TerrainMaterialLibraryClass.DEFAULT_PATH,
+			"（缺文件/类型不符——主线默认表不可缺，见 docs/notes/m1a-t8-art-branch.md）")
+		return
+	var missing: Array[int] = material_library.missing_ids(map)
+	if not missing.is_empty():
+		print("[M1a 沙盒] 材质表缺图内地形 id：", missing, "（补 terrain_materials_default.tres 槽位）")
+		return
 	var view: MapViewClass = MapViewClass.new()
 	view.name = "MapView"
 	add_child(view)
-	var ok := view.build(map, chunk_cols, chunk_rows, {}, 1.0, elevation_step)
+	var ok := view.build(map, chunk_cols, chunk_rows, material_library.materials, 1.0, elevation_step)
 	var elapsed := Time.get_ticks_msec() - t0
 	if not ok:
-		print("[M1a 沙盒] 构建失败：色表缺图内地形 id（检查 _fill_pattern 与默认色板）")
+		print("[M1a 沙盒] 构建失败：材质表缺图内地形 id / 参数非法")
 		return
 	# M1a-T5 拾取挂接（目检载体）：左键/移动 → 物理回调内解析 → 格子
 	var picker: MapPickerClass = MapPickerClass.new()
@@ -99,6 +114,9 @@ func _ready() -> void:
 	print("[M1a 沙盒] 地形分布：", _type_counts(map))
 	print("[M1a 沙盒] 高程分布：", _elevation_counts(map))
 	print("[M1a 沙盒] 连接分布：", _edge_class_counts(map))
+	print("[M1a 沙盒] 材质库（M1a-T8）：%s（%d 槽）——检查器 material_library 可换 .tres 即换观感"
+		% [material_library.resource_path if material_library.resource_path != "" else "（内存表）",
+			material_library.materials.size()])
 	print("[M1a 沙盒] 拾取已启用（M1a-T5）：移动=hover 高亮 / 左键=选择集合+路径描线（M1a-T7）")
 
 ## 目检地貌（确定性公式；水 3 正弦河 + 沙 4 岸 / 岩 2 / 林 5 / 泥 1 / 草 0 底）

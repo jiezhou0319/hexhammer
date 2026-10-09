@@ -23,6 +23,7 @@ extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 
 const SIZE := 1.0
@@ -656,9 +657,10 @@ func _poly_area(poly: Array) -> float:
 
 # ================= 公共辅助（与 test_hex_terrain_builder.gd 同口径）=================
 
-func _build_ok(m, chunk_cols := 10, chunk_rows := 10, colors := {}, size := SIZE,
+func _build_ok(m, chunk_cols := 10, chunk_rows := 10, materials := {}, size := SIZE,
 		elevation_step := STEP, solid_factor := SOLID) -> Dictionary:
-	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, colors, size, elevation_step, solid_factor)
+	var table := materials if not materials.is_empty() else Lib.materials_from_colors(Lib.DEFAULT_PALETTE)
+	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, table, size, elevation_step, solid_factor)
 	expect(r is Dictionary, "build_map 应成功（返回 Dictionary）")
 	if r is Dictionary:
 		return r as Dictionary

@@ -20,6 +20,7 @@ extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const Picking := preload("res://addons/hexhammer/hex_picking.gd")
 
@@ -427,8 +428,12 @@ func test_local_transform_roundtrip_resolution_stable() -> void:
 
 # ================= 辅助 =================
 
+## 单类型材质表（M1a-T8 起 builder 只认 {terrain_id: Material}）
+func _mats() -> Dictionary:
+	return Lib.materials_from_colors({0: Color(0.5, 0.5, 0.5)})
+
 func _build_ok(m, chunk_cols := 10, chunk_rows := 10) -> Dictionary:
-	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, {}, SIZE, 1.0, SOLID)
+	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, _mats(), SIZE, 1.0, SOLID)
 	expect(r is Dictionary, "build_map 应成功（返回 Dictionary）")
 	if r is Dictionary:
 		return r as Dictionary

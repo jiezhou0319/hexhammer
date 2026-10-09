@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="TerrainMaterialLibrary" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/terrain_material_library.gd" id="1_7yawr"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yf4w2"]
+albedo_color = Color(0.36, 0.54, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gug4b"]
+albedo_color = Color(0.55, 0.45, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2stbl"]
+albedo_color = Color(0.52, 0.52, 0.56, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vy0xg"]
+albedo_color = Color(0.25, 0.4, 0.6, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8ftxn"]
+albedo_color = Color(0.78, 0.7, 0.45, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_b2cai"]
+albedo_color = Color(0.2, 0.38, 0.22, 1)
+
+[resource]
+script = ExtResource("1_7yawr")
+materials = Dictionary[int, Material]({
+0: SubResource("StandardMaterial3D_yf4w2"),
+1: SubResource("StandardMaterial3D_gug4b"),
+2: SubResource("StandardMaterial3D_2stbl"),
+3: SubResource("StandardMaterial3D_vy0xg"),
+4: SubResource("StandardMaterial3D_8ftxn"),
+5: SubResource("StandardMaterial3D_b2cai")
+})

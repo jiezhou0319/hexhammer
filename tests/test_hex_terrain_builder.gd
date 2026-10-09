@@ -1,9 +1,11 @@
 ## test_hex_terrain_builder.gd — M1a-T3 平地网格 + M1a-T4 几何重构后的单测（headless 断言几何不变量）
 ## 覆盖 04 任务卡 M1a-T3「验收 + 细化新增」在 T4 几何下的对应物：
 ##   - chunk 划分恰好覆盖（60×40=24 块 / 尾块裁剪 / 非法参数显式空）；
-##   - 单格几何锚（顶面三角扇顶点顺序/法线/UV——T4 起顶点 = 内顶点，外圈留给连接带）；
+##   - 单格几何锚（顶面三角扇顶点顺序/法线/UV——T4 起顶点 = 内顶点，外圈留给连接带；
+##     UV = T8 世界平面约定，侧面/角落/换表不变量锚见 test_hex_terrain_materials.gd）；
 ##   - 每 chunk 按地形类型组织 surface（不每格一个 surface）+ faces 元数据与 mesh 一一对应；
-##   - 材质槽（换类型即换色、跨 chunk 共享实例、不开顶点色 albedo）；
+##   - 材质槽（M1a-T8 资源化：{terrain_id: Material} 表、表内共享实例、缺槽显式失败——
+##     契约专项见 test_hex_terrain_materials.gd）；
 ##   - 相邻 chunk 接缝无错位（T4 口径：跨 chunk 边带/角落归属唯一 + 顶点逐位 = 全局公式）；
 ##   - 60×40 平地全量不变量（面数 oracle / 全顶点 y=0 / 绕序朝上 / 恰好覆盖一次）；
 ##   - 构建确定性；构建器纯逻辑（无场景节点）；缺色表/非法参数显式失败。
@@ -19,6 +21,7 @@ extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 
 # ================= chunk 划分 =================
@@ -60,7 +63,7 @@ func test_chunk_partition_empty_when_invalid() -> void:
 
 func test_single_cell_top_fan_anchor() -> void:
 	var m := MapDataClass.new(1, 1)
-	var r: Variant = Builder.build_map(m)
+	var r: Variant = Builder.build_map(m, 10, 10, _default_table())
 	expect(r is Dictionary, "1×1 图应可构建")
 	if not (r is Dictionary):
 		return
@@ -99,13 +102,15 @@ func test_single_cell_top_fan_anchor() -> void:
 	# 法线恒 +Y（平顶；引擎提交链路 16-bit 量化 → 容差比对，见头注）
 	for i in norms.size():
 		_expect_vec3_eq_eps(norms[i], Vector3(0, 1, 0), 1e-3, "法线恒 +Y（顶点 %d）" % i)
-	# UV 锚：格心 (0.5,0.5)（每面 v0 = 格心）；内顶点 u=0.5+x/2s、v=0.5−z/2s（T3 公式沿用）
+	# UV 锚（T8 世界平面映射）：u = x/2R、v = −z/2R——1×1 图格心 = 世界原点 → (0,0)
+	#（旧 T3「格心 (0.5,0.5)」口径随 T8 定约作废；逐类型侧面/角落锚在
+	#  test_hex_terrain_materials.gd）
 	for k in 6:
-		expect_eq(uvs[k * 3], Vector2(0.5, 0.5), "面%d 格心 UV = (0.5, 0.5)" % k)
+		expect_eq(uvs[k * 3], Vector2(0.0, 0.0), "面%d 格心（世界原点）UV = (0,0)" % k)
 	for k in 6:
 		var iv := Hex.inner_vertex(cell, k)
-		expect_almost_eq(uvs[k * 3 + 1].x, 0.5 + iv.x / 2.0, 1e-6, "UV u 约定 面%d" % k)
-		expect_almost_eq(uvs[k * 3 + 1].y, 0.5 - iv.z / 2.0, 1e-6, "UV v 约定（北零）面%d" % k)
+		expect_almost_eq(uvs[k * 3 + 1].x, iv.x / 2.0, 1e-6, "UV u = x/2R 面%d" % k)
+		expect_almost_eq(uvs[k * 3 + 1].y, -iv.z / 2.0, 1e-6, "UV v = −z/2R 面%d" % k)
 	# 绕序：每面 cross(B−A,C−A).y > 0（正面朝上）
 	for f in 6:
 		var a := verts[f * 3]
@@ -209,66 +214,62 @@ func test_surfaces_grouped_by_terrain_type() -> void:
 		got_order.append(s["terrain"])
 	expect_eq(got_order, first_order, "surface 序 = 地形首次出现序")
 
-# ================= 材质槽（换类型即换色）=================
+# ================= 材质槽（表驱动；T8 资源化——契约专项见 test_hex_terrain_materials.gd）=================
 
-func test_material_slots_color_by_terrain_type() -> void:
-	var colors := {0: Color(0.9, 0.1, 0.1), 1: Color(0.1, 0.1, 0.9)}
+func test_material_slots_from_table_by_terrain_type() -> void:
+	var table := Lib.materials_from_colors({0: Color(0.9, 0.1, 0.1), 1: Color(0.1, 0.1, 0.9)})
 	var m := MapDataClass.new(4, 2)
 	for cell in m.cells():
 		var cr := Hex.offset_of(cell)
 		m.set_terrain(cell, 0 if cr.x < 2 else 1)
-	var r := _build_ok(m, 10, 10, colors)
+	var r := _build_ok(m, 10, 10, table)
 	var chunk: Dictionary = r["chunks"][0]
 	var mesh: ArrayMesh = chunk["mesh"]
 	expect_eq(mesh.get_surface_count(), 2, "两类型 → 两 surface")
 	for i in (chunk["surfaces"] as Array).size():
 		var s: Dictionary = chunk["surfaces"][i]
+		var tid: int = s["terrain"]
 		var mat: Material = mesh.surface_get_material(i)
 		expect(mat is StandardMaterial3D, "surface 材质为 StandardMaterial3D（surface %d）" % i)
+		expect(mat == table[tid],
+			"surface 材质 = 表内该类型实例（类型 %d——换类型即换槽、换表即换观感）" % tid)
+		# 本路线不用顶点色显示地形：材质保持 vertex_color_use_as_albedo=false。
+		# 04 M1a-T3 细化：若日后改顶点色路线，须显式开该属性（默认 false）——
+		# 此断言把「当前走材质槽路线」定死，翻路线时随同显式改本锚。
 		if mat is StandardMaterial3D:
-			var sm := mat as StandardMaterial3D
-			expect_eq(sm.albedo_color, colors[s["terrain"]],
-				"surface 材质色 = 色表中该类型色（类型 %d——换类型即换色）" % s["terrain"])
-			# 本路线不用顶点色显示地形：材质保持 vertex_color_use_as_albedo=false。
-			# 04 M1a-T3 细化：若日后改顶点色路线，须显式开该属性（默认 false）——
-			# 此断言把「当前走材质槽路线」定死，翻路线时随同显式改本锚。
-			expect_eq(sm.vertex_color_use_as_albedo, false,
+			expect_eq((mat as StandardMaterial3D).vertex_color_use_as_albedo, false,
 				"材质槽路线不开顶点色 albedo（surface %d）" % i)
 
 func test_material_slots_shared_across_chunks() -> void:
-	var colors := {
-		0: Color(0.9, 0.1, 0.1),
-		1: Color(0.1, 0.1, 0.9),
-		2: Color(0.1, 0.9, 0.1),
-	}
+	var table := Lib.materials_from_colors(_three_colors())
 	var m := MapDataClass.new(20, 10)
 	_fill_terrain(m, 3)
-	var r := _build_ok(m, 10, 10, colors)
+	var r := _build_ok(m, 10, 10, table)
 	expect_eq((r["chunks"] as Array).size(), 2, "20×10 → 两 chunk")
 	var mats: Dictionary = r["materials"]
-	expect_eq(mats.size(), 3, "材质表恰好覆盖被用到的类型（映射被使用才建槽）")
+	expect_eq(mats.size(), 3, "结果表恰好覆盖被用到的类型（echo 不混入未用槽）")
+	for tid in mats:
+		expect(mats[tid] == table[tid], "结果表 echo 输入表实例（类型 %d）" % tid)
 	for chunk_info in r["chunks"]:
 		var cd: Dictionary = chunk_info
 		var mesh: ArrayMesh = cd["mesh"]
 		for i in (cd["surfaces"] as Array).size():
 			var s: Dictionary = cd["surfaces"][i]
 			var tid: int = s["terrain"]
-			expect(mesh.surface_get_material(i) == mats[tid],
-				"surface 用的是材质表中该类型的共享实例（chunk %s 类型 %d）" % [str(cd["chunk"]), tid])
-			var sm := mats[tid] as StandardMaterial3D
-			expect_eq(sm.albedo_color, colors[tid], "跨 chunk 同类型同色（类型 %d）" % tid)
+			expect(mesh.surface_get_material(i) == table[tid],
+				"surface 用的是表内该类型的共享实例（chunk %s 类型 %d）" % [str(cd["chunk"]), tid])
 
 func test_retype_changes_surface_membership() -> void:
-	var colors := {0: Color(0.9, 0.1, 0.1), 1: Color(0.1, 0.1, 0.9)}
+	var table := Lib.materials_from_colors({0: Color(0.9, 0.1, 0.1), 1: Color(0.1, 0.1, 0.9)})
 	var m := MapDataClass.new(2, 1)
 	var a := Hex.axial_of(Vector2i(0, 0))
 	var b := Hex.axial_of(Vector2i(1, 0))
 	m.set_terrain(a, 0)
 	m.set_terrain(b, 1)
-	var r1 := _build_ok(m, 10, 10, colors)
+	var r1 := _build_ok(m, 10, 10, table)
 	m.set_terrain(a, 1)
 	m.set_terrain(b, 0)
-	var r2 := _build_ok(m, 10, 10, colors)
+	var r2 := _build_ok(m, 10, 10, table)
 	var want_a: Array[Vector2i] = [a]
 	var want_b: Array[Vector2i] = [b]
 	# 换前：surface 序随类型首次出现 → [类型0(a), 类型1(b)]
@@ -280,21 +281,24 @@ func test_retype_changes_surface_membership() -> void:
 	expect_eq(r2["chunks"][0]["surfaces"][0]["cells"], want_a, "a 换到类型 1 组")
 	expect_eq(r2["chunks"][0]["surfaces"][1]["cells"], want_b, "b 换到类型 0 组")
 
-func test_missing_color_and_invalid_params_fail_explicitly() -> void:
+func test_missing_material_and_invalid_params_fail_explicitly() -> void:
+	var table := _default_table()
 	var m := MapDataClass.new(4, 3)
 	m.set_terrain(Hex.axial_of(Vector2i(1, 1)), 9)
-	expect(Builder.build_map(m) == null, "默认色板缺类型 9 → 显式 null（无隐式兜底色）")
-	var custom := {0: Color(1, 1, 1)}
+	expect(Builder.build_map(m, 10, 10, table) == null, "表缺图内地形 9 → 显式 null（无隐式兜底槽）")
 	var m2 := MapDataClass.new(2, 2)
 	m2.set_terrain(Hex.axial_of(Vector2i(0, 0)), 1)
-	expect(Builder.build_map(m2, 10, 10, custom) == null, "自定义色板缺类型 1 → 显式 null")
-	# T4 几何参数非法 → 显式失败（不静默出退化几何）
+	expect(Builder.build_map(m2, 10, 10, Lib.materials_from_colors({0: Color(1, 1, 1)})) == null,
+		"单槽表缺类型 1 → 显式 null")
+	expect(Builder.build_map(m2, 10, 10, {}) == null, "空表 + 非空图 → null（T8 起表是唯一来源）")
+	expect(Builder.build_map(m2, 10, 10, {0: Color(1, 1, 1)}) == null, "表值非 Material → null")
+	# T4 几何参数非法 → 显式失败（不静默出退化几何；表合法——失败归因明确）
 	var ok := MapDataClass.new(4, 4)
-	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 0.0) == null, "elevation_step ≤ 0 → null")
-	expect(Builder.build_map(ok, 10, 10, {}, 0.0) == null, "size ≤ 0 → null")
-	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 1.0, 1.0) == null, "solid_factor ≥ 1（全六边形无连接带）→ null")
-	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 1.0, 0.0) == null, "solid_factor ≤ 0（顶面退化为点）→ null")
-	var full: Variant = Builder.build_map(ok)
+	expect(Builder.build_map(ok, 10, 10, table, 1.0, 0.0) == null, "elevation_step ≤ 0 → null")
+	expect(Builder.build_map(ok, 10, 10, table, 0.0) == null, "size ≤ 0 → null")
+	expect(Builder.build_map(ok, 10, 10, table, 1.0, 1.0, 1.0) == null, "solid_factor ≥ 1（全六边形无连接带）→ null")
+	expect(Builder.build_map(ok, 10, 10, table, 1.0, 1.0, 0.0) == null, "solid_factor ≤ 0（顶面退化为点）→ null")
+	var full: Variant = Builder.build_map(ok, 10, 10, table)
 	expect(full is Dictionary, "4×4 默认图应可构建")
 	if full is Dictionary:
 		expect(Builder.build_chunk(ok, Rect2i(100, 100, 5, 5), (full as Dictionary)["materials"]) == null,
@@ -305,7 +309,7 @@ func test_missing_color_and_invalid_params_fail_explicitly() -> void:
 func test_seam_unique_and_bitwise_two_chunks_horizontal() -> void:
 	var m := MapDataClass.new(20, 10)
 	_fill_terrain(m, 3)
-	var r := _build_ok(m, 10, 10, _three_colors())
+	var r := _build_ok(m, 10, 10, Lib.materials_from_colors(_three_colors()))
 	expect_eq((r["chunks"] as Array).size(), 2, "20×10 → 左右两 chunk")
 	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
 	expect(seam_faces >= 16, "水平接缝跨块边带面 ≥ 16（每行 ≥2 条跨界边 ×2 面 ×10 行），got %d" % seam_faces)
@@ -313,7 +317,7 @@ func test_seam_unique_and_bitwise_two_chunks_horizontal() -> void:
 func test_seam_unique_and_bitwise_two_chunks_vertical() -> void:
 	var m := MapDataClass.new(10, 20)
 	_fill_terrain(m, 3)
-	var r := _build_ok(m, 10, 10, _three_colors())
+	var r := _build_ok(m, 10, 10, Lib.materials_from_colors(_three_colors()))
 	expect_eq((r["chunks"] as Array).size(), 2, "10×20 → 上下两 chunk")
 	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
 	expect(seam_faces >= 16, "垂直接缝跨块边带面 ≥ 16，got %d" % seam_faces)
@@ -321,7 +325,7 @@ func test_seam_unique_and_bitwise_two_chunks_vertical() -> void:
 func test_seam_unique_and_bitwise_four_chunks() -> void:
 	var m := MapDataClass.new(20, 20)
 	_fill_terrain(m, 3)
-	var r := _build_ok(m, 10, 10, _three_colors())
+	var r := _build_ok(m, 10, 10, Lib.materials_from_colors(_three_colors()))
 	expect_eq((r["chunks"] as Array).size(), 4, "20×20 → 2×2 chunk")
 	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
 	expect(seam_faces >= 32, "四块交汇接缝跨块边带面 ≥ 32，got %d" % seam_faces)
@@ -417,7 +421,7 @@ func test_builder_pure_logic_no_nodes() -> void:
 	expect(inst is RefCounted, "构建器实例为 RefCounted（ADR-2）")
 	expect(not (inst is Node), "构建器不得为 Node")
 	var m := MapDataClass.new(2, 2)
-	var r: Variant = Builder.build_map(m)
+	var r: Variant = Builder.build_map(m, 10, 10, _default_table())
 	expect(r is Dictionary, "小图可构建")
 	if r is Dictionary:
 		_walk_no_nodes(r, 0)
@@ -437,9 +441,15 @@ func _three_colors() -> Dictionary:
 		2: Color(0.1, 0.9, 0.1),
 	}
 
-## build_map 断言成功并返回 Dictionary；失败时回占位结构（后续断言优雅失败，不崩 runner）。
-func _build_ok(m, chunk_cols := 10, chunk_rows := 10, colors := {}) -> Dictionary:
-	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, colors)
+## 默认材质表（与主线默认 .tres 同源——测试自建、不读文件，保持纯逻辑口径）。
+func _default_table() -> Dictionary:
+	return Lib.materials_from_colors(Lib.DEFAULT_PALETTE)
+
+## build_map 断言成功并返回 Dictionary（第 4 参 = 材质表 {terrain_id: Material}，
+## 缺省 = 默认表）；失败时回占位结构（后续断言优雅失败，不崩 runner）。
+func _build_ok(m, chunk_cols := 10, chunk_rows := 10, materials := {}) -> Dictionary:
+	var table := materials if not materials.is_empty() else _default_table()
+	var r: Variant = Builder.build_map(m, chunk_cols, chunk_rows, table)
 	expect(r is Dictionary, "build_map 应成功（返回 Dictionary）")
 	if r is Dictionary:
 		return r as Dictionary

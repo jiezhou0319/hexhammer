@@ -26,11 +26,28 @@
 ##   （顶面恒 +Y；边带/角落 = cross 归一——绕序保证 y 分量 > 0，陡面朝上侧倾斜）。
 ## - 绕序（cross(B−A,C−A).y > 0 口径，全方向旋转对称成立）：
 ##   顶面 (格心, inner_k, inner_{k+1})；边带 (v1,v3,v4)+(v1,v4,v2)；角落 (p1,p3,p2)。
-## - UV 约定（T3 接口不变）：以归属格格心归一 u = 0.5+(x−cx)/2·size、v = 0.5−(z−cz)/2·size；
-##   边带/角落顶点可越出 [0,1]（连续延展，色块材质无纹理不受影响；贴图时代由 T8 定采样）。
-## - 材质槽 = 地形类型 → 材质映射（色块起步，T8 资源化替换）；边带/角落归属生成者的地形
-##   surface。不用顶点色 → 材质不开 vertex_color_use_as_albedo（04 M1a-T3 细化）。
-## - 色表缺图内地形 id / elevation_step ≤0 / solid_factor ∉ (0,1) → 显式失败（null）。
+## - 法线硬边策略（M1a-T8 显式定死）：**全 flat shading、全硬边**——每三角独立 3 顶点 +
+##   面法线，不焊接顶点、不做任何平滑（平顶/陡壁的硬边是低模策略地形的目标可读性；
+##   平滑法线=顶点焊接+按面分类平滑组，属表现层后续升级，翻案须回改 04 与测试锚）。
+## - UV 约定（M1a-T8 定死——「换贴图不改主线」的接口前提，否则美术无从对表；
+##   细则与取舍全文见 docs/notes/m1a-t8-art-branch.md，翻案须同步改
+##   tests/test_hex_terrain_materials.gd 的 UV 锚）：
+##   · 尺寸：1 纹理重复 [0,1]² = 2R×2R 世界方形（R = size 外接圆半径）；
+##     整体缩放属材质参数（uv1_scale），不动 mesh；
+##   · 水平面（顶面 / 平连边带 / 等高角落）：世界平面映射 u = x/2R、v = −z/2R
+##     ——平地整图无缝连续平铺（换贴图即所见的基础）；
+##   · 侧面（|Δh|≥1 边带，斜坡/陡面）：u = XZ 沿边切向投影/2R（HexMath.
+##     edge_tangent_world，每方向 u 轴随边向）、v = −y/2R——竖向纹理随高程走
+##     （Δ1 半纹、Δ2 恰一整纹；对真竖直墙纵横比正确，本作 80° 陡面拉伸 ≈1.5%）；
+##   · 非等高角落（补洞小三角）：u = x/2R（平面 u）、v = −y/2R——u 与两侧边带
+##     轴不连续、相邻方向边带 u 轴相差 60°：登记为已接受代价（选无缝平铺贴图
+##     时不显眼；边界混色/Texture2DArray/三平面映射属后续升级，04 M1a-T8 明示不做）。
+## - 材质槽 = 地形类型 → 材质映射表（M1a-T8 资源化）：调用方传 {terrain_id: Material}
+##   平面表（.tres 载体 = TerrainMaterialLibrary，scripts/core/data/；主线默认表 =
+##   resources/terrain/terrain_materials_default.tres 色块起步）；边带/角落归属生成者
+##   的地形 surface。不用顶点色 → 材质不开 vertex_color_use_as_albedo（04 M1a-T3 细化）。
+##   表缺图内地形 id / 表值非 Material / elevation_step ≤0 / solid_factor ∉ (0,1)
+##   → 显式失败（null）。
 ## - 元数据：{"chunk": Rect2i, "mesh": ArrayMesh, "surfaces": [{"terrain": int,
 ##   "cells": Array[Vector2i]（该地形格，chunk 行主序）, "faces": Array[Dictionary]
 ##   （与 mesh 三角一一对应：kind="top"|"edge"|"corner"、cell=归属格、dir=顶面扇区 k/
@@ -51,16 +68,6 @@ const DEFAULT_ELEVATION_STEP := 1.0
 const EDGE_FLAT := "flat"    # 等高平连（|Δh| = 0）
 const EDGE_SLOPE := "slope"  # 差一级斜坡（|Δh| = 1，首版单斜面）
 const EDGE_CLIFF := "cliff"  # 更大高差陡面（|Δh| ≥ 2，Catlike 式陡连接面）
-
-## 默认地形色板（色块起步的占位语义；「类型→含义」由内容层定，T8 材质资源化时替换）
-const DEFAULT_TERRAIN_COLORS := {
-	0: Color(0.36, 0.54, 0.30),  # 草
-	1: Color(0.55, 0.45, 0.30),  # 泥
-	2: Color(0.52, 0.52, 0.56),  # 岩
-	3: Color(0.25, 0.40, 0.60),  # 水
-	4: Color(0.78, 0.70, 0.45),  # 沙
-	5: Color(0.20, 0.38, 0.22),  # 林
-}
 
 # ---------------- chunk 划分 ----------------
 
@@ -110,45 +117,45 @@ static func classify_edge(delta_elevation: int) -> String:
 
 # ---------------- 构建入口 ----------------
 
-## 整图分块构建。返回 {"chunks": Array[chunk 字典], "chunk_rects": Array[Rect2i],
-##   "materials": {被用到的 terrain id → 共享材质}, "size": float,
-##   "elevation_step": float, "solid_factor": float}；
-## 任一地形 id 缺色表 / 参数非法 → null（先全图预检后建，不做一半丢弃）。
+## 整图分块构建。materials = 地形 id → Material 映射表（TerrainMaterialLibrary.materials
+##   的 .tres 载体见 scripts/core/data/terrain_material_library.gd；测试/工具可自建表）。
+##   返回 {"chunks": Array[chunk 字典], "chunk_rects": Array[Rect2i],
+##   "materials": {被用到的 terrain id → 表内共享材质实例}（echo 输入表，不合成新材质）,
+##   "size": float, "elevation_step": float, "solid_factor": float}；
+## 任一地形 id 缺表 / 表值非 Material / 参数非法 → null（先全图预检后建，不做一半丢弃）。
 static func build_map(map: MapDataClass, chunk_cols := 10, chunk_rows := 10,
-		terrain_colors := {}, size := 1.0,
+		materials := {}, size := 1.0,
 		elevation_step := DEFAULT_ELEVATION_STEP,
 		solid_factor := DEFAULT_SOLID_FACTOR) -> Variant:
 	if elevation_step <= 0.0 or solid_factor <= 0.0 or solid_factor >= 1.0 or size <= 0.0:
 		return null
-	var colors: Dictionary = terrain_colors if not terrain_colors.is_empty() else DEFAULT_TERRAIN_COLORS
-	var needed := {}
+	if not _material_table_valid(map, materials):
+		return null
+	var used := {}
 	for cell in map.cells():
-		var tid := map.terrain_at(cell)
-		if tid == MapDataClass.TERRAIN_NONE or not colors.has(tid):
-			return null
-		needed[tid] = true
-	var materials := {}
-	for tid in needed:
-		materials[tid] = _make_material(colors[tid])
+		used[map.terrain_at(cell)] = true
+	var shared := {}
+	for tid in used:
+		shared[tid] = materials[tid]
 	var chunks: Array = []
 	var rects := chunk_rects_for(map.width, map.height, chunk_cols, chunk_rows)
 	for rect in rects:
-		var built: Variant = build_chunk(map, rect, materials, size, elevation_step, solid_factor)
+		var built: Variant = build_chunk(map, rect, shared, size, elevation_step, solid_factor)
 		if built == null:
 			return null
 		chunks.append(built)
 	return {
 		"chunks": chunks,
 		"chunk_rects": rects,
-		"materials": materials,
+		"materials": shared,
 		"size": size,
 		"elevation_step": elevation_step,
 		"solid_factor": solid_factor,
 	}
 
 
-## 单 chunk 构建。materials 须含 chunk 内全部地形 id（build_map 已预建共享表；直调自备，
-## 缺 id / 空矩形（无格）/ 参数非法 → null）。
+## 单 chunk 构建。materials 须含 chunk 内全部地形 id（build_map 已过滤共享表；直调自备，
+## 缺 id / 表值非 Material / 空矩形（无格）/ 参数非法 → null）。
 static func build_chunk(map: MapDataClass, chunk: Rect2i, materials: Dictionary,
 		size := 1.0, elevation_step := DEFAULT_ELEVATION_STEP,
 		solid_factor := DEFAULT_SOLID_FACTOR) -> Variant:
@@ -162,7 +169,7 @@ static func build_chunk(map: MapDataClass, chunk: Rect2i, materials: Dictionary,
 	var order: Array[int] = []
 	for cell in cells:
 		var tid := map.terrain_at(cell)
-		if tid == MapDataClass.TERRAIN_NONE or not materials.has(tid):
+		if tid == MapDataClass.TERRAIN_NONE or not (materials.has(tid) and materials[tid] is Material):
 			return null
 		if not groups.has(tid):
 			groups[tid] = [] as Array[Vector2i]
@@ -195,15 +202,18 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 		var h := _y_of(map, cell, elevation_step)
 		var center := Hex.axial_to_world(cell, size)
 		center.y = h
-		# ① 顶面：格心 + 六内顶点三角扇（每格恒 6 面；首版平整不扰动）
+		# ① 顶面：格心 + 六内顶点三角扇（每格恒 6 面；首版平整不扰动；水平面 → 平面 UV）
 		for k in 6:
 			var a := center
 			var b := Hex.inner_vertex(cell, k, size, solid_factor, h)
 			var c := Hex.inner_vertex(cell, (k + 1) % 6, size, solid_factor, h)
-			vi = _emit_face(st, vi, a, b, c, center, size, Vector3.UP)
+			vi = _emit_face(st, vi, a, b, c, Vector3.UP,
+				_uv_planar(a, size), _uv_planar(b, size), _uv_planar(c, size))
 			faces.append({"kind": "top", "cell": cell, "dir": k})
 			top_count += 1
-		# ② 边带：共享边由两格稳定 ID 较小者生成（界外邻格 → 不生成，无悬空连接）
+		# ② 边带：共享边由两格稳定 ID 较小者生成（界外邻格 → 不生成，无悬空连接）。
+		#   UV 随边分类：平连 = 水平面（与顶面同一世界平面映射，整图连续）；
+		#   斜坡/陡面 = 侧面（u 沿边切向、v 跟高程——T8 约定，见类头注）
 		for d in 6:
 			var nb := Hex.neighbor(cell, d)
 			if not map.has_cell(nb):
@@ -220,12 +230,26 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 			var v4 := v2 + Vector3(br.x, 0.0, br.y)
 			v3.y = hnb
 			v4.y = hnb
-			vi = _emit_face(st, vi, v1, v3, v4, center, size, _face_normal(v1, v3, v4))
-			vi = _emit_face(st, vi, v1, v4, v2, center, size, _face_normal(v1, v4, v2))
+			var n1 := _face_normal(v1, v3, v4)
+			var n2 := _face_normal(v1, v4, v2)
+			if etype == EDGE_FLAT:
+				vi = _emit_face(st, vi, v1, v3, v4, n1,
+					_uv_planar(v1, size), _uv_planar(v3, size), _uv_planar(v4, size))
+				vi = _emit_face(st, vi, v1, v4, v2, n2,
+					_uv_planar(v1, size), _uv_planar(v4, size), _uv_planar(v2, size))
+			else:
+				var tangent := Hex.edge_tangent_world(d)
+				vi = _emit_face(st, vi, v1, v3, v4, n1,
+					_uv_side_edge(v1, tangent, size), _uv_side_edge(v3, tangent, size),
+					_uv_side_edge(v4, tangent, size))
+				vi = _emit_face(st, vi, v1, v4, v2, n2,
+					_uv_side_edge(v1, tangent, size), _uv_side_edge(v4, tangent, size),
+					_uv_side_edge(v2, tangent, size))
 			faces.append({"kind": "edge", "cell": cell, "dir": d, "edge_type": etype})
 			faces.append({"kind": "edge", "cell": cell, "dir": d, "edge_type": etype})
 			edge_count += 2
-		# ③ 角落：顶点 k 三格 ID 最小者生成补洞三角（三格任一界外 → 不生成）
+		# ③ 角落：顶点 k 三格 ID 最小者生成补洞三角（三格任一界外 → 不生成）。
+		#   UV：三格等高 = 水平面 → 平面映射；否则 = 侧面（u 平面、v 跟高程——T8 约定）
 		for k in 6:
 			var nb_k := Hex.neighbor(cell, k)
 			var nb_k1 := Hex.neighbor(cell, k - 1)  # 方向 k−1（neighbor 内部 wrapi）
@@ -240,7 +264,13 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 			var p3 := p1 + Vector3(br_k1.x, 0.0, br_k1.y)  # dir k−1 邻格侧端点
 			p2.y = _y_of(map, nb_k, elevation_step)
 			p3.y = _y_of(map, nb_k1, elevation_step)
-			vi = _emit_face(st, vi, p1, p3, p2, center, size, _face_normal(p1, p3, p2))
+			var n := _face_normal(p1, p3, p2)
+			if map.elevation_at(cell) == map.elevation_at(nb_k) and map.elevation_at(cell) == map.elevation_at(nb_k1):
+				vi = _emit_face(st, vi, p1, p3, p2, n,
+					_uv_planar(p1, size), _uv_planar(p3, size), _uv_planar(p2, size))
+			else:
+				vi = _emit_face(st, vi, p1, p3, p2, n,
+					_uv_side_corner(p1, size), _uv_side_corner(p3, size), _uv_side_corner(p2, size))
 			faces.append({"kind": "corner", "cell": cell, "dir": k})
 			corner_count += 1
 	st.commit(mesh)
@@ -260,19 +290,21 @@ static func _y_of(map: MapDataClass, cell: Vector2i, elevation_step: float) -> f
 	return float(map.elevation_at(cell)) * elevation_step
 
 
-## 单三角：法线显式 + UV（归属格格心归一，T3 公式沿用）+ 顶点 + 递增显式索引
-##（base = 调用方维护的顶点游标；返回更新后的游标）。
+## 单三角：法线显式（面法线 = flat shading 硬边口径）+ 调用方算好的逐顶点 UV
+## + 顶点 + 递增显式索引（base = 调用方维护的顶点游标；返回更新后的游标）。
 ## faces 序 = 三角序（本函数只 emit，面记录由调用方追加——两者严格同步）。
+## UV 由调用方按面分类选取（平面/侧面公式见下方 _uv_*——T8 约定的唯一计算点，
+## 不在两处各算）。
 static func _emit_face(st: SurfaceTool, base: int, a: Vector3, b: Vector3, c: Vector3,
-		ref: Vector3, size: float, n: Vector3) -> int:
+		n: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> int:
 	st.set_normal(n)
-	st.set_uv(Vector2(0.5 + (a.x - ref.x) / (2.0 * size), 0.5 - (a.z - ref.z) / (2.0 * size)))
+	st.set_uv(uv_a)
 	st.add_vertex(a)
 	st.set_normal(n)
-	st.set_uv(Vector2(0.5 + (b.x - ref.x) / (2.0 * size), 0.5 - (b.z - ref.z) / (2.0 * size)))
+	st.set_uv(uv_b)
 	st.add_vertex(b)
 	st.set_normal(n)
-	st.set_uv(Vector2(0.5 + (c.x - ref.x) / (2.0 * size), 0.5 - (c.z - ref.z) / (2.0 * size)))
+	st.set_uv(uv_c)
 	st.add_vertex(c)
 	st.add_index(base)
 	st.add_index(base + 1)
@@ -280,15 +312,39 @@ static func _emit_face(st: SurfaceTool, base: int, a: Vector3, b: Vector3, c: Ve
 	return base + 3
 
 
+## 水平面 UV（顶面/平连边带/等高角落）：世界平面映射 u = x/2R、v = −z/2R
+##（T8 约定；平地整图无缝连续平铺——与归属格无关，跨 chunk 自然连续）。
+static func _uv_planar(p: Vector3, size: float) -> Vector2:
+	return Vector2(p.x / (2.0 * size), -p.z / (2.0 * size))
+
+
+## 侧面 UV（|Δh|≥1 边带）：u = XZ 沿边切向投影/2R（tangent = HexMath.edge_tangent_world，
+## 每方向随边向）、v = −y/2R（竖向纹理随高程走：Δ1 半纹、Δ2 恰一整纹）。
+static func _uv_side_edge(p: Vector3, tangent: Vector3, size: float) -> Vector2:
+	return Vector2((p.x * tangent.x + p.z * tangent.z) / (2.0 * size), -p.y / (2.0 * size))
+
+
+## 侧面 UV（非等高角落补洞三角）：u = 平面 u = x/2R、v = −y/2R（与两侧边带 u 轴
+## 不连续——已接受代价，见类头注与 docs/notes/m1a-t8-art-branch.md）。
+static func _uv_side_corner(p: Vector3, size: float) -> Vector2:
+	return Vector2(p.x / (2.0 * size), -p.y / (2.0 * size))
+
+
 ## 面法线（flat shading；绕序保证 cross 模 > 0——三角 xz 投影恒有正面积，归一安全）。
 static func _face_normal(a: Vector3, b: Vector3, c: Vector3) -> Vector3:
 	return (b - a).cross(c - a).normalized()
 
 
-## 色块材质（T8 材质资源化前的起步实现）：无顶点色路线 → 不开 vertex_color_use_as_albedo。
-static func _make_material(color: Color) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 1.0
-	mat.metallic = 0.0
-	return mat
+## 全图材质表预检：图内任一格地形 id 缺槽 / 槽值非 Material → false
+##（「无隐式兜底」——不做缺槽补色、不静默跳格）。
+static func _material_table_valid(map: MapDataClass, materials: Variant) -> bool:
+	if not (materials is Dictionary):
+		return false
+	var table: Dictionary = materials
+	for cell in map.cells():
+		var tid := map.terrain_at(cell)
+		if tid == MapDataClass.TERRAIN_NONE or not table.has(tid):
+			return false
+		if not (table[tid] is Material):
+			return false
+	return true

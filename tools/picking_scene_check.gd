@@ -37,6 +37,7 @@ func _boot() -> void:
 class Checker extends Node:
 	const Hex := preload("res://addons/hexhammer/hex_math.gd")
 	const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+	const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 	const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 	const Picking := preload("res://addons/hexhammer/hex_picking.gd")
 
@@ -118,7 +119,7 @@ class Checker extends Node:
 		for cell in map.cells():
 			var cr := Hex.offset_of(cell)
 			map.set_elevation(cell, (cr.x * 2 + cr.y * 3) % 5 - 2)
-		var r: Variant = Builder.build_map(map, 10, 10, {}, SIZE, 1.0, SOLID)
+		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID)
 		if not (r is Dictionary):
 			_hard_fail("A 场景构建失败")
 			return
@@ -131,7 +132,7 @@ class Checker extends Node:
 		map = MapDataClass.new(3, 1)
 		var a := Hex.axial_of(Vector2i(1, 0))
 		map.set_elevation(Hex.neighbor(a, 0), delta)
-		var r: Variant = Builder.build_map(map, 10, 10, {}, SIZE, 1.0, SOLID)
+		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID)
 		if not (r is Dictionary):
 			_hard_fail("对图场景构建失败（delta=%d）" % delta)
 			return
@@ -141,6 +142,10 @@ class Checker extends Node:
 
 	func delta_to_phase(delta: int) -> int:
 		return 1 if delta == 1 else 2
+
+	## 单类型材质表（M1a-T8 起 builder 只认 {terrain_id: Material}）
+	func _mats() -> Dictionary:
+		return Lib.materials_from_colors({0: Color(0.5, 0.5, 0.5)})
 
 	func _hard_fail(label: String) -> void:
 		print("[拾取小场景校验] FAIL %s" % label)

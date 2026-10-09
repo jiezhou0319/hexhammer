@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="TerrainMaterialLibrary" format=3]
+
+[ext_resource type="Texture2D" path="res://art_tests/grass_tile2x2.png" id="1_capy5"]
+[ext_resource type="Texture2D" path="res://art_tests/offset_test_hd.png" id="2_oni6e"]
+[ext_resource type="Script" path="res://scripts/core/data/terrain_material_library.gd" id="3_hnpfy"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lx63h"]
+albedo_texture = ExtResource("1_capy5")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8kqgj"]
+albedo_color = Color(0.62, 0.5, 0.34, 1)
+albedo_texture = ExtResource("1_capy5")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kijv5"]
+albedo_color = Color(0.8, 0.85, 0.9, 1)
+albedo_texture = ExtResource("2_oni6e")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_j55lo"]
+albedo_color = Color(0.25, 0.4, 0.6, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_achpy"]
+albedo_color = Color(0.78, 0.7, 0.45, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0i54n"]
+albedo_color = Color(0.2, 0.38, 0.22, 1)
+
+[resource]
+script = ExtResource("3_hnpfy")
+materials = Dictionary[int, Material]({
+0: SubResource("StandardMaterial3D_lx63h"),
+1: SubResource("StandardMaterial3D_8kqgj"),
+2: SubResource("StandardMaterial3D_kijv5"),
+3: SubResource("StandardMaterial3D_j55lo"),
+4: SubResource("StandardMaterial3D_achpy"),
+5: SubResource("StandardMaterial3D_0i54n")
+})
