@@ -1,11 +1,13 @@
-## m1a_sandbox.gd — M1a 沙盒场景脚本（T3 起供主创目检；T4 起含高程分层与连续连接目检）
+## m1a_sandbox.gd — M1a 沙盒场景脚本（T3 起供主创目检；T4 起含高程分层与连续连接目检；
+##   T6 起挂策略相机 rig——固定俯角/边缘+拖拽平移/滚轮档位缩放/焦点钳制）
 ## 用法：编辑器打开 scenes/m1a_sandbox.tscn → 运行当前场景（F6）。
 ## 项目约定**无主场景**（project.godot 不设 run/main_scene）——不要为本沙盒改变该约定。
 ## 内容：确定性公式铺 6 类地形色块 + 台地/河谷构造的 0..4 层高程（平连/斜坡/陡面
 ##   三档连接是否齐备以 _ready 打印的连接分布为准——04 M1a-T4「高差处连接符合设计
 ##   图示意」的目检载体）→ HexTerrainBuilder 产 chunk mesh → MapView 挂载
 ##   （每 chunk 一个 MeshInstance3D）。
-## 相机/灯为场景内固定摆位（固定俯角；正式策略相机 rig 属 M1a-T6）。
+## 灯为场景内固定摆位；相机 = StrategyCamera rig（M1a-T6，_ready 里 setup 建钳制域，
+##   初始焦点 = 图中心、档位 = 表中位——位姿由 rig 自行落位，场景文件不再预摆）。
 ## 改尺寸/分块/高程步长：选中根节点在检查器改导出参数后重跑场景即可。
 extends Node3D
 
@@ -14,6 +16,7 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapViewClass := preload("res://scripts/ui/map_view.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const MapPickerClass := preload("res://scripts/ui/map_picker.gd")
+const StrategyCameraClass := preload("res://scripts/ui/strategy_camera.gd")
 
 @export var map_width := 60
 @export var map_height := 40
@@ -43,6 +46,14 @@ func _ready() -> void:
 		print("[M1a 沙盒] 拾取：格 (%d,%d) 高程 %d" % [cell.x, cell.y, map.elevation_at(cell)]))
 	picker.pick_missed.connect(func() -> void: print("[M1a 沙盒] 拾取：未命中地形"))
 	print(pick_ok if pick_ok else "[M1a 沙盒] 拾取挂接失败")
+	# M1a-T6 策略相机挂接（主创实操载体）：钳制域按本图建立，初始焦点 = 图中心
+	var camera := get_node_or_null("StrategyCamera") as StrategyCameraClass
+	if camera == null:
+		print("[M1a 沙盒] 策略相机：场景缺 StrategyCamera 节点（检查 scenes/m1a_sandbox.tscn）")
+	elif camera.setup(map, 1.0):
+		print("[M1a 沙盒] 策略相机已挂接（M1a-T6）：滚轮=档位缩放 / 中键=拖拽 / 鼠标移至屏幕边缘=持续平移 / 焦点不出地图外沿")
+	else:
+		print("[M1a 沙盒] 策略相机挂接失败（空图？）")
 	var chunks: Array = view.build_info["chunks"]
 	var tris := 0
 	var surfaces := 0
