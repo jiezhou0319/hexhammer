@@ -52,8 +52,8 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
 | [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**现行口径：ADR-12 时间模型、ADR-13 3D 表现**；ADR-7 消费端收缩、ADR-8 二代 TileMapLayer 废止、ADR-9 钉 4.7.2、ADR-10/11 废止；§1/§3/§5 旧口径已就地标注） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |
-| [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T14，半天~两天粒度 |
-| [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：门 1/2/4/6/7/8 成立；门 3 跨局、门 5 对外已关闭——2026-10-09 对账） |
+| [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T15，半天~两天粒度（=1.5/3/6 有效工时口径） |
+| [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：门 1/2/4/6/7/8 成立；门 3 已重写为**局内成长**口径——主创 2026-10-09 确认"全局都是战斗"；门 5 对外已关闭——2026-10-09 对账+评审收口） |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
 ## 仓库代码
@@ -68,7 +68,7 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 
 ## 环境与运行
 
-- **Godot 4.7.2（2026-10-07 起钉死，最低兼容 4.3）**。本机位于 `C:\Users\zerat\godot_tmp\`
+- **Godot 4.7.2（2026-10-07 起钉死；发布目标 4.7+，`project.godot` features=4.7——原"最低兼容 4.3"口径已废，02 ADR-9，2026-10-09 评审 G2 收口）**。本机位于 `C:\Users\zerat\godot_tmp\`
   （4.6.3 同目录保留备回退；旧记录 `E:\Godot` 已失效）。项目无主场景，当前仅运行数值模拟器：
 
 ```

@@ -23,7 +23,7 @@
 - **结构**：`addons/hexgrid/`（HexMap / Tile / Piece 三件套核心，addon 化）与 `demo/`（演示游戏）严格分离
 - **特性清单**（README 即路线图写法）：distance / adjacents / 3D LOS / BFS reachable / A* path / influence range
 - 上游同作者有 Java 版 gdx-boardgame、Rust 版 rustanddust——同一 hex 核心跨三次引擎，证明"六边形数学与游戏规则解耦"是可维护路线
-- **借鉴**：① hex 核心做成 addon（我们已独立成 `scripts/core/hex/`，M2 时升格为 `addons/`）；② LOS 早已实现，做射击视线时直接参考其算法；② demo 与框架分离的目录约定
+- **借鉴**：① hex 核心做成 addon（本项目即走 addon 位：M1a-T1 直接建 `addons/hexhammer/`，见 03/04——旧 spike 的 `scripts/core/hex/` 已清码，2026-10-09 对齐）；② LOS 早已实现，做射击视线时直接参考其算法；② demo 与框架分离的目录约定
 - **注意**：Godot 2/3 时代代码（Node 结构老式），思路可取，代码不直接搬
 
 ### A3. mwerezak/godot-heavy-gear
@@ -77,7 +77,9 @@
    - 解算可脱离 UI 独立运行（Tessera）→ 我们的纯函数解算 + headless 测试已具备
    - 地图/剧本是数据不是代码（Hex-Wargame-JS）→ M1 引入 JSON/.tres 地图格式
 3. **已知坑**：
-   - Godot 3 → 4 迁移断层（heavy-gear）：锁定 4.x 特性集，`project.godot` 保持低版本特性（已做：4.3 features；2026-10-07 起工程钉死 4.7.2）
+   - Godot 3 → 4 迁移断层（heavy-gear）：**工程钉死 4.7.2、发布目标 4.7+**（`project.godot`
+     features=4.7；~~"保持 4.3 低版本特性（已做：4.3 features）"~~ 作废，2026-10-09 评审
+     G1/G2 收口——`features` 高于 4.3 时低版本打不开工程，向上兼容单向；口径见 02 ADR-9）
    - 回合制游戏的状态同步 bug 高发区在"回合边界"（Wesnoth 的 save/load bug 史）：~~回合机要显式状态机（已做）~~（回合机已随 RTwP 废除，时钟驱动取代）；存档尽早进入测试（M2 做 state 序列化冒烟，03 v2）
 
 ## C. 对现有代码的直接结论
