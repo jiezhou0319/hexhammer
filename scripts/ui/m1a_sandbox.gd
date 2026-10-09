@@ -13,6 +13,7 @@ const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapViewClass := preload("res://scripts/ui/map_view.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
+const MapPickerClass := preload("res://scripts/ui/map_picker.gd")
 
 @export var map_width := 60
 @export var map_height := 40
@@ -33,6 +34,15 @@ func _ready() -> void:
 	if not ok:
 		print("[M1a 沙盒] 构建失败：色表缺图内地形 id（检查 _fill_pattern 与默认色板）")
 		return
+	# M1a-T5 拾取挂接（目检载体）：左键点击地形 → 打印格子 + 高程（含斜坡/悬崖/角落归属）
+	var picker: MapPickerClass = MapPickerClass.new()
+	picker.name = "MapPicker"
+	view.add_child(picker)  # 地图根（MapView）之下：世界↔局部转换随根变换
+	var pick_ok := picker.setup(view.build_info, map)
+	picker.cell_picked.connect(func(cell: Vector2i) -> void:
+		print("[M1a 沙盒] 拾取：格 (%d,%d) 高程 %d" % [cell.x, cell.y, map.elevation_at(cell)]))
+	picker.pick_missed.connect(func() -> void: print("[M1a 沙盒] 拾取：未命中地形"))
+	print(pick_ok if pick_ok else "[M1a 沙盒] 拾取挂接失败")
 	var chunks: Array = view.build_info["chunks"]
 	var tris := 0
 	var surfaces := 0
@@ -45,6 +55,7 @@ func _ready() -> void:
 	print("[M1a 沙盒] 地形分布：", _type_counts(map))
 	print("[M1a 沙盒] 高程分布：", _elevation_counts(map))
 	print("[M1a 沙盒] 连接分布：", _edge_class_counts(map))
+	print("[M1a 沙盒] 拾取已启用：左键点击地形打印格子（M1a-T5）")
 
 ## 目检地貌（确定性公式；水 3 正弦河 + 沙 4 岸 / 岩 2 / 林 5 / 泥 1 / 草 0 底）
 func _fill_pattern(map) -> void:
@@ -87,6 +98,14 @@ func _dist2(col: int, row: int, cx: int, cy: int) -> float:
 	var dx := float(col - cx)
 	var dy := float(row - cy)
 	return dx * dx + dy * dy
+
+## 左键拾取请求（M1a-T5 目检）：只入队，物理回调内查询（map_picker.gd 纪律）
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+			and (event as InputEventMouseButton).pressed:
+		var picker := get_node_or_null("MapView/MapPicker")
+		if picker != null:
+			picker.request_pick_at((event as InputEventMouseButton).position)
 
 func _type_counts(map) -> Dictionary:
 	var counts := {}
