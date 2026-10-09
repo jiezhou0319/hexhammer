@@ -1,5 +1,6 @@
 ## m1a_sandbox.gd — M1a 沙盒场景脚本（T3 起供主创目检；T4 起含高程分层与连续连接目检；
-##   T6 起挂策略相机 rig——固定俯角/边缘+拖拽平移/滚轮档位缩放/焦点钳制）
+##   T6 起挂策略相机 rig——固定俯角/边缘+拖拽平移/滚轮档位缩放/焦点钳制；
+##   T7 起挂高亮层——hover 单格高亮 / 左键选择集合 + 路径描线）
 ## 用法：编辑器打开 scenes/m1a_sandbox.tscn → 运行当前场景（F6）。
 ## 项目约定**无主场景**（project.godot 不设 run/main_scene）——不要为本沙盒改变该约定。
 ## 内容：确定性公式铺 6 类地形色块 + 台地/河谷构造的 0..4 层高程（平连/斜坡/陡面
@@ -8,15 +9,21 @@
 ##   （每 chunk 一个 MeshInstance3D）。
 ## 灯为场景内固定摆位；相机 = StrategyCamera rig（M1a-T6，_ready 里 setup 建钳制域，
 ##   初始焦点 = 图中心、档位 = 表中位——位姿由 rig 自行落位，场景文件不再预摆）。
+## M1a-T7 高亮目检（「高亮/取消无感知延迟、不闪、不穿山」的实操载体）：
+##   - 鼠标移动 = hover 层单格高亮（暖黄半透明，贴合内顶面）；
+##   - 左键点击地形 = 选择层高亮该格 + 界内 6 邻（蓝色），并从上次选中格描一条
+##     直线路径（橙色贴地带）——路径为演示用直线采样，真寻路 M1b-T4 落地。
 ## 改尺寸/分块/高程步长：选中根节点在检查器改导出参数后重跑场景即可。
 extends Node3D
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
+const HexHighlight := preload("res://addons/hexhammer/hex_highlight.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapViewClass := preload("res://scripts/ui/map_view.gd")
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const MapPickerClass := preload("res://scripts/ui/map_picker.gd")
 const StrategyCameraClass := preload("res://scripts/ui/strategy_camera.gd")
+const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
 
 @export var map_width := 60
 @export var map_height := 40
@@ -24,11 +31,21 @@ const StrategyCameraClass := preload("res://scripts/ui/strategy_camera.gd")
 @export var chunk_rows := 10
 @export var elevation_step := 1.0
 
+## M1a-T7 高亮状态（点击选择 = hover 格确认；Vector2i 不可空，用标志位）
+var _map: MapDataClass = null
+var _hover_layer: HighlightLayerClass = null
+var _selection_layer: HighlightLayerClass = null
+var _hover_cell := Vector2i.ZERO
+var _has_hover := false
+var _prev_selected := Vector2i.ZERO
+var _has_prev := false
+
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	var map := MapDataClass.new(map_width, map_height)
 	_fill_pattern(map)
 	_fill_elevation(map)
+	_map = map
 	var view: MapViewClass = MapViewClass.new()
 	view.name = "MapView"
 	add_child(view)
@@ -37,15 +54,31 @@ func _ready() -> void:
 	if not ok:
 		print("[M1a 沙盒] 构建失败：色表缺图内地形 id（检查 _fill_pattern 与默认色板）")
 		return
-	# M1a-T5 拾取挂接（目检载体）：左键点击地形 → 打印格子 + 高程（含斜坡/悬崖/角落归属）
+	# M1a-T5 拾取挂接（目检载体）：左键/移动 → 物理回调内解析 → 格子
 	var picker: MapPickerClass = MapPickerClass.new()
 	picker.name = "MapPicker"
 	view.add_child(picker)  # 地图根（MapView）之下：世界↔局部转换随根变换
 	var pick_ok := picker.setup(view.build_info, map)
-	picker.cell_picked.connect(func(cell: Vector2i) -> void:
-		print("[M1a 沙盒] 拾取：格 (%d,%d) 高程 %d" % [cell.x, cell.y, map.elevation_at(cell)]))
-	picker.pick_missed.connect(func() -> void: print("[M1a 沙盒] 拾取：未命中地形"))
+	picker.cell_picked.connect(_on_cell_picked)
+	picker.pick_missed.connect(_on_pick_missed)
 	print(pick_ok if pick_ok else "[M1a 沙盒] 拾取挂接失败")
+	# M1a-T7 高亮挂接（目检载体）：hover 层（暖黄单格）+ 选择层（蓝多格 + 橙路径）。
+	# lift 档位：选择层 = 基准档（tier 0）、hover 层 = tier 1——跨层同格双扇面错开
+	# 一档不共面；选择层描线带 = 本层 lift + 半档 extra（高于两层扇面且不与任何
+	# 整档共面，见 hex_highlight.gd 头注「共面治理」——「不闪」的几何面）。
+	var hover_lift := HexHighlight.lift_for_tier(1)
+	_hover_layer = HighlightLayerClass.new()
+	_hover_layer.name = "HoverHighlight"
+	view.add_child(_hover_layer)
+	_selection_layer = HighlightLayerClass.new()
+	_selection_layer.name = "SelectionHighlight"
+	view.add_child(_selection_layer)
+	var hover_ok: bool = _hover_layer.setup(map, 1.0, elevation_step, 0.8,
+		HexHighlight.DEFAULT_COLOR, HexHighlight.DEFAULT_PATH_COLOR, -1.0, hover_lift)
+	var sel_ok: bool = _selection_layer.setup(map, 1.0, elevation_step, 0.8,
+		Color(0.30, 0.55, 1.0, 0.40), Color(0.25, 0.75, 1.0, 1.0))
+	if not hover_ok or not sel_ok:
+		print("[M1a 沙盒] 高亮层挂接失败（空图？）")
 	# M1a-T6 策略相机挂接（主创实操载体）：钳制域按本图建立，初始焦点 = 图中心
 	var camera := get_node_or_null("StrategyCamera") as StrategyCameraClass
 	if camera == null:
@@ -66,7 +99,7 @@ func _ready() -> void:
 	print("[M1a 沙盒] 地形分布：", _type_counts(map))
 	print("[M1a 沙盒] 高程分布：", _elevation_counts(map))
 	print("[M1a 沙盒] 连接分布：", _edge_class_counts(map))
-	print("[M1a 沙盒] 拾取已启用：左键点击地形打印格子（M1a-T5）")
+	print("[M1a 沙盒] 拾取已启用（M1a-T5）：移动=hover 高亮 / 左键=选择集合+路径描线（M1a-T7）")
 
 ## 目检地貌（确定性公式；水 3 正弦河 + 沙 4 岸 / 岩 2 / 林 5 / 泥 1 / 草 0 底）
 func _fill_pattern(map) -> void:
@@ -110,13 +143,62 @@ func _dist2(col: int, row: int, cx: int, cy: int) -> float:
 	var dy := float(row - cy)
 	return dx * dx + dy * dy
 
-## 左键拾取请求（M1a-T5 目检）：只入队，物理回调内查询（map_picker.gd 纪律）
+## 拾取请求（M1a-T5/T7 目检）：只入队，物理回调内查询（map_picker.gd 纪律）。
+## 鼠标移动 = hover 高亮更新；左键 = 在当前 hover 格上确认选择（点击即所见）。
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+	var picker := get_node_or_null("MapView/MapPicker")
+	if picker == null:
+		return
+	if event is InputEventMouseMotion:
+		picker.request_pick_at((event as InputEventMouseMotion).position)
+	elif event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
 			and (event as InputEventMouseButton).pressed:
-		var picker := get_node_or_null("MapView/MapPicker")
-		if picker != null:
-			picker.request_pick_at((event as InputEventMouseButton).position)
+		_confirm_selection()  # 点击即所见：当前 hover 格上确认（motion 已持续解析）
+		picker.request_pick_at((event as InputEventMouseButton).position)
+
+## hover 更新（M1a-T7）：单格高亮切换走集合差异（同格重复 → 零操作不闪）。
+func _on_cell_picked(cell: Vector2i) -> void:
+	_hover_cell = cell
+	_has_hover = true
+	if _hover_layer != null:
+		_hover_layer.highlight([cell])
+
+func _on_pick_missed() -> void:
+	_has_hover = false
+	if _hover_layer != null:
+		_hover_layer.clear()
+
+## 左键选择（M1a-T7 目检）：hover 格 + 界内 6 邻入选择层，从上次选中格描直线路径。
+func _confirm_selection() -> void:
+	if not _has_hover or _selection_layer == null:
+		return
+	var cell := _hover_cell
+	var cells: Array = [cell]
+	for nb in _map.neighbors_existing(cell):
+		cells.append(nb)
+	_selection_layer.highlight(cells)
+	if _has_prev and _prev_selected != cell:
+		_selection_layer.show_path(_line_cells(_prev_selected, cell))
+	else:
+		_selection_layer.clear_path()
+	_prev_selected = cell
+	_has_prev = true
+
+## 演示用直线路径采样（格心连线 → cube rounding；真寻路 M1b-T4 落地后替换）。
+func _line_cells(a: Vector2i, b: Vector2i) -> Array:
+	var out: Array = []
+	var wa := Hex.axial_to_world(a, 1.0)
+	var wb := Hex.axial_to_world(b, 1.0)
+	var steps := maxi(1, int(ceil((wb - wa).length() / 0.45)))
+	var last := Vector2i(9999, 9999)
+	for i in steps + 1:
+		var t := float(i) / float(steps)
+		var p := wa + (wb - wa) * t
+		var c := Hex.world_to_axial(Vector3(p.x, 0.0, p.z), 1.0)
+		if c != last:
+			out.append(c)
+			last = c
+	return out
 
 func _type_counts(map) -> Dictionary:
 	var counts := {}
