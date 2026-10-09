@@ -37,7 +37,7 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/06-game-design.md](docs/06-game-design.md) | **游戏设计总纲**：时间与指令模型 / 战斗规则 / 多资源经济 / AI 分层与旋钮（v0.5，最权威） |
 | [docs/07-combat-math.md](docs/07-combat-math.md) | **战斗数值唯一权威**（v6）：伤害公式不变 + 实时化机制处置表、校准锚点 |
 | [docs/08-troop-design.md](docs/08-troop-design.md) | 兵种设计（v6.1 + §0.5 实时化重锚预告）：8 兵种机制与旧数值带、待重锚清单 |
-| [docs/09-open-questions.md](docs/09-open-questions.md) | 开放问题清单（**v0.3 台账为准**：46/117 题已收口/作废并就地划线，未划线=仍待拍，2026-10-09 对账） |
+| [docs/09-open-questions.md](docs/09-open-questions.md) | 开放问题清单（**v0.3 台账为准**：正文仅存 71 道待拍题；46 题已收口/作废，正文已删、一行式结论留台账 A/B 节） |
 | [docs/10-params-test.md](docs/10-params-test.md) | **参数测试版 v0**：双费表 / 反击系数 / 时钟与账期（开发期持续调整） |
 | [docs/11-research-wc4.md](docs/11-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
