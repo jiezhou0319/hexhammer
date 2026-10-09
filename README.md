@@ -1,7 +1,8 @@
 # Hexhammer
 
-大地图回合制征服战旗（Godot 4）：三国志 11 的行军与接触战 + 英雄无敌的将领养成，
-装在中古战锤的世界观里。单张持久大地图，占点造兵养将领，规划-结算分离的自动战斗。
+实时暂停制（RTwP）大地图征服（Godot 4）：三国志 11 的实时行军与接触战 + 钢铁雄心 4 的
+暂停指挥 + 英雄无敌的将领养成，装在中古战锤的世界观里。单张持久大地图，占点造兵养将领，
+**暂停下令、放行兑现**的自动战斗，纯 PvE。
 
 > IP 提醒：Warhammer 是 Games Workshop 的知识产权。本项目个人自用与规则研究；
 > 公开发布时全部使用自创名词（见 docs/00 与 docs/06 §9）。
@@ -38,7 +39,7 @@ WeGo 规划-结算分离 → **钢4式暂停指派 + 全局脉冲时钟 + 棋子
 | [docs/08-troop-design.md](docs/08-troop-design.md) | 兵种设计（v6.1 + §0.5 实时化重锚预告）：8 兵种机制与旧数值带、待重锚清单 |
 | [docs/09-open-questions.md](docs/09-open-questions.md) | 开放问题清单（**v0.3 改向裁决台账**：117 题的收口/作废/仍有效处置 + 新参数题） |
 | [docs/10-params-test.md](docs/10-params-test.md) | **参数测试版 v0**：双费表 / 反击系数 / 时钟与账期（开发期持续调整） |
-| [docs/09-research-wc4.md](docs/09-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
+| [docs/11-research-wc4.md](docs/11-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
 | [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**ADR-12 时间与指令模型、ADR-13 表现层 3D 化为当前有效**；ADR-10/11 已废止） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |

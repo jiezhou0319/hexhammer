@@ -1,6 +1,6 @@
 ## 战斗数值校准模拟器 v6.1（法师定值 ATK，docs/08 v6.1 配套）
 ## 用法:
-##   "E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
+##   "C:\Users\zerat\godot_tmp\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
 ## v6.1 变更（2026-10-06）：法师取消 3d6×8 掷骰 ATK，改定值 84（原期望值），
 ##   并入统一伤害公式（docs/08 v6.1 裁决）；其余与 v6 一致。
 ## v6 变更（公式结构与既有常量零改动，只恢复 8 兵种数值带 + 新机制挂靠既有修正层）:

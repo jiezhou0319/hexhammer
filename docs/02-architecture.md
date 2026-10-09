@@ -87,6 +87,8 @@
 
 ### ADR-9 版本与工程纪律
 - Godot 4.3+ 特性集（向上兼容运行）；GDScript（不上 C#，见 00 支柱 4：单机发布体积与依赖）
+  **2026-10-07 起工程钉死 4.7.2**（本机 `C:\Users\zerat\godot_tmp\`；`project.godot` features=4.7），
+  发布兼容口径仍按 4.3+ 特性集约束
 - 测试：现有零依赖 runner；CI（M1 引入）：`godot --headless --import` + 跑测试，Git 提交前本地必跑
 - 分支：main 常绿；功能分支短命；每个任务 = 测试先行或随附测试
 

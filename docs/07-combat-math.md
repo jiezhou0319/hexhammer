@@ -96,5 +96,5 @@
   同时拉满，验证聚合系数是否触壁 [0.2, 4.0]——08 每加新机制时跑一次
   （WC4 调研 §1.2 建议）
 ```
-"E:\Godot\Godot_v4.6.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
+"C:\Users\zerat\godot_tmp\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
 ```
