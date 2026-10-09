@@ -59,6 +59,8 @@ GitHub 镜像（jiezhou0319/hexhammer）。
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |
 | [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T15，单任务粒度（~~估时口径~~ 时间概念已移除，2026-10-09 主创拍板） |
 | [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：门 1/2/4/6/7/8 成立；门 3 已重写为**局内成长**口径——主创 2026-10-09 确认"全局都是战斗"；门 5 对外已关闭——2026-10-09 对账+评审收口） |
+| [docs/hexhammer-fable-review.md](docs/hexhammer-fable-review.md) | 规划文档独立评审（fable，2026-10-09，非拍板）：P0×2 + P1×10 + P2×11——**已全量收口**，裁决记录见 09 附录二「主创二次拍板」 |
+| [docs/hexhammer-m1a-map-implementation-research.md](docs/hexhammer-m1a-map-implementation-research.md) | M1a 地图实现调研（2026-10-09，非拍板）：Red Blob / Catlike / godot_hex_map 学习路线、顶面-边带-角落三角化、归属规则、拾取相机细则——**04 M1a 任务细化的依据** |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
 ## 仓库代码
