@@ -78,6 +78,38 @@ func test_set_terrain_rejects_negative_id() -> void:
 	expect(not m.set_terrain(Vector2i(0, 0), -1), "负地形 id 应被拒绝（哨兵保留）")
 	expect_eq(m.terrain_at(Vector2i(0, 0)), 0, "拒绝后原值不变")
 
+func test_set_rejects_out_of_int32_range() -> void:
+	# int64 越界值落 PackedInt32Array 会静默截断改值（复查探针实跑：2^40 → 落库 0，
+	# set_* 却返回 true）——必须显式拒绝（false、原值不变），不得「宣称成功但数据变值」。
+	var m := MapDataClass.new(4, 3)
+	var c := Hex.axial_of(Vector2i(1, 1))
+	m.set_elevation(c, 5)
+	m.set_terrain(c, 5)
+	expect(not m.set_elevation(c, 1099511627776), "elevation 2^40 应拒（int64 越界）")
+	expect(not m.set_elevation(c, INT32_MIN - 1), "elevation INT32_MIN−1 应拒")
+	expect(not m.set_terrain(c, 8589934592), "terrain 2^33 应拒（int64 越界）")
+	expect(not m.set_terrain(c, INT32_MAX + 1), "terrain INT32_MAX+1 应拒")
+	expect(not m.set_elevation(c, MapDataClass.ELEVATION_NONE), "高程哨兵值不得落库界内格")
+	expect(not m.set_terrain(c, MapDataClass.TERRAIN_NONE), "地形哨兵值不得落库界内格")
+	expect_eq(m.elevation_at(c), 5, "越界拒绝后高程原值不变")
+	expect_eq(m.terrain_at(c), 5, "越界拒绝后地形原值不变")
+
+func test_int32_boundary_values_accepted_and_roundtrip() -> void:
+	# 值域边界本身合法（闭区间 [INT32_MIN, INT32_MAX]）：写入读回一致 + 序列化往返一致
+	var m := MapDataClass.new(2, 1)
+	expect(m.set_elevation(Hex.axial_of(Vector2i(0, 0)), INT32_MIN), "INT32_MIN 应接受")
+	expect(m.set_elevation(Hex.axial_of(Vector2i(1, 0)), INT32_MAX), "INT32_MAX 应接受")
+	expect(m.set_terrain(Hex.axial_of(Vector2i(1, 0)), INT32_MAX), "地形 INT32_MAX 应接受")
+	expect_eq(m.elevation_at(Hex.axial_of(Vector2i(0, 0))), INT32_MIN, "INT32_MIN 读回一致")
+	expect_eq(m.elevation_at(Hex.axial_of(Vector2i(1, 0))), INT32_MAX, "INT32_MAX 读回一致")
+	var back := MapDataClass.from_dict(m.to_dict())
+	expect(back != null, "边界值图应可序列化")
+	if back == null:
+		return
+	expect_eq(back.elevation_at(Hex.axial_of(Vector2i(0, 0))), INT32_MIN, "往返 INT32_MIN 一致")
+	expect_eq(back.elevation_at(Hex.axial_of(Vector2i(1, 0))), INT32_MAX, "往返 INT32_MAX 一致")
+	expect_eq(back.terrain_at(Hex.axial_of(Vector2i(1, 0))), INT32_MAX, "往返边界地形一致")
+
 # ================= 地图外形（矩形、无缺格无折叠） =================
 
 func test_shape_rect_exact_coverage_60x40() -> void:
@@ -301,6 +333,57 @@ func test_from_dict_rejects_invalid() -> void:
 	var v9 := good.duplicate(true)
 	v9["schema_version"] = "1"
 	expect(MapDataClass.from_dict(v9) == null, "版本非数值应拒")
+
+	# 非法数值形状：小数/NaN 不得被 int() 静默截断（「无隐式兜底」契约的元素面）
+	var v10 := good.duplicate(true)
+	v10["width"] = 60.5
+	expect(MapDataClass.from_dict(v10) == null, "非整数宽度应拒（不得截断为 60）")
+
+	var v11 := good.duplicate(true)
+	var frac_elev: Array = []
+	frac_elev.resize(2400)
+	frac_elev.fill(0)
+	frac_elev[42] = 1.5
+	v11["elevation"] = frac_elev
+	expect(MapDataClass.from_dict(v11) == null, "小数高程应拒（不得截断为 1）")
+
+	var v12 := good.duplicate(true)
+	v12["schema_version"] = NAN
+	expect(MapDataClass.from_dict(v12) == null, "NaN 版本应拒")
+
+	var v13 := good.duplicate(true)
+	var bool_pass: Array = []
+	bool_pass.resize(2400)
+	bool_pass.fill(1)
+	bool_pass[7] = true  # GDScript 中 true is int 为真，仍须拒
+	v13["passable"] = bool_pass
+	expect(MapDataClass.from_dict(v13) == null, "bool 元素应拒（不与 0/1 数值混同）")
+
+	# int64 越界元素：落 int32 存储即静默截断改值 → 拒（与小数/NaN 同罪，
+	# 复查探针实跑：elevation=[2^40,0] 曾被接受且 stored=0）
+	var v14 := good.duplicate(true)
+	var big_elev: Array = []
+	big_elev.resize(2400)
+	big_elev.fill(0)
+	big_elev[9] = 1099511627776  # 2^40
+	v14["elevation"] = big_elev
+	expect(MapDataClass.from_dict(v14) == null, "elevation 2^40 元素应拒")
+
+	var v15 := good.duplicate(true)
+	var big_terrain: Array = []
+	big_terrain.resize(2400)
+	big_terrain.fill(1)
+	big_terrain[3] = INT32_MAX + 1
+	v15["terrain"] = big_terrain
+	expect(MapDataClass.from_dict(v15) == null, "terrain INT32_MAX+1 元素应拒")
+
+	var v16 := good.duplicate(true)
+	var big_float: Array = []
+	big_float.resize(2400)
+	big_float.fill(0.0)
+	big_float[9] = 2147483648.0  # 2^31，恰超 int32 上界一字
+	v16["elevation"] = big_float
+	expect(MapDataClass.from_dict(v16) == null, "elevation float 2^31（恰越上界）应拒")
 
 func test_from_dict_accepts_json_shaped_numbers() -> void:
 	# JSON 往返后整数变 float（3 → 3.0）——from_dict 须接受（M2 存档管线友好）

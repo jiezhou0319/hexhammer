@@ -7,8 +7,8 @@
 ## - 遍历顺序固定（唯一口径）：for row in height: for col in width: axial_of(col,row)。
 ##   summary() 逐格摘要按此序输出——同图（不论写入顺序）逐字节一致（T9 复现验收的载体）。
 ## - 默认值：新图全格 terrain=0 / elevation=0 / passable=true；0 号地形语义由内容层定义。
-## - 高程（int 分层）：值域不设限、可为负（T9 噪声量化产出负层合法），写入 int32 存储、
-##   越界量化由生成器负责，数据层不钳制。
+## - 高程（int 分层）：值域 = int32 全域（可为负，T9 噪声量化产出负层合法）；越界写入
+##   显式拒绝（返回 false、原值不变）——数据层不钳制、更不静默截断，生成器负责量化到值域内。
 ## - 边界规则（04 M1a-T2 细化）：不存在的邻格不产生任何连接——neighbors_existing 只吐
 ##   界内格；界外查询契约：is_passable=false（不可通行 = 无连接的结算面）、
 ##   terrain_at=TERRAIN_NONE、elevation_at=ELEVATION_NONE（哨兵，见各常量注释）。
@@ -28,12 +28,13 @@ const Hex := preload("res://addons/hexhammer/hex_math.gd")
 ## 数据结构版本：字段布局或摘要格式变更时 +1；from_dict 拒绝版本不符的数据。
 const SCHEMA_VERSION := 1
 
-## 地形 id 哨兵（界外/无效格）。合法地形 id ≥ 0——set_terrain 与 from_dict 均拒绝负值，
-## 保证哨兵永不与真实数据混淆。
+## 地形 id 哨兵（界外/无效格）。合法地形 id ∈ [0, INT32_MAX]——set_terrain 与 from_dict
+## 均拒绝越界值，保证哨兵永不与真实数据混淆。
 const TERRAIN_NONE := -1
 
-## 高程哨兵（界外/无效格）= −2^62。合法高程为 int32 值域内的分层等级（可为负），
-## int32 平铺存储永远产生不了本哨兵，不会与真实数据混淆。
+## 高程哨兵（界外/无效格）= −2^62。合法高程 = int32 值域内的分层等级（可为负），
+## set_elevation 与 from_dict 均拒绝越界值——int32 平铺存储永远产生不了本哨兵，
+## 界内格值域也进不了哨兵，不会与真实数据混淆。
 const ELEVATION_NONE := -4611686018427387904
 
 var width: int = 0   # 列数（odd-r offset col 维度）
@@ -127,9 +128,10 @@ func is_passable(cell: Vector2i) -> bool:
 	return i >= 0 and _passable[i] != 0
 
 
-## 地形 id ≥ 0（负值保留给 TERRAIN_NONE 哨兵）；界外写入 → false、不生效。
+## 地形 id ∈ [0, INT32_MAX]（负值保留给 TERRAIN_NONE 哨兵；越界 int64 拒绝——int32 落库
+## 静默截断即改值）；界外写入同样 → false、不生效。
 func set_terrain(cell: Vector2i, terrain_id: int) -> bool:
-	if terrain_id < 0:
+	if terrain_id < 0 or terrain_id > INT32_MAX:
 		return false
 	var i := index_of(cell)
 	if i < 0:
@@ -138,8 +140,12 @@ func set_terrain(cell: Vector2i, terrain_id: int) -> bool:
 	return true
 
 
-## 高程分层（int，可为负）；界外写入 → false、不生效。通行性独立于此（见 set_passable）。
+## 高程分层（int，可为负，值域 = int32 全域；越界拒绝——数据层不钳制、不静默截断，
+## 量化到值域内由生成器负责）；界外写入 → false、不生效。
+## 通行性独立于此（见 set_passable）。
 func set_elevation(cell: Vector2i, level: int) -> bool:
+	if level < INT32_MIN or level > INT32_MAX:
+		return false
 	var i := index_of(cell)
 	if i < 0:
 		return false
@@ -170,7 +176,8 @@ func to_dict() -> Dictionary:
 	}
 
 
-## 版本不符 / 字段缺失 / 尺寸不匹配 / 元素非法 → null（调用方显式判空，无隐式兜底）。
+## 版本不符 / 字段缺失 / 尺寸不匹配 / 元素非法（含超 int32 值域的 int64——落库即截断改值，
+## 与小数/NaN 同罪）→ null（调用方显式判空，无隐式兜底）。
 ## 兼容 JSON 形状的数值（整数以 float 3.0 出现亦可还原，M2 存档管线友好）；
 ## 多余键忽略（向前兼容由 SCHEMA_VERSION 把关，不靠键白名单收紧）。
 static func from_dict(data: Dictionary) -> MapData:
@@ -178,8 +185,7 @@ static func from_dict(data: Dictionary) -> MapData:
 	if not data.has_all(required):
 		return null
 	for k in ["schema_version", "width", "height"]:
-		var v: Variant = data[k]
-		if v is bool or not (v is int or v is float):
+		if not _is_integral_number(data[k]):
 			return null
 	if int(data["schema_version"]) != SCHEMA_VERSION:
 		return null
@@ -229,16 +235,33 @@ func digest() -> String:
 
 # ---------------- 内部：序列化元素校验 ----------------
 
-## 数值序列 → PackedInt32Array；类型/尺寸非法或（allow_negative=false 时）出现负值 → null。
+## 数值且为有限整值：int，或无小数部分的有限 float（JSON 往返后整数呈 3.0 形状）。
+## bool 在 GDScript 中 `is int` 为真，须先排除；小数/NaN/inf/非数值一律 false
+## ——非法元素显式拒绝，不做静默截断（无隐式兜底契约的元素面）。
+static func _is_integral_number(v: Variant) -> bool:
+	if v is bool:
+		return false
+	if v is int:
+		return true
+	if v is float:
+		return is_finite(v) and int(v) == v
+	return false
+
+
+## 数值序列 → PackedInt32Array；类型/尺寸非法、元素超 int32 值域（落库即截断改值）
+## 或（allow_negative=false 时）出现负值 → null。
 static func _to_int32s(v: Variant, expected: int, allow_negative: bool) -> Variant:
 	var out := PackedInt32Array()
 	if v is PackedInt32Array:
 		out = v
 	elif v is Array:
 		for x in v:
-			if x is bool or not (x is int or x is float):
+			if not _is_integral_number(x):
 				return null
-			out.append(int(x))
+			var xi := int(x)
+			if xi < INT32_MIN or xi > INT32_MAX:
+				return null
+			out.append(xi)
 	else:
 		return null
 	if out.size() != expected:
@@ -257,7 +280,7 @@ static func _to_bytes01(v: Variant, expected: int) -> Variant:
 		out = v
 	elif v is Array:
 		for x in v:
-			if x is bool or not (x is int or x is float):
+			if not _is_integral_number(x):
 				return null
 			var b := int(x)
 			if b != 0 and b != 1:
