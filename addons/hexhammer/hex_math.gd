@@ -153,3 +153,32 @@ static func vertex_xz(cell: Vector2i, i: int, size := 1.0) -> Vector2:
 static func cell_vertex(cell: Vector2i, i: int, size := 1.0, y := 0.0) -> Vector3:
 	var v := vertex_xz(cell, i, size)
 	return Vector3(v.x, y, v.y)
+
+# ---------------- 高程连接几何参数（M1a-T4；全局唯一参数源） ----------------
+
+## 内顶点（solid corner，Catlike 口径）：顶点 i 向格心缩进 solid_factor ∈ (0,1)——
+## 六个内顶点围成"内六边形"= 可站立顶面（微决策 2：棋子站格心内顶面、高亮只盖内顶面），
+## 外圈留作连接带。T4 全部几何（顶面/边带/角落）顶点从本函数与 bridge_xz 组合，
+## y 由高程层给定（= elevation × elevation_step，由构建器现算，本层不管高程）。
+static func inner_vertex(cell: Vector2i, i: int, size := 1.0, solid_factor := 0.8, y := 0.0) -> Vector3:
+	var center := axial_to_world(cell, size)
+	var v := vertex_xz(cell, wrapi(i, 0, 6), size)
+	return Vector3(
+		center.x + (v.x - center.x) * solid_factor,
+		y,
+		center.z + (v.y - center.z) * solid_factor,
+	)
+
+
+## 边桥向量（bridge）：cell 的方向 dir 内边 → 邻格对应内边的位移 = 格心位移 × (1−solid_factor)
+##（推导：B.inner_j = B_c + solid·(V−B_c)、A.inner_d = A_c + solid·(V−A_c)、V = 共享外顶点
+##   ⇒ B.inner_j − A.inner_d = (B_c−A_c)·(1−solid)——恰好横跨两内六边形之间的连接带）。
+## y 恒 0（高程差由边带两端各自 y 表达，不进 bridge）。从两个全局格心坐标相减现算：
+## T4「接缝顶点从同一全局格心/边参数计算，不在两个 chunk 内各自扰动」的参数源
+## （边带/角落顶点 = 内顶点 + bridge，全图唯一计算路径）。
+## 注意：Catlike 原教实现是"每格各画半条桥、外沿共享边处对接"；本作按任务卡归属规则
+## 改为"整条边带由稳定 ID 较小者一次生成"，故桥向量取全程（×blend 而非 ×blend/2）。
+static func bridge_xz(cell: Vector2i, dir: int, size := 1.0, solid_factor := 0.8) -> Vector2:
+	var a := axial_to_world(cell, size)
+	var b := axial_to_world(neighbor(cell, wrapi(dir, 0, 6)), size)
+	return Vector2((b.x - a.x) * (1.0 - solid_factor), (b.z - a.z) * (1.0 - solid_factor))

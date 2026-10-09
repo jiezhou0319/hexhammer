@@ -1,25 +1,20 @@
-## test_hex_terrain_builder.gd — M1a-T3 平地网格渲染几何单测（headless 断言几何不变量）
-## 逐条覆盖 04 任务卡 M1a-T3「验收 + 细化新增」的可自动化部分：
-##   - 小图阶段核对顶点顺序/法线/UV（单格锚 + 小图全量）；
-##   - 相邻 chunk 接缝顶点无错位（接缝顶点来自同一全局格心/边参数——对 HexMath 全局
-##     公式 oracle + 跨块共享边端点逐位相等双重核对）；
-##   - 60×40 生成成功（24 chunk / 全覆盖恰好一次 / 三角与顶点总数 / 全局坐标 / 平地 y=0）；
-##   - 换类型即换色（材质槽映射被使用的断言：surface 材质 = 色表中该类型色/实例）；
-##   - 每 chunk 按地形类型组织 surface（不每格一个 surface）；构建确定性；缺色表显式
-##     失败；构建器纯逻辑（无场景节点）。
-## 「60×40 平地渲染流畅」为目测项（主创），不在本文件——见任务卡。
-## oracle 原则：几何期望值一律由 T1 HexMath（axial_to_world/cell_vertex/vertex_xz）独立
-##   重算对账，不复制 builder 内部实现；两套来源不一致即 bug。
-## 浮点断言口径（2026-10-09 实测定标，引擎 4.7.2 实测行为）：
-##   - 同路径比对（mesh 读回值 vs 同一格同一顶点号的 HexMath 现算）逐位相等——保留精确
-##     expect_eq，是最强锚：证明顶点来自同一全局公式、无 chunk 局部偏移/扰动；
-##   - 跨路径比对（相邻两格各自算出同一物理共享顶点）：数学同点、浮点表达式不同
-##     （A心+u(θ) vs B心+u(θ')），float32 截断差 ≤1 ulp（x≈17 处实测 ≤2e-6）→ 用容差
-##     1e-5。T4 按任务卡「共享边由两格稳定 ID 较小者生成、接缝顶点从同一全局格心/边
-##     参数计算」实现共享边参数后，此差自然消除、可收紧回精确比对；
-##   - 法线：引擎在 mesh 提交链路对法线做 16-bit 量化（实测读回 (0,1,−1.5e-5)≈−1/65536）
-##     → 容差 1e-3（仍能抓任何朝向级错误）；
-##   - UV：存储为 float32（0.93 处 ulp≈6e-8，断言端为 double）→ 容差 1e-6。
+## test_hex_terrain_builder.gd — M1a-T3 平地网格 + M1a-T4 几何重构后的单测（headless 断言几何不变量）
+## 覆盖 04 任务卡 M1a-T3「验收 + 细化新增」在 T4 几何下的对应物：
+##   - chunk 划分恰好覆盖（60×40=24 块 / 尾块裁剪 / 非法参数显式空）；
+##   - 单格几何锚（顶面三角扇顶点顺序/法线/UV——T4 起顶点 = 内顶点，外圈留给连接带）；
+##   - 每 chunk 按地形类型组织 surface（不每格一个 surface）+ faces 元数据与 mesh 一一对应；
+##   - 材质槽（换类型即换色、跨 chunk 共享实例、不开顶点色 albedo）；
+##   - 相邻 chunk 接缝无错位（T4 口径：跨 chunk 边带/角落归属唯一 + 顶点逐位 = 全局公式）；
+##   - 60×40 平地全量不变量（面数 oracle / 全顶点 y=0 / 绕序朝上 / 恰好覆盖一次）；
+##   - 构建确定性；构建器纯逻辑（无场景节点）；缺色表/非法参数显式失败。
+## 高程组合矩阵/归属规则/随机图流形不变量见 test_hex_terrain_elevation.gd（T4 专项）。
+## oracle 原则：几何期望值一律由 T1 HexMath（inner_vertex/bridge_xz）独立拼装对账；
+##   面数期望由 MapData 邻接原语组合计数（内部边 = 每格只数方向 0/1/2 的界内邻居——
+##   方向 d 与 d+3 是同一条无向边，故恰数一次；内部角 = 三格各计一次后除 3），
+##   不复制 builder 的稳定 ID 归属实现。
+## 浮点断言口径（T3 实测定标沿用）：同路径比对逐位相等（顶点来自同一全局公式、
+##   无 chunk 局部偏移/扰动）；跨路径（不同格视角同一物理点，表达式不同）容差 1e-5；
+##   法线 16-bit 量化容差 1e-3；UV float32 容差 1e-6。
 extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
@@ -61,9 +56,9 @@ func test_chunk_partition_empty_when_invalid() -> void:
 	expect_eq(Builder.chunk_rects_for(60, 40, 0, 10).size(), 0, "chunk 宽 ≤0 无划分（显式空，不出半张图）")
 	expect_eq(Builder.chunk_rects_for(60, 40, 10, -1).size(), 0, "chunk 高 ≤0 无划分")
 
-# ================= 单格几何锚（顶点顺序 / 法线 / UV） =================
+# ================= 单格几何锚（顶面三角扇：顶点顺序 / 法线 / UV）=================
 
-func test_single_cell_vertex_order_normal_uv_anchor() -> void:
+func test_single_cell_top_fan_anchor() -> void:
 	var m := MapDataClass.new(1, 1)
 	var r: Variant = Builder.build_map(m)
 	expect(r is Dictionary, "1×1 图应可构建")
@@ -73,6 +68,9 @@ func test_single_cell_vertex_order_normal_uv_anchor() -> void:
 	expect_eq((rd["chunks"] as Array).size(), 1, "单 chunk")
 	var chunk: Dictionary = rd["chunks"][0]
 	expect_eq((chunk["surfaces"] as Array).size(), 1, "同地形单 surface")
+	var s: Dictionary = chunk["surfaces"][0]
+	expect_eq(s["face_counts"], {"top": 6, "edge": 0, "corner": 0},
+		"1×1 无邻居：只有顶面 6 面，无边带无角落（T2 界外无连接）")
 	var mesh: ArrayMesh = chunk["mesh"]
 	expect_eq(mesh.get_surface_count(), 1, "ArrayMesh surface 数 = 1")
 	var arrays: Array = mesh.surface_get_arrays(0)
@@ -80,34 +78,82 @@ func test_single_cell_vertex_order_normal_uv_anchor() -> void:
 	var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
 	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	expect_eq(verts.size(), Builder.VERTS_PER_CELL, "单格顶点数 = 7")
-	expect_eq(idx.size(), Builder.INDICES_PER_CELL, "单格索引数 = 18")
-	# 顶点顺序锚：v0 = 格心；v1..v6 = HexMath.cell_vertex(0..5)（同一全局参数）
+	expect_eq(verts.size(), 18, "6 面 × 3 顶点（逐面 emit）")
+	expect_eq(idx.size(), 18, "6 面 × 3 索引")
+	# 索引 = 递增（faces 序 = 三角序——T5 face_index→格映射的地基）
+	expect_eq(idx, PackedInt32Array(range(18)), "索引序 = 面序递增")
 	var cell := Vector2i(0, 0)
-	expect_eq(verts[0], Hex.axial_to_world(cell), "v0 = 格心")
+	var center := Hex.axial_to_world(cell)
+	# 面 k 顶点锚：(格心, inner_k, inner_{k+1})——逐位 = HexMath 全局公式（同一参数路径）
 	for k in 6:
-		expect_eq(verts[1 + k], Hex.cell_vertex(cell, k),
-			"顶点顺序：v%d 应 = HexMath.cell_vertex(cell,%d)" % [1 + k, k])
-	# 索引顺序锚（六三角扇全显式——顶点顺序验收的定死锚，格式变更须显式改本锚）
-	expect_eq(idx, PackedInt32Array([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, 0, 5, 6, 0, 6, 1]),
-		"索引序 = 三角扇 (格心, v_i, v_i+1)")
-	# 法线：朝 +Y（平顶硬法线；引擎提交链路 16-bit 量化 → 容差比对，见头注）
+		expect_eq(verts[k * 3 + 0], center, "面%d v0 = 格心" % k)
+		expect_eq(verts[k * 3 + 1], Hex.inner_vertex(cell, k),
+			"面%d v1 = 内顶点 k（顶点向格心缩进）" % k)
+		expect_eq(verts[k * 3 + 2], Hex.inner_vertex(cell, (k + 1) % 6),
+			"面%d v2 = 内顶点 k+1（三角扇）" % k)
+	# 内顶点距格心 = solid_factor·size（内六边形口径锚）
+	var sf: float = Builder.DEFAULT_SOLID_FACTOR
+	for k in 6:
+		expect_almost_eq((Hex.inner_vertex(cell, k) - center).length(), sf, 1e-6,
+			"内顶点距格心 = solid_factor·size v%d" % k)
+	# 法线恒 +Y（平顶；引擎提交链路 16-bit 量化 → 容差比对，见头注）
 	for i in norms.size():
 		_expect_vec3_eq_eps(norms[i], Vector3(0, 1, 0), 1e-3, "法线恒 +Y（顶点 %d）" % i)
-	# UV 锚：格心 (0.5,0.5)；顶点 k = u=0.5+x/2s、v=0.5−z/2s（格心在原点；float32 粒度 → 1e-6）
-	expect_eq(uvs[0], Vector2(0.5, 0.5), "格心 UV = (0.5, 0.5)")
+	# UV 锚：格心 (0.5,0.5)（每面 v0 = 格心）；内顶点 u=0.5+x/2s、v=0.5−z/2s（T3 公式沿用）
 	for k in 6:
-		var vx := Hex.vertex_xz(cell, k)
-		expect_almost_eq(uvs[1 + k].x, 0.5 + vx.x / 2.0, 1e-6, "UV u 约定 v%d" % k)
-		expect_almost_eq(uvs[1 + k].y, 0.5 - vx.y / 2.0, 1e-6, "UV v 约定（北零）v%d" % k)
-	# 绕序：每三角 cross(B−A, C−A).y > 0（正面朝上）
-	for t in range(0, idx.size(), 3):
-		var a := verts[idx[t]]
-		var b := verts[idx[t + 1]]
-		var c := verts[idx[t + 2]]
-		expect((b - a).cross(c - a).y > 0.0, "三角形 %d 绕序应朝上" % t)
+		expect_eq(uvs[k * 3], Vector2(0.5, 0.5), "面%d 格心 UV = (0.5, 0.5)" % k)
+	for k in 6:
+		var iv := Hex.inner_vertex(cell, k)
+		expect_almost_eq(uvs[k * 3 + 1].x, 0.5 + iv.x / 2.0, 1e-6, "UV u 约定 面%d" % k)
+		expect_almost_eq(uvs[k * 3 + 1].y, 0.5 - iv.z / 2.0, 1e-6, "UV v 约定（北零）面%d" % k)
+	# 绕序：每面 cross(B−A,C−A).y > 0（正面朝上）
+	for f in 6:
+		var a := verts[f * 3]
+		var b := verts[f * 3 + 1]
+		var c := verts[f * 3 + 2]
+		expect((b - a).cross(c - a).y > 0.0, "面 %d 绕序应朝上" % f)
 
-# ================= surface 按地形类型组织（不每格一个 surface） =================
+# ================= 双格：唯一共享边带的归属与形状 =================
+
+func test_two_cells_flat_bridge_owned_by_smaller_id() -> void:
+	var m := MapDataClass.new(2, 1)
+	var a := Hex.axial_of(Vector2i(0, 0))  # 稳定 ID 0
+	var b := Hex.axial_of(Vector2i(1, 0))  # 稳定 ID 1
+	var r := _build_ok(m)
+	var faces := _collect_faces(r)
+	var s: Dictionary = r["chunks"][0]["surfaces"][0]
+	expect_eq(s["face_counts"], {"top": 12, "edge": 2, "corner": 0},
+		"2×1：顶面 2×6；内部边 1 条 → 边带 2 面；无三格角 → 无角落面")
+	var d_ab := Hex.dir_between(a, b)
+	expect_eq(d_ab, 0, "a→b 为方向 0（东）")
+	var edge_faces: Array[Dictionary] = []
+	for f in faces:
+		if f["kind"] == "edge":
+			edge_faces.append(f)
+	expect_eq(edge_faces.size(), 2, "恰 2 个边带面")
+	for f in edge_faces:
+		expect_eq(f["cell"], a, "边带归属 = 稳定 ID 较小者（a）")
+		expect_eq(f["dir"], d_ab, "边带方向 = dir_between(a,b)")
+		expect_eq(f["edge_type"], Builder.EDGE_FLAT, "等高 → 平连")
+	# 边带顶点锚（同路径逐位）：v1/v2 = a 的内顶点，v3/v4 = +bridge（对面侧内顶点）
+	var v1 := Hex.inner_vertex(a, d_ab)
+	var v2 := Hex.inner_vertex(a, (d_ab + 1) % 6)
+	var br := Hex.bridge_xz(a, d_ab, 1.0, Builder.DEFAULT_SOLID_FACTOR)
+	var v3 := v1 + Vector3(br.x, 0.0, br.y)
+	var v4 := v2 + Vector3(br.x, 0.0, br.y)
+	expect_eq(edge_faces[0]["v0"], v1, "边带面0 v0 = a.inner_d")
+	expect_eq(edge_faces[0]["v1"], v3, "边带面0 v1 = a.inner_d + bridge（b 侧端点）")
+	expect_eq(edge_faces[0]["v2"], v4, "边带面0 v2 = a.inner_{d+1} + bridge")
+	expect_eq(edge_faces[1]["v0"], v1, "边带面1 v0 = a.inner_d")
+	expect_eq(edge_faces[1]["v1"], v4, "边带面1 v1 = b 侧端点")
+	expect_eq(edge_faces[1]["v2"], v2, "边带面1 v2 = a.inner_{d+1}")
+	# 跨路径对账（容差 1e-5，见头注）：v3/v4 数学上 = b 自己视角的内顶点
+	_expect_vec3_eq_eps(v3, Hex.inner_vertex(b, (d_ab + 4) % 6), 1e-5, "v3 = b.inner_{(d+4)%6}")
+	_expect_vec3_eq_eps(v4, Hex.inner_vertex(b, (d_ab + 3) % 6), 1e-5, "v4 = b.inner_{(d+3)%6}")
+	for f in edge_faces:
+		expect((f["v1"] - f["v0"]).cross(f["v2"] - f["v0"]).y > 0.0, "边带面绕序朝上")
+
+# ================= surface 按地形类型组织（不每格一个 surface）=================
 
 func test_surfaces_grouped_by_terrain_type() -> void:
 	var m := MapDataClass.new(10, 10)
@@ -118,6 +164,11 @@ func test_surfaces_grouped_by_terrain_type() -> void:
 	expect_eq(mesh.get_surface_count(), 4, "10×10 单 chunk、4 地形 → 4 surface（不每格一 surface）")
 	var total := 0
 	var seen_cells := {}
+	var e_oracle := _interior_edge_count(m)
+	var c_oracle := _interior_corner_count(m)
+	var top := 0
+	var edge := 0
+	var corner := 0
 	for i in (chunk["surfaces"] as Array).size():
 		var s: Dictionary = chunk["surfaces"][i]
 		var cells: Array = s["cells"]
@@ -126,16 +177,26 @@ func test_surfaces_grouped_by_terrain_type() -> void:
 			expect_eq(m.terrain_at(cell), s["terrain"], "surface 分组应与地形一致 %s" % cell)
 			expect(not seen_cells.has(cell), "格不得重复入组 %s" % cell)
 			seen_cells[cell] = true
-		# 元数据与 mesh 数组一致 + 每格固定 7 顶点 / 18 索引
+		# 元数据与 mesh 数组一致 + faces 序 = 三角序
 		var arrays: Array = mesh.surface_get_arrays(i)
-		expect_eq((arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size(), s["vertex_count"],
-			"元数据 vertex_count 与 mesh 一致（surface %d）" % i)
-		expect_eq((arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size(), s["index_count"],
-			"元数据 index_count 与 mesh 一致（surface %d）" % i)
-		expect_eq(s["vertex_count"], cells.size() * 7, "每格 7 顶点（surface %d）" % i)
-		expect_eq(s["index_count"], cells.size() * 18, "每格 18 索引（surface %d）" % i)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idxa: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var fc: Dictionary = s["face_counts"]
+		top += fc["top"]
+		edge += fc["edge"]
+		corner += fc["corner"]
+		expect_eq(verts.size(), s["vertex_count"], "元数据 vertex_count 与 mesh 一致（surface %d）" % i)
+		expect_eq(idxa.size(), s["index_count"], "元数据 index_count 与 mesh 一致（surface %d）" % i)
+		expect_eq(s["vertex_count"], (s["faces"] as Array).size() * 3,
+			"逐面 emit：顶点数 = 3×面数（surface %d）" % i)
+		expect_eq(idxa, PackedInt32Array(range(idxa.size())), "索引递增 = faces 序（surface %d）" % i)
+		expect_eq(fc["top"] + fc["edge"] + fc["corner"], (s["faces"] as Array).size(),
+			"面分类计数之和 = faces 总数（surface %d）" % i)
 	expect_eq(total, 100, "分组覆盖全部 100 格")
-	# surface 序 = 地形首次出现序（chunk 行主序——MapData.cells 同序）
+	expect_eq(top, 600, "顶面 = 6×100")
+	expect_eq(edge, e_oracle * 2, "边带面 = 2×内部边数 oracle（%d 条）" % e_oracle)
+	expect_eq(corner, c_oracle, "角落面 = 内部角数 oracle（%d 个）" % c_oracle)
+	# surface 序 = 地形首次出现序（chunk 行主序——MapData.cells 同序；T3 口径沿用）
 	var first_order: Array = []
 	var seen_types := {}
 	for cell in m.cells():
@@ -147,15 +208,8 @@ func test_surfaces_grouped_by_terrain_type() -> void:
 	for s in chunk["surfaces"]:
 		got_order.append(s["terrain"])
 	expect_eq(got_order, first_order, "surface 序 = 地形首次出现序")
-	# 顶点基址 = 7 × surface 内格序（连续无洞）
-	for s in chunk["surfaces"]:
-		var sd: Dictionary = s
-		var cells: Array = sd["cells"]
-		for ci in cells.size():
-			expect_eq((sd["vertex_base"] as Dictionary)[cells[ci]], ci * 7,
-				"顶点基址 = 7×格序 %s" % cells[ci])
 
-# ================= 材质槽（换类型即换色） =================
+# ================= 材质槽（换类型即换色）=================
 
 func test_material_slots_color_by_terrain_type() -> void:
 	var colors := {0: Color(0.9, 0.1, 0.1), 1: Color(0.1, 0.1, 0.9)}
@@ -226,7 +280,7 @@ func test_retype_changes_surface_membership() -> void:
 	expect_eq(r2["chunks"][0]["surfaces"][0]["cells"], want_a, "a 换到类型 1 组")
 	expect_eq(r2["chunks"][0]["surfaces"][1]["cells"], want_b, "b 换到类型 0 组")
 
-func test_missing_color_mapping_fails_explicitly() -> void:
+func test_missing_color_and_invalid_params_fail_explicitly() -> void:
 	var m := MapDataClass.new(4, 3)
 	m.set_terrain(Hex.axial_of(Vector2i(1, 1)), 9)
 	expect(Builder.build_map(m) == null, "默认色板缺类型 9 → 显式 null（无隐式兜底色）")
@@ -234,44 +288,43 @@ func test_missing_color_mapping_fails_explicitly() -> void:
 	var m2 := MapDataClass.new(2, 2)
 	m2.set_terrain(Hex.axial_of(Vector2i(0, 0)), 1)
 	expect(Builder.build_map(m2, 10, 10, custom) == null, "自定义色板缺类型 1 → 显式 null")
-	var empty_rect: Rect2i = Rect2i(100, 100, 5, 5)
-	var m3 := MapDataClass.new(4, 4)
-	var full: Variant = Builder.build_map(m3)
+	# T4 几何参数非法 → 显式失败（不静默出退化几何）
+	var ok := MapDataClass.new(4, 4)
+	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 0.0) == null, "elevation_step ≤ 0 → null")
+	expect(Builder.build_map(ok, 10, 10, {}, 0.0) == null, "size ≤ 0 → null")
+	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 1.0, 1.0) == null, "solid_factor ≥ 1（全六边形无连接带）→ null")
+	expect(Builder.build_map(ok, 10, 10, {}, 1.0, 1.0, 0.0) == null, "solid_factor ≤ 0（顶面退化为点）→ null")
+	var full: Variant = Builder.build_map(ok)
 	expect(full is Dictionary, "4×4 默认图应可构建")
 	if full is Dictionary:
-		expect(Builder.build_chunk(m3, empty_rect, (full as Dictionary)["materials"]) == null,
+		expect(Builder.build_chunk(ok, Rect2i(100, 100, 5, 5), (full as Dictionary)["materials"]) == null,
 			"空矩形（图外 chunk）→ null")
 
-# ================= 相邻 chunk 接缝顶点无错位 =================
+# ================= 相邻 chunk 接缝（T4 口径：归属唯一 + 同一全局参数）=================
 
-func test_seam_aligned_two_chunks_horizontal() -> void:
+func test_seam_unique_and_bitwise_two_chunks_horizontal() -> void:
 	var m := MapDataClass.new(20, 10)
 	_fill_terrain(m, 3)
 	var r := _build_ok(m, 10, 10, _three_colors())
 	expect_eq((r["chunks"] as Array).size(), 2, "20×10 → 左右两 chunk")
-	var pairs := _expect_seam_aligned(r, m, 0, 1)
-	expect(pairs >= 10, "水平接缝相邻格对应 ≥ 10，got %d" % pairs)
+	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
+	expect(seam_faces >= 16, "水平接缝跨块边带面 ≥ 16（每行 ≥2 条跨界边 ×2 面 ×10 行），got %d" % seam_faces)
 
-func test_seam_aligned_two_chunks_vertical() -> void:
+func test_seam_unique_and_bitwise_two_chunks_vertical() -> void:
 	var m := MapDataClass.new(10, 20)
 	_fill_terrain(m, 3)
 	var r := _build_ok(m, 10, 10, _three_colors())
 	expect_eq((r["chunks"] as Array).size(), 2, "10×20 → 上下两 chunk")
-	var pairs := _expect_seam_aligned(r, m, 0, 1)
-	expect(pairs >= 10, "垂直接缝相邻格对应 ≥ 10，got %d" % pairs)
+	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
+	expect(seam_faces >= 16, "垂直接缝跨块边带面 ≥ 16，got %d" % seam_faces)
 
-func test_seam_aligned_four_chunks_with_coverage() -> void:
+func test_seam_unique_and_bitwise_four_chunks() -> void:
 	var m := MapDataClass.new(20, 20)
 	_fill_terrain(m, 3)
 	var r := _build_ok(m, 10, 10, _three_colors())
 	expect_eq((r["chunks"] as Array).size(), 4, "20×20 → 2×2 chunk")
-	# 四对相邻块全部核对（含四块交汇处两侧接缝线）
-	var pairs := 0
-	pairs += _expect_seam_aligned(r, m, 0, 1)
-	pairs += _expect_seam_aligned(r, m, 0, 2)
-	pairs += _expect_seam_aligned(r, m, 1, 3)
-	pairs += _expect_seam_aligned(r, m, 2, 3)
-	expect(pairs >= 40, "四块接缝相邻格对应 ≥ 40，got %d" % pairs)
+	var seam_faces := _expect_inventory_and_return_seam_faces(r, m)
+	expect(seam_faces >= 32, "四块交汇接缝跨块边带面 ≥ 32，got %d" % seam_faces)
 	# 顺带核对：2×2 分块恰好覆盖 400 格一次（每格只属一个 chunk/surface）
 	var owner := {}
 	for chunk_info in r["chunks"]:
@@ -281,16 +334,20 @@ func test_seam_aligned_four_chunks_with_coverage() -> void:
 				owner[cell] = true
 	expect_eq(owner.size(), 400, "四 chunk 恰好覆盖 20×20")
 
-# ================= 60×40 生成成功（全量不变量） =================
+# ================= 60×40 平地全量不变量 =================
 
-func test_60x40_build_full_invariants() -> void:
+func test_60x40_flat_build_full_invariants() -> void:
 	var m := MapDataClass.new(60, 40)
 	_fill_terrain(m, 5)
 	var r := _build_ok(m)
 	expect_eq((r["chunks"] as Array).size(), 24, "60×40 / 10×10 = 24 chunk")
+	var e_oracle := _interior_edge_count(m)
+	var c_oracle := _interior_corner_count(m)
 	var cell_owner := {}
-	var tris := 0
-	var verts_total := 0
+	var top := 0
+	var edge := 0
+	var corner := 0
+	var per_cell_top := {}
 	for chunk_info in r["chunks"]:
 		var cd: Dictionary = chunk_info
 		var mesh: ArrayMesh = cd["mesh"]
@@ -300,38 +357,35 @@ func test_60x40_build_full_invariants() -> void:
 			var s: Dictionary = surfaces[si]
 			var arrays: Array = mesh.surface_get_arrays(si)
 			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-			var idxa: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 			var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
-			var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
-			expect_eq(verts.size(), s["vertex_count"], "数组顶点数与元数据一致 %s" % str(cd["chunk"]))
-			expect_eq(idxa.size(), s["index_count"], "数组索引数与元数据一致 %s" % str(cd["chunk"]))
-			tris += idxa.size() / 3
-			verts_total += verts.size()
+			var fc: Dictionary = s["face_counts"]
+			top += fc["top"]
+			edge += fc["edge"]
+			corner += fc["corner"]
 			var cells: Array = s["cells"]
-			var vbase: Dictionary = s["vertex_base"]
 			for cell in cells:
 				expect(not cell_owner.has(cell), "格被多 chunk/surface 重复覆盖 %s" % cell)
 				cell_owner[cell] = true
-			# 全局坐标 oracle + 平地 y=0 + 法线 + UV（全量逐顶点核对；口径见头注）
-			for cell in cells:
-				var base: int = vbase[cell]
-				var center := Hex.axial_to_world(cell)
-				expect_eq(verts[base], center, "格心 = 全局格心（chunk 不做局部偏移）%s" % cell)
-				expect_eq(verts[base].y, 0.0, "平地 y=0（T3 不读高程）%s" % cell)
-				for k in 6:
-					expect_eq(verts[base + 1 + k], Hex.cell_vertex(cell, k),
-						"顶点 = 全局公式现算 %s v%d" % [cell, k])
-					var vx := Hex.vertex_xz(cell, k)
-					expect_almost_eq(uvs[base + 1 + k].x, 0.5 + (vx.x - center.x) / 2.0, 1e-6,
-						"UV u 约定 %s v%d" % [cell, k])
-					expect_almost_eq(uvs[base + 1 + k].y, 0.5 - (vx.y - center.z) / 2.0, 1e-6,
-						"UV v 约定（北零）%s v%d" % [cell, k])
-				for k in 7:
-					_expect_vec3_eq_eps(norms[base + k], Vector3(0, 1, 0), 1e-3, "法线 +Y %s" % cell)
-					expect_eq(verts[base + k].y, 0.0, "平地 y=0 %s v%d" % [cell, k])
+			# 平地：全顶点 y=0 + 法线 +Y（全量逐顶点）+ 每面绕序朝上
+			for vi in verts.size():
+				expect_eq(verts[vi].y, 0.0, "平地 y=0（T3 验收沿用）%s" % str(cd["chunk"]))
+				_expect_vec3_eq_eps(norms[vi], Vector3(0, 1, 0), 1e-3, "平地法线 +Y %s" % str(cd["chunk"]))
+			for fi in (s["faces"] as Array).size():
+				var a := verts[fi * 3]
+				var b := verts[fi * 3 + 1]
+				var c := verts[fi * 3 + 2]
+				expect((b - a).cross(c - a).y > 0.0, "面绕序朝上 %s 面%d" % [str(cd["chunk"]), fi])
+			# 每格顶面恰 6 面（faces 元数据逐格核对）
+			for f in s["faces"]:
+				if f["kind"] == "top":
+					per_cell_top[f["cell"]] = int(per_cell_top.get(f["cell"], 0)) + 1
 	expect_eq(cell_owner.size(), 2400, "全图 2400 格恰好覆盖一次")
-	expect_eq(tris, 2400 * 6, "总三角 = 14400（每格 6）")
-	expect_eq(verts_total, 2400 * 7, "总顶点 = 16800（每格 7）")
+	expect_eq(per_cell_top.size(), 2400, "每格都有顶面")
+	for cell in per_cell_top:
+		expect_eq(per_cell_top[cell], 6, "每格顶面恰 6 面 %s" % cell)
+	expect_eq(top, 2400 * 6, "顶面总面数 = 14400")
+	expect_eq(edge, e_oracle * 2, "边带总面数 = 2×内部边 oracle（%d）" % e_oracle)
+	expect_eq(corner, c_oracle, "角落总面数 = 内部角 oracle（%d）" % c_oracle)
 
 func test_build_deterministic_same_arrays() -> void:
 	var m := MapDataClass.new(30, 20)
@@ -352,8 +406,11 @@ func test_build_deterministic_same_arrays() -> void:
 				"两次构建索引数组一致（chunk %d surface %d）" % [i, si])
 			expect_eq(arr1[Mesh.ARRAY_TEX_UV], arr2[Mesh.ARRAY_TEX_UV],
 				"两次构建 UV 一致（chunk %d surface %d）" % [i, si])
+			expect_eq(r1["chunks"][i]["surfaces"][si]["faces"],
+				r2["chunks"][i]["surfaces"][si]["faces"],
+				"两次构建 faces 元数据一致（chunk %d surface %d）" % [i, si])
 
-# ================= 纯逻辑（分层纪律） =================
+# ================= 纯逻辑（分层纪律）=================
 
 func test_builder_pure_logic_no_nodes() -> void:
 	var inst: Variant = Builder.new()
@@ -388,51 +445,125 @@ func _build_ok(m, chunk_cols := 10, chunk_rows := 10, colors := {}) -> Dictionar
 		return r as Dictionary
 	return {"chunks": [], "chunk_rects": [], "materials": {}}
 
-## chunk 内格子的顶点坐标（k = −1 → 格心；k = 0..5 → 顶点 k）。
-func _vertex_at(chunk_info: Dictionary, cell: Vector2i, k: int) -> Vector3:
-	var surfaces: Array = chunk_info["surfaces"]
-	var mesh: ArrayMesh = chunk_info["mesh"]
-	for i in surfaces.size():
-		var s: Dictionary = surfaces[i]
-		var vbase: Dictionary = s["vertex_base"]
-		if vbase.has(cell):
-			var verts: PackedVector3Array = mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]
-			return verts[vbase[cell] + 1 + k]
-	return Vector3(NAN, NAN, NAN)
+## 内部边数 oracle（独立于 builder 归属实现）：方向 d 与 d+3 是同一条无向边，
+## 每格只数方向 0/1/2 的界内邻居 → 每条无向内部边恰数一次。
+func _interior_edge_count(m) -> int:
+	var n := 0
+	for cell in m.cells():
+		for d in 3:
+			if m.has_cell(Hex.neighbor(cell, d)):
+				n += 1
+	return n
 
-## 核对 chunk ia / ib 接缝：A 的界内邻居落在 ib 时，共享边两端顶点比对。
-## 双重口径（见头注「浮点断言口径」）：
-##   ① 相互比对容差 1e-5——两侧浮点表达式不同，差 ≤1 ulp（T4 共享边参数后消除）；
-##   ② 各侧 vs HexMath 全局公式逐位精确——证明每侧顶点都逐位来自同一全局公式
-##      （同一全局格心/边参数、无 chunk 局部扰动——错位类 bug 在此被抓）。
-## 共享边端点配对（由平移不变性推导，见头注）：A.v[d] ↔ B.v[(d+4)%6]、A.v[d+1] ↔ B.v[(d+3)%6]。
-func _expect_seam_aligned(r: Dictionary, m, ia: int, ib: int) -> int:
-	var ca: Dictionary = r["chunks"][ia]
-	var cb: Dictionary = r["chunks"][ib]
-	var rect_b: Rect2i = cb["chunk"]
-	var checked := 0
-	for s in ca["surfaces"]:
-		for cell in s["cells"]:
-			for d in 6:
-				var n := Hex.neighbor(cell, d)
-				if not m.has_cell(n) or not rect_b.has_point(Hex.offset_of(n)):
-					continue
-				var va1 := _vertex_at(ca, cell, d)
-				var va2 := _vertex_at(ca, cell, (d + 1) % 6)
-				var vb1 := _vertex_at(cb, n, (d + 4) % 6)
-				var vb2 := _vertex_at(cb, n, (d + 3) % 6)
-				_expect_vec3_eq_eps(va1, vb1, 1e-5, "接缝顶点错位：A=%s d=%d 端点1" % [cell, d])
-				_expect_vec3_eq_eps(va2, vb2, 1e-5, "接缝顶点错位：A=%s d=%d 端点2" % [cell, d])
-				expect_eq(va1, Hex.cell_vertex(cell, d),
-					"A 侧接缝端点 ≠ HexMath 全局公式 %s v%d" % [cell, d])
-				expect_eq(va2, Hex.cell_vertex(cell, (d + 1) % 6),
-					"A 侧接缝端点 ≠ HexMath 全局公式 %s v%d" % [cell, (d + 1) % 6])
-				expect_eq(vb1, Hex.cell_vertex(n, (d + 4) % 6),
-					"B 侧接缝端点 ≠ HexMath 全局公式 %s v%d" % [n, (d + 4) % 6])
-				expect_eq(vb2, Hex.cell_vertex(n, (d + 3) % 6),
-					"B 侧接缝端点 ≠ HexMath 全局公式 %s v%d" % [n, (d + 3) % 6])
-				checked += 1
-	return checked
+## 内部角数 oracle：顶点 k 的三格（cell、N_k、N_{k-1}）全界内则计一次——
+## 每个物理角落被三格各计一次，除 3。
+func _interior_corner_count(m) -> int:
+	var n := 0
+	for cell in m.cells():
+		for k in 6:
+			if m.has_cell(Hex.neighbor(cell, k)) and m.has_cell(Hex.neighbor(cell, k - 1)):
+				n += 1
+	return n / 3
+
+## 全局面记录（含顶点，faces 序 = 三角序）。
+func _collect_faces(r: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for ci in (r["chunks"] as Array).size():
+		var cd: Dictionary = r["chunks"][ci]
+		var mesh: ArrayMesh = cd["mesh"]
+		for si in (cd["surfaces"] as Array).size():
+			var sd: Dictionary = cd["surfaces"][si]
+			var verts: PackedVector3Array = mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]
+			var faces: Array = sd["faces"]
+			for fi in faces.size():
+				var f: Dictionary = faces[fi]
+				out.append({
+					"chunk": ci, "surface": si, "face": fi,
+					"kind": f["kind"], "cell": f["cell"], "dir": f["dir"],
+					"edge_type": f.get("edge_type", ""),
+					"v0": verts[fi * 3], "v1": verts[fi * 3 + 1], "v2": verts[fi * 3 + 2],
+				})
+	return out
+
+## 无向边 key（两格 axial 排序——归属无关的物理标识）。
+func _edge_key(cell: Vector2i, dir: int) -> String:
+	var b := Hex.neighbor(cell, dir)
+	var pa := cell
+	var pb := b
+	if pb.x < pa.x or (pb.x == pa.x and pb.y < pa.y):
+		var t := pa
+		pa = pb
+		pb = t
+	return "e|%d,%d|%d,%d" % [pa.x, pa.y, pb.x, pb.y]
+
+## 物理角 key（三格 axial 排序——归属无关的物理标识）。
+func _corner_key(cell: Vector2i, k: int) -> String:
+	var ids := ["%d,%d" % [cell.x, cell.y]]
+	for nb in [Hex.neighbor(cell, k), Hex.neighbor(cell, k - 1)]:
+		ids.append("%d,%d" % [nb.x, nb.y])
+	ids.sort()
+	return "c|" + "|".join(ids)
+
+## 接缝三重断言（平地）：① 全图边/角物理 key 恰好一次（含跨 chunk——归属规则防重复面）；
+## ② 跨块边带顶点逐位 = 全局公式（同一 HexMath 参数，无 chunk 局部扰动）；
+## ③ 返回跨块边带面数（调用方据此断言接缝规模）。
+func _expect_inventory_and_return_seam_faces(r: Dictionary, m) -> int:
+	var faces := _collect_faces(r)
+	var edge_faces := {}
+	var corner_faces := {}
+	for f in faces:
+		if f["kind"] == "edge":
+			var k := _edge_key(f["cell"], f["dir"])
+			if not edge_faces.has(k):
+				edge_faces[k] = [] as Array[Dictionary]
+			(edge_faces[k] as Array[Dictionary]).append(f)
+		elif f["kind"] == "corner":
+			var k2 := _corner_key(f["cell"], f["dir"])
+			if not corner_faces.has(k2):
+				corner_faces[k2] = 0
+			corner_faces[k2] = int(corner_faces[k2]) + 1
+	# ① 恰好一次（边 = 恰 2 面，角 = 恰 1 面）+ 总数 = oracle
+	expect_eq(edge_faces.size(), _interior_edge_count(m), "物理边总数 = oracle（跨 chunk 无缺无重）")
+	for k in edge_faces:
+		expect_eq((edge_faces[k] as Array).size(), 2, "每条内部边恰一条边带（2 面）%s" % k)
+	expect_eq(corner_faces.size(), _interior_corner_count(m), "物理角总数 = oracle")
+	for k in corner_faces:
+		expect_eq(corner_faces[k], 1, "每个内部角恰一角落面 %s" % k)
+	# ② 跨块边带顶点逐位锚
+	var rects: Array = r["chunk_rects"]
+	var seam := 0
+	for k in edge_faces:
+		var pair: Array[Dictionary] = edge_faces[k]
+		var f0: Dictionary = pair[0]
+		var cell: Vector2i = f0["cell"]
+		var d: int = f0["dir"]
+		var nb := Hex.neighbor(cell, d)
+		var rect_a := _rect_of(rects, cell)
+		var rect_b := _rect_of(rects, nb)
+		if rect_a == rect_b:
+			continue
+		seam += 2
+		# 顶点逐位 = 归属格视角全局公式（跨 chunk 同一参数源）
+		var v1 := Hex.inner_vertex(cell, d)
+		var v2 := Hex.inner_vertex(cell, (d + 1) % 6)
+		var br := Hex.bridge_xz(cell, d, 1.0, Builder.DEFAULT_SOLID_FACTOR)
+		var v3 := v1 + Vector3(br.x, 0.0, br.y)
+		var v4 := v2 + Vector3(br.x, 0.0, br.y)
+		expect_eq(f0["v0"], v1, "跨块边带 v0 = 全局公式 %s" % k)
+		expect_eq(f0["v1"], v3, "跨块边带 v1 = 全局公式 %s" % k)
+		expect_eq(f0["v2"], v4, "跨块边带 v2 = 全局公式 %s" % k)
+		var f1: Dictionary = pair[1]
+		expect_eq(f1["v0"], v1, "跨块边带第二面 v0 %s" % k)
+		expect_eq(f1["v1"], v4, "跨块边带第二面 v1 %s" % k)
+		expect_eq(f1["v2"], v2, "跨块边带第二面 v2 %s" % k)
+	return seam
+
+func _rect_of(rects: Array, cell: Vector2i) -> Rect2i:
+	var off := Hex.offset_of(cell)
+	for rect in rects:
+		if (rect as Rect2i).has_point(off):
+			return rect
+	return Rect2i()
 
 ## Vector3 容差比对（欧氏距离）。
 func _expect_vec3_eq_eps(a: Vector3, b: Vector3, eps: float, msg: String) -> void:
