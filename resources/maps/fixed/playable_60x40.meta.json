@@ -1,0 +1,42 @@
+{
+	"connectivity": {
+		"component_count": 1,
+		"largest_fraction": 1.0,
+		"largest_size": 2281,
+		"ok": true,
+		"passable_total": 2281
+	},
+	"digest": "cf67af4ff63efba878a6ba2d48a7226be62db084e6c979fc8e194a583ad1a771",
+	"edge_class_counts": {
+		"cliff": 86,
+		"flat": 6451,
+		"slope": 464
+	},
+	"elevation_counts": {
+		"0": 119,
+		"1": 1983,
+		"2": 96,
+		"3": 60,
+		"4": 142
+	},
+	"features": [
+		"cliff_ring_plateau",
+		"terraced_hill",
+		"lake_with_sand_shore",
+		"sine_river_with_two_fords",
+		"forest_patches",
+		"mud_flat",
+		"rock_outcrops"
+	],
+	"kind": "fixed",
+	"note": "hand-authored (no noise/random) by tools/make_fixed_maps.gd; JSON carries MapData.to_dict field set — same set as future M2 MapDef .tres",
+	"schema_version": 1,
+	"terrain_counts": {
+		"0": 2052,
+		"1": 17,
+		"2": 34,
+		"3": 119,
+		"4": 61,
+		"5": 117
+	}
+}

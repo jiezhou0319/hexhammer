@@ -1,0 +1,40 @@
+{
+	"connectivity": {
+		"component_count": 16,
+		"largest_fraction": 0.346897253306205,
+		"largest_size": 341,
+		"ok": false,
+		"passable_total": 983
+	},
+	"digest": "8cd0acedf03a3acb0b30febee6d5b330d3ac698118b6bb82927bd191113a070b",
+	"elevation_counts": {
+		"0": 1417,
+		"1": 444,
+		"2": 341,
+		"3": 164,
+		"4": 34
+	},
+	"engine_version": "4.7.2-stable (official)",
+	"generator_version": 1,
+	"kind": "random",
+	"params": {
+		"elevation_levels": 4,
+		"fractal_octaves": 3,
+		"frequency": 0.05,
+		"height": 40,
+		"moisture_frequency": 0.12,
+		"noise_type": 0,
+		"sea_level": 0.55,
+		"seed": 101,
+		"width": 60
+	},
+	"reproducibility_note": "same seed+params reproduces only with generator_version 1 on the same engine build (FastNoiseLite output may change across Godot versions)",
+	"terrain_counts": {
+		"0": 335,
+		"1": 79,
+		"2": 34,
+		"3": 1417,
+		"4": 365,
+		"5": 170
+	}
+}

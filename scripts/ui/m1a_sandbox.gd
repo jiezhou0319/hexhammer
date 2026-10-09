@@ -1,19 +1,23 @@
 ## m1a_sandbox.gd — M1a 沙盒场景脚本（T3 起供主创目检；T4 起含高程分层与连续连接目检；
 ##   T6 起挂策略相机 rig——固定俯角/边缘+拖拽平移/滚轮档位缩放/焦点钳制；
-##   T7 起挂高亮层——hover 单格高亮 / 左键选择集合 + 路径描线）
+##   T7 起挂高亮层——hover 单格高亮 / 左键选择集合 + 路径描线；
+##   T9 起地图来源可选——默认 FIXED：运行场景即出「一键可玩测试图」）
 ## 用法：编辑器打开 scenes/m1a_sandbox.tscn → 运行当前场景（F6）。
 ## 项目约定**无主场景**（project.godot 不设 run/main_scene）——不要为本沙盒改变该约定。
-## 内容：确定性公式铺 6 类地形色块 + 台地/河谷构造的 0..4 层高程（平连/斜坡/陡面
-##   三档连接是否齐备以 _ready 打印的连接分布为准——04 M1a-T4「高差处连接符合设计
-##   图示意」的目检载体）→ HexTerrainBuilder 产 chunk mesh → MapView 挂载
-##   （每 chunk 一个 MeshInstance3D）。
+## 地图来源（M1a-T9，检查器 map_source 切换）：
+##   - FIXED（默认）：resources/maps/fixed/playable_60x40.json——手工固定图
+##     （tools/make_fixed_maps.gd 落盘，无噪声无随机），六地形 + 三档连接 + 连通可玩；
+##   - RANDOM：MapGenerator（scripts/content/map_generator.gd）按下方 random_* 参数
+##     生成——同 seed 同参数逐格复现（限定固定生成器版本与引擎构建）；
+##   - PATTERN：T3/T4 时代的确定性公式图（保留作几何对照）。
+## FIXED/RANDOM 图自带尺寸与数据（map_width/map_height 仅用于 PATTERN/RANDOM）；
 ## 灯为场景内固定摆位；相机 = StrategyCamera rig（M1a-T6，_ready 里 setup 建钳制域，
 ##   初始焦点 = 图中心、档位 = 表中位——位姿由 rig 自行落位，场景文件不再预摆）。
 ## M1a-T7 高亮目检（「高亮/取消无感知延迟、不闪、不穿山」的实操载体）：
 ##   - 鼠标移动 = hover 层单格高亮（暖黄半透明，贴合内顶面）；
 ##   - 左键点击地形 = 选择层高亮该格 + 界内 6 邻（蓝色），并从上次选中格描一条
 ##     直线路径（橙色贴地带）——路径为演示用直线采样，真寻路 M1b-T4 落地。
-## 改尺寸/分块/高程步长：选中根节点在检查器改导出参数后重跑场景即可。
+## 改分块/高程步长：选中根节点在检查器改导出参数后重跑场景即可。
 extends Node3D
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
@@ -25,7 +29,23 @@ const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const MapPickerClass := preload("res://scripts/ui/map_picker.gd")
 const StrategyCameraClass := preload("res://scripts/ui/strategy_camera.gd")
 const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
+const MapIOClass := preload("res://scripts/content/map_io.gd")
+const MapGeneratorClass := preload("res://scripts/content/map_generator.gd")
+const MapGenParamsClass := preload("res://scripts/content/map_gen_params.gd")
 
+## 地图来源（M1a-T9）：FIXED = 手工固定测试图（默认，一键可玩）；RANDOM = 种子随机；
+## PATTERN = 确定性公式图（T3/T4 几何对照）
+enum MapSource { PATTERN, FIXED, RANDOM }
+
+@export var map_source: MapSource = MapSource.FIXED
+## 固定测试图路径（MapIO.FIXED_MAP_PATH；缺文件/损坏 → 显式报错不渲染）
+@export var fixed_map_path := MapIOClass.FIXED_MAP_PATH
+## RANDOM 来源参数（MapGenerator；同 seed 同参数逐格复现）
+@export var random_seed := 7
+@export var random_sea_level := 0.25
+@export var random_elevation_levels := 4
+@export var random_frequency := 0.05
+## PATTERN/RANDOM 尺寸（FIXED 图自带 60×40）
 @export var map_width := 60
 @export var map_height := 40
 @export var chunk_cols := 10
@@ -46,9 +66,9 @@ var _has_prev := false
 
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
-	var map := MapDataClass.new(map_width, map_height)
-	_fill_pattern(map)
-	_fill_elevation(map)
+	var map := _build_map()
+	if map == null:
+		return  # 来源构建失败已打印原因（显式失败，无静默兜底）
 	_map = map
 	# M1a-T8 材质槽：渲染管线走 .tres 映射表（检查器可换库；留空 = 主线默认色块库）
 	if material_library == null:
@@ -110,7 +130,7 @@ func _ready() -> void:
 			tris += s["index_count"] / 3
 			surfaces += 1
 	print("[M1a 沙盒] %d×%d 高程图：%d chunk / %d surface / %d 三角形 / 构建+挂载 %d ms"
-		% [map_width, map_height, chunks.size(), surfaces, tris, elapsed])
+		% [_map.width, _map.height, chunks.size(), surfaces, tris, elapsed])
 	print("[M1a 沙盒] 地形分布：", _type_counts(map))
 	print("[M1a 沙盒] 高程分布：", _elevation_counts(map))
 	print("[M1a 沙盒] 连接分布：", _edge_class_counts(map))
@@ -118,6 +138,42 @@ func _ready() -> void:
 		% [material_library.resource_path if material_library.resource_path != "" else "（内存表）",
 			material_library.materials.size()])
 	print("[M1a 沙盒] 拾取已启用（M1a-T5）：移动=hover 高亮 / 左键=选择集合+路径描线（M1a-T7）")
+
+## 按来源建图（M1a-T9）：失败打印原因并返回 null（_ready 显式短路，无静默兜底）
+func _build_map() -> MapDataClass:
+	match map_source:
+		MapSource.FIXED:
+			var map: MapDataClass = MapIOClass.read_map(fixed_map_path)
+			if map == null:
+				print("[M1a 沙盒] 固定测试图载入失败：", fixed_map_path,
+					"（缺文件/损坏——重跑 tools/make_fixed_maps.gd 落盘）")
+				return null
+			print("[M1a 沙盒] 地图来源（M1a-T9 固定测试图）：", fixed_map_path,
+				" digest=", map.digest())
+			return map
+		MapSource.RANDOM:
+			var p := MapGenParamsClass.new()
+			p.seed = random_seed
+			p.width = map_width
+			p.height = map_height
+			p.sea_level = random_sea_level
+			p.elevation_levels = random_elevation_levels
+			p.frequency = random_frequency
+			var result := MapGeneratorClass.generate(p)
+			if not result["ok"]:
+				print("[M1a 沙盒] 随机图生成失败：", result["error"])
+				return null
+			var conn: Dictionary = result["connectivity"]
+			print("[M1a 沙盒] 地图来源（M1a-T9 随机图）：seed=", p.seed,
+				" digest=", result["meta"]["digest"],
+				" 连通=", conn["ok"])
+			return result["map"]
+		_:
+			var pmap := MapDataClass.new(map_width, map_height)
+			_fill_pattern(pmap)
+			_fill_elevation(pmap)
+			print("[M1a 沙盒] 地图来源：PATTERN 公式图（T3/T4 几何对照）")
+			return pmap
 
 ## 目检地貌（确定性公式；水 3 正弦河 + 沙 4 岸 / 岩 2 / 林 5 / 泥 1 / 草 0 底）
 func _fill_pattern(map) -> void:
