@@ -18,8 +18,10 @@
    相机平移/缩放/钳制顺手、高亮/取消无感知延迟、并行分支换贴图即见效果）尚待主创
    在 Godot 中实操确认；当前状态是「自动化证据齐、主观门未走」，不读作验收完成。
 4. **提交状态**：每个任务在门禁全绿后已由工作流提交并推送 origin/main（Gitee）；
-   2026-10-10 实查 `git rev-list --left-right --count origin/main...main` = `0 0`，
-   HEAD = baab6ac（M1a-T9），工作区干净。附带发现：github 镜像远端落后 10 个提交，待补推。
+   2026-10-10 复核轮实查 `git rev-list --left-right --count origin/main...main` = `0 0`，
+   HEAD = 4f1b425（本复盘，工作流主控 01:05 提交推送；提交信息模板含「undefined」
+   字样，登记供知悉）。附带发现：github 镜像远端落后 11 个提交（十个任务 + 本复盘），
+   待补推。
 5. **下期改什么（进 M1b 前三件事 + 一个习惯）**：① 主创补走下方 M1a 主观门清单——
    **最高优先**确认 T4 渲染 mesh 绕序疑点：几何不变量全绿（法线朝上/无破面/无
    z-fighting）不等于引擎可见性（Godot 正面=顺时针；addons/hexhammer/hex_picking.gd:55-58
@@ -41,7 +43,10 @@
 | + | 一键可玩测试图观感 | 打开沙盒即默认固定图（map_source=FIXED） | test_map_source.gd（25 用例，含 test_fixed_map_playable） |
 
 （第 4 条验收「hex 数学/数据层/拾取映射单测全绿（headless）」为纯自动项：四文件
-78 用例 + runner tools/run_tests.gd 自动发现全套 10 文件 166 用例，无需目测。）
+78 用例 + runner tools/run_tests.gd 自动发现全套 10 文件 166 用例，无需目测。
+复核轮已实跑坐实：`Godot_v4.7.2-stable_win64_console.exe --headless --path hexhammer
+--script res://tools/run_tests.gd` →「=== 测试汇总：10 文件 / 166 用例 / 0 失败 ===」、
+exit=0（2026-10-10，跑后工作区无新增改动）。）
 
 读法两注（独立复核增）：
 ① 第 1 行「三档连接齐备」按方向 0/1/2 界内邻边判定（tests/test_hex_terrain_elevation.gd:220-223
