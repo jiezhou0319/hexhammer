@@ -348,3 +348,16 @@ func _min_center_dist(f: Vector2) -> float:
 			if d < best:
 				best = d
 	return best
+
+# ================= 方向归一化（接口硬化 2026-10-10）=================
+
+func test_opposite_dir_normalized_any_int() -> void:
+	# 反例锚：opposite_dir(-4) 旧裸 % 6 口径返回 -1（T1~T4 复核反例）；
+	# 现统一 wrapi——任一整数输入，输出恒 [0,6) 且 = 归一化+3
+	expect_eq(Hex.opposite_dir(-4), 5, "opposite_dir(-4) = 5（旧口径返回 -1）")
+	for d in range(-13, 14):
+		var normalized := ((d % 6) + 6) % 6  # wrapi(d, 0, 6) 的独立重算（oracle 不抄实现）
+		var r := Hex.opposite_dir(d)
+		expect(r >= 0 and r < 6, "opposite_dir(%d) 输出应落在 [0,6)（got %d）" % [d, r])
+		expect_eq(r, (normalized + 3) % 6, "opposite_dir(%d) = 归一化 + 3（任意整数输入）" % d)
+		expect_eq(Hex.opposite_dir(r), normalized, "对合性：两次反向 = 归一化自身（d=%d）" % d)

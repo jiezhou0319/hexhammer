@@ -36,7 +36,10 @@ static func dir_step(dir: int) -> Vector2i:
 	return DIRS[wrapi(dir, 0, 6)]
 
 static func opposite_dir(dir: int) -> int:
-	return (dir + 3) % 6
+	# wrapi 归一化（2026-10-10 接口硬化）：其余方向函数均 wrapi，此前裸 % 6 在
+	# 负数输入下返回负值（opposite_dir(-4) = -1——T1~T4 复核反例）；输入域
+	# 统一为任意整数、输出恒 [0,6)
+	return wrapi(dir + 3, 0, 6)
 
 ## 方向 i 的格心连线角度（atan2(z,x)：0=东；方向表按数学负向排布，故为 −60°·i）
 static func dir_angle_rad(dir: int) -> float:

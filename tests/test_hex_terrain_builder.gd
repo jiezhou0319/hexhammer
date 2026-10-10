@@ -612,3 +612,17 @@ func _walk_no_nodes(v: Variant, depth: int) -> void:
 	elif v is Array:
 		for x in v:
 			_walk_no_nodes(x, depth + 1)
+
+# ================= 非法 chunk 参数显式拒绝（接口硬化 2026-10-10）=================
+
+func test_build_map_rejects_invalid_chunk_params() -> void:
+	# 反例锚：旧口径 build_map(map, 0, 10) 返回 chunks=0 的 Dictionary（「空成功」
+	# ——T1~T4 复核反例，调用层无从分辨）；现顶层 API 显式 null
+	var m := MapDataClass.new(4, 3)
+	_fill_terrain(m, 2)
+	expect(Builder.build_map(m, 0, 10, _default_table()) == null,
+		"chunk_cols=0 → null（顶层 API 显式拒绝，非空成功）")
+	expect(Builder.build_map(m, 10, -1, _default_table()) == null,
+		"chunk_rows=-1 → null")
+	expect(Builder.build_map(m, 10, 10, _default_table()) is Dictionary,
+		"合法参数仍构建成功（回归）")

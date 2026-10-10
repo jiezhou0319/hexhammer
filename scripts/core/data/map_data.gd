@@ -37,22 +37,32 @@ const TERRAIN_NONE := -1
 ## 界内格值域也进不了哨兵，不会与真实数据混淆。
 const ELEVATION_NONE := -4611686018427387904
 
-var width: int = 0   # 列数（odd-r offset col 维度）
-var height: int = 0  # 行数
+## 尺寸只读（getter-only，2026-10-10 接口硬化）：三数组只在 _init 按原尺寸分配，
+## 公开可写会造成 has_cell 与存储撕裂（如 width=3 后 terrain_at 越界异常——
+## T1~T4 复核报告反例）。M1a 静态图直接冻结；显式 resize 属后续接口
+##（届时须同步迁移三数组并定义数据迁移规则，另开任务再议）。
+var width: int:
+	get:
+		return _width
+var height: int:
+	get:
+		return _height
 
 ## 修正扩展位：默认空。任何结算/查询/摘要不读它（见类头注「铁律」）；
 ## 唯一被允许的消费者 = to_dict/from_dict（原样保存）。
 var mods: Dictionary = {}
 
+var _width: int = 0   # 列数（odd-r offset col 维度；见上方只读口径）
+var _height: int = 0  # 行数
 var _terrain: PackedInt32Array    # 地形 id（非负）
 var _elevation: PackedInt32Array  # 高程分层（int，可为负）
 var _passable: PackedByteArray    # 0/1
 
 
 func _init(map_width := 0, map_height := 0) -> void:
-	width = maxi(map_width, 0)
-	height = maxi(map_height, 0)
-	var n := width * height
+	_width = maxi(map_width, 0)
+	_height = maxi(map_height, 0)
+	var n := _width * _height
 	_terrain.resize(n)
 	_elevation.resize(n)
 	_passable.resize(n)

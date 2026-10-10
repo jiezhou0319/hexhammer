@@ -537,3 +537,21 @@ func _fill_random(m, seed_val: int) -> void:
 		m.set_terrain(cell, rng.randi_range(0, 6))
 		m.set_elevation(cell, rng.randi_range(-4, 4))
 		m.set_passable(cell, rng.randf() > 0.2)
+
+# ================= 尺寸只读（接口硬化 2026-10-10）=================
+
+func test_dimensions_read_only_after_init() -> void:
+	# 反例锚：旧口径 m.width=3 后 has_cell((2,0)) 为 true 而 terrain_at 越界异常
+	#（三数组只在 _init 按原尺寸分配——T1~T4 复核反例）。现尺寸 getter-only：
+	# 编译期赋值直接报错；运行期 set() 失败，has_cell 与存储不撕裂。
+	var m := MapDataClass.new(2, 1)
+	# Object.set() 返回 void（4.7）：对无 setter 的只读属性为静默失败——
+	# 断言落在"尺寸与存储未被改动"上（探针实测：set 后 width 仍 2、越界查询走哨兵）
+	m.set("width", 3)
+	m.set("height", 5)
+	expect_eq(m.width, 2, "width 运行期 set 不生效（只读，无 setter）")
+	expect_eq(m.height, 1, "height 运行期 set 不生效")
+	expect_eq(m.cell_count(), 2, "cell_count 不变（存储未撕裂）")
+	expect(not m.has_cell(Hex.axial_of(Vector2i(2, 0))), "越界格仍判界外（2×1 图 col=2 界外）")
+	expect_eq(m.terrain_at(Hex.axial_of(Vector2i(2, 0))), MapDataClass.TERRAIN_NONE,
+		"越界 terrain_at = 哨兵（旧口径此处越界异常）")

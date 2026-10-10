@@ -130,10 +130,16 @@ static func classify_edge(delta_elevation: int) -> String:
 ##   "size": float, "elevation_step": float, "solid_factor": float}；
 ## 任一地形 id 缺表 / 表值非 Material / 参数非法 → null（先全图预检后建，不做一半丢弃）。
 static func build_map(map: MapDataClass, chunk_cols := 10, chunk_rows := 10,
-		materials := {}, size := 1.0,
+		materials: Dictionary = {}, size := 1.0,
 		elevation_step := DEFAULT_ELEVATION_STEP,
 		solid_factor := DEFAULT_SOLID_FACTOR) -> Variant:
 	if elevation_step <= 0.0 or solid_factor <= 0.0 or solid_factor >= 1.0 or size <= 0.0:
+		return null
+	# chunk 参数显式拒绝（2026-10-10 接口硬化）：此前 chunk_rects_for 对 ≤0 返回
+	# 空数组，本函数照走循环产出 chunks=0 的 Dictionary——「空成功」会被调用层
+	# 当构建成功（T1~T4 复核反例：build_map(map, 0, 10)）。空图是否可构建属
+	# view 层契约另议，不在本条范围。
+	if chunk_cols <= 0 or chunk_rows <= 0:
 		return null
 	if not _material_table_valid(map, materials):
 		return null
