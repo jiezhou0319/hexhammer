@@ -83,8 +83,9 @@ func test_single_cell_top_fan_anchor() -> void:
 	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 	expect_eq(verts.size(), 18, "6 面 × 3 顶点（逐面 emit）")
 	expect_eq(idx.size(), 18, "6 面 × 3 索引")
-	# 索引 = 递增（faces 序 = 三角序——T5 face_index→格映射的地基）
-	expect_eq(idx, PackedInt32Array(range(18)), "索引序 = 面序递增")
+	# 索引 = 逐面 (3f, 3f+2, 3f+1) 翻转（F-1 修复 2026-10-10：索引三角 = 俯视顺时针
+	# = Godot 正面；faces 序 = raw soup 三角序不变——T5 face_index→格映射的地基）
+	expect_eq(idx, _flipped_indices(6), "索引序 = 逐面翻转（Godot 正面口径）")
 	var cell := Vector2i(0, 0)
 	var center := Hex.axial_to_world(cell)
 	# 面 k 顶点锚：(格心, inner_k, inner_{k+1})——逐位 = HexMath 全局公式（同一参数路径）
@@ -111,12 +112,19 @@ func test_single_cell_top_fan_anchor() -> void:
 		var iv := Hex.inner_vertex(cell, k)
 		expect_almost_eq(uvs[k * 3 + 1].x, iv.x / 2.0, 1e-6, "UV u = x/2R 面%d" % k)
 		expect_almost_eq(uvs[k * 3 + 1].y, -iv.z / 2.0, 1e-6, "UV v = −z/2R 面%d" % k)
-	# 绕序：每面 cross(B−A,C−A).y > 0（正面朝上）
+	# 绕序双层口径（F-1 修复 2026-10-10）：
+	# ① raw 顶点 soup 几何序：每面 cross(B−A,C−A).y > 0（俯视逆时针——碰撞汤翻转
+	#   与 face 表都锚 raw 序）；② 渲染索引三角：cross.y < 0（俯视顺时针 = Godot
+	#   正面，CULL_BACK 下俯视可见——测试锚引擎语义而非实现巧合）
 	for f in 6:
 		var a := verts[f * 3]
 		var b := verts[f * 3 + 1]
 		var c := verts[f * 3 + 2]
-		expect((b - a).cross(c - a).y > 0.0, "面 %d 绕序应朝上" % f)
+		expect((b - a).cross(c - a).y > 0.0, "面 %d raw 几何序绕序朝上" % f)
+		var ia := verts[idx[f * 3]]
+		var ib := verts[idx[f * 3 + 1]]
+		var ic := verts[idx[f * 3 + 2]]
+		expect((ib - ia).cross(ic - ia).y < 0.0, "面 %d 索引三角 = Godot 正面（俯视顺时针）" % f)
 
 # ================= 双格：唯一共享边带的归属与形状 =================
 
@@ -194,7 +202,7 @@ func test_surfaces_grouped_by_terrain_type() -> void:
 		expect_eq(idxa.size(), s["index_count"], "元数据 index_count 与 mesh 一致（surface %d）" % i)
 		expect_eq(s["vertex_count"], (s["faces"] as Array).size() * 3,
 			"逐面 emit：顶点数 = 3×面数（surface %d）" % i)
-		expect_eq(idxa, PackedInt32Array(range(idxa.size())), "索引递增 = faces 序（surface %d）" % i)
+		expect_eq(idxa, _flipped_indices(idxa.size() / 3), "索引 = 逐面翻转（Godot 正面口径；surface %d）" % i)
 		expect_eq(fc["top"] + fc["edge"] + fc["corner"], (s["faces"] as Array).size(),
 			"面分类计数之和 = faces 总数（surface %d）" % i)
 	expect_eq(total, 100, "分组覆盖全部 100 格")
@@ -444,6 +452,17 @@ func _three_colors() -> Dictionary:
 ## 默认材质表（与主线默认 .tres 同源——测试自建、不读文件，保持纯逻辑口径）。
 func _default_table() -> Dictionary:
 	return Lib.materials_from_colors(Lib.DEFAULT_PALETTE)
+
+## 逐面翻转索引的期望数组（F-1 口径：每面 (3f, 3f+2, 3f+1)——索引三角俯视顺时针
+## = Godot 正面；faces 序 = raw soup 三角序不变）。
+func _flipped_indices(face_count: int) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	out.resize(face_count * 3)
+	for f in face_count:
+		out[f * 3] = f * 3
+		out[f * 3 + 1] = f * 3 + 2
+		out[f * 3 + 2] = f * 3 + 1
+	return out
 
 ## build_map 断言成功并返回 Dictionary（第 4 参 = 材质表 {terrain_id: Material}，
 ## 缺省 = 默认表）；失败时回占位结构（后续断言优雅失败，不崩 runner）。

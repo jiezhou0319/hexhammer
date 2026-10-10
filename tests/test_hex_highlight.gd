@@ -157,12 +157,13 @@ func test_fan_mesh_matches_inner_top_face() -> void:
 			var want := Hex.inner_vertex(cell, i, SIZE, SOLID, 0.0) - center
 			expect_almost_eq(verts[1 + i].distance_to(want), 0.0, EPS,
 				"内顶点对表（%s i=%d）：mesh 局部 = inner_vertex − 格心" % [str(cell), i])
-	# 绕序：每三角 cross(B−A, C−A).y > 0（T4 顶面 (格心, inner_k, inner_k+1) 口径）
+	# 渲染绕序（F-1 修复 2026-10-10 口径）：索引三角 = 俯视**顺时针** = Godot 正面
+	#（cross.y < 0；CULL_BACK 下俯视可见）——测试锚引擎语义，非实现巧合
 	for t in range(0, idx.size(), 3):
 		var a := verts[idx[t]]
 		var b := verts[idx[t + 1]]
 		var c := verts[idx[t + 2]]
-		expect((b - a).cross(c - a).y > 0.0, "扇形三角绕序朝上（t=%d）" % t)
+		expect((b - a).cross(c - a).y < 0.0, "扇形索引三角 = Godot 正面（俯视顺时针，t=%d）" % t)
 
 func test_anchor_follows_elevation_and_lift() -> void:
 	# 放置面：anchor = 格心 xz + 高程×步长 + lift（混合高程含负层与 0..3 层对表）
@@ -246,10 +247,12 @@ func test_path_polyline_and_strip_mesh() -> void:
 		var fdir := Vector3(flat.x, 0.0, flat.y).normalized()
 		var ext: float = minf(width * 0.5, flat.length() * 0.5)
 		var base := s * 6
-		var a0 := verts[base]      # 三角1 (a0,a1,b1)
-		var a1 := verts[base + 1]
-		var b1 := verts[base + 2]
-		var b0 := verts[base + 5]  # 三角2 (a0,b1,b0)
+		# 发射序（F-1 修复 2026-10-10）：三角1 (a0,b1,a1)、三角2 (a0,b0,b1)
+		# ——俯视顺时针 = Godot 正面；角点物理位置不变，仅读取下标随发射序更新
+		var a0 := verts[base]
+		var b1 := verts[base + 1]
+		var a1 := verts[base + 2]
+		var b0 := verts[base + 4]
 		expect_almost_eq(((a0 + a1) / 2.0).distance_to(p0 - fdir * ext), 0.0, 1e-5,
 			"段 %d：a 端中点 = 起点水平外延 min(半宽, 半段长)" % s)
 		expect_almost_eq(((b0 + b1) / 2.0).distance_to(p1 + fdir * ext), 0.0, 1e-5,
@@ -258,8 +261,8 @@ func test_path_polyline_and_strip_mesh() -> void:
 		expect_almost_eq(a0.y, p0.y, EPS, "段 %d：a 端 y = 起点格顶+lift（延伸恒水平）" % s)
 		expect_almost_eq(a1.y, p0.y, EPS, "段 %d：a 端对侧 y 同高（侧向恒水平）" % s)
 		expect_almost_eq(b0.y, p1.y, EPS, "段 %d：b 端 y = 终点格顶+lift" % s)
-		expect((a1 - a0).cross(b1 - a0).y > 0.0, "段 %d：三角1 绕序朝上" % s)
-		expect((b1 - a0).cross(b0 - a0).y > 0.0, "段 %d：三角2 绕序朝上" % s)
+		expect((b1 - a0).cross(a1 - a0).y < 0.0, "段 %d：三角1 = Godot 正面（俯视顺时针）" % s)
+		expect((b0 - a0).cross(b1 - a0).y < 0.0, "段 %d：三角2 = Godot 正面（俯视顺时针）" % s)
 	# 非法输入：点数 < 2 / 宽度 ≤ 0 → null（显式失败）
 	expect(HL.path_strip_mesh(PackedVector3Array(), width) == null, "0 点 → null")
 	expect(HL.path_strip_mesh(PackedVector3Array([Vector3.ZERO]), width) == null, "1 点 → null")

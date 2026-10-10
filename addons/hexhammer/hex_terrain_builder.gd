@@ -24,8 +24,14 @@
 ## - 逐面 emit（flat shading）：每三角独立 3 顶点 + 显式递增索引，faces 序 = 三角序
 ##   （为 T5 拾取的 face_index→格映射预留直接对应）。法线 = 面法线现算
 ##   （顶面恒 +Y；边带/角落 = cross 归一——绕序保证 y 分量 > 0，陡面朝上侧倾斜）。
-## - 绕序（cross(B−A,C−A).y > 0 口径，全方向旋转对称成立）：
-##   顶面 (格心, inner_k, inner_{k+1})；边带 (v1,v3,v4)+(v1,v4,v2)；角落 (p1,p3,p2)。
+## - 绕序双层口径（2026-10-10 F-1 修复，Fable 审查）：
+##   · raw 顶点 soup 保持几何序 cross(B−A,C−A).y > 0（俯视逆时针，全方向旋转对称）：
+##     顶面 (格心, inner_k, inner_{k+1})；边带 (v1,v3,v4)+(v1,v4,v2)；角落 (p1,p3,p2)
+##     ——碰撞汤翻转（hex_picking.chunk_collision_faces 直读 raw 顶点）与 faces 元数据
+##     （face_index 映射）都锚定 raw 序，**不变**；
+##   · 渲染**索引**逐三角翻转为 (base, base+2, base+1)：索引三角 = 俯视**顺时针**
+##     = Godot 正面（引擎口径：front face = clockwise winding）——默认 CULL_BACK 下
+##     俯视可见。法线/UV 仍随 raw 顶点走（描述面朝向与纹理，与剔除面无关）。
 ## - 法线硬边策略（M1a-T8 显式定死）：**全 flat shading、全硬边**——每三角独立 3 顶点 +
 ##   面法线，不焊接顶点、不做任何平滑（平顶/陡壁的硬边是低模策略地形的目标可读性；
 ##   平滑法线=顶点焊接+按面分类平滑组，属表现层后续升级，翻案须回改 04 与测试锚）。
@@ -295,6 +301,8 @@ static func _y_of(map: MapDataClass, cell: Vector2i, elevation_step: float) -> f
 ## faces 序 = 三角序（本函数只 emit，面记录由调用方追加——两者严格同步）。
 ## UV 由调用方按面分类选取（平面/侧面公式见下方 _uv_*——T8 约定的唯一计算点，
 ## 不在两处各算）。
+## 索引序 = (base, base+2, base+1)：索引三角俯视**顺时针** = Godot 正面（F-1 修复，
+## 2026-10-10）；raw 顶点序保持几何逆时针（碰撞/face 表口径，见类头注「绕序双层口径」）。
 static func _emit_face(st: SurfaceTool, base: int, a: Vector3, b: Vector3, c: Vector3,
 		n: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> int:
 	st.set_normal(n)
@@ -307,8 +315,8 @@ static func _emit_face(st: SurfaceTool, base: int, a: Vector3, b: Vector3, c: Ve
 	st.set_uv(uv_c)
 	st.add_vertex(c)
 	st.add_index(base)
-	st.add_index(base + 1)
 	st.add_index(base + 2)
+	st.add_index(base + 1)
 	return base + 3
 
 

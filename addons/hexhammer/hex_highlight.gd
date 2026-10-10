@@ -21,7 +21,8 @@
 ##   增删）——鼠标移动不重建地形 mesh、不动未变格的节点。
 ## 路径描线（04 M1a-T7「支持路径描线」，为 M1b 移动范围/路径预铺）：折线点 = 途经格
 ##   心 + 各格顶面 y + lift；条带 mesh = 每段一矩形（两端各延伸 min(半宽, 半段长)
-##   转角搭接），侧向恒水平垂直于段向，绕序 cross 朝上（T4 口径）。
+##   转角搭接），侧向恒水平垂直于段向；发射顶点序 = 俯视顺时针（Godot 正面，
+##   F-1 修复 2026-10-10；法线仍按几何序现算朝上——见 _emit_quad 注）。
 ## 依赖方向：本文件 → hex_math.gd（T1）/ map_data.gd（T2），只读不反向。
 class_name HexHighlight
 extends RefCounted
@@ -57,7 +58,7 @@ static func highlight_material(color: Color = DEFAULT_COLOR) -> StandardMaterial
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.no_depth_test = false  # 显式保持默认（默认即 false；写出 = 断言锚点）
-	mat.cull_mode = BaseMaterial3D.CULL_BACK  # 扇形绕序朝上，俯视即正面
+	mat.cull_mode = BaseMaterial3D.CULL_BACK  # 索引三角 = 俯视顺时针（Godot 正面），CULL_BACK 下俯视可见（F-1 修复）
 	return mat
 
 
@@ -82,8 +83,9 @@ static func inner_vertex_local(i: int, size := 1.0, solid_factor := 0.8) -> Vect
 	return Vector3((v.x - center.x) * solid_factor, 0.0, (v.y - center.z) * solid_factor)
 
 
-## 内顶面扇形 mesh（局部坐标）：顶点 0 = 格心原点、1..6 = 内顶点；6 三角索引扇
-##（绕序 = T4 顶面 (格心, inner_k, inner_{k+1})——cross 朝上已由 T4 测试锚定）。
+## 内顶面扇形 mesh（局部坐标）：顶点 0 = 格心原点、1..6 = 内顶点；6 三角索引扇。
+## 索引序 = (0, 1+(k+1)%6, 1+k)：索引三角俯视**顺时针** = Godot 正面（F-1 修复，
+## 2026-10-10；raw 顶点序仍为 T4 几何口径 (格心, inner_k, inner_{k+1})——对表测试锚 raw）。
 ## 形状与格无关（高程由节点 y 表达）→ 全层共享单实例（复用纪律的几何面）。
 static func inner_fan_mesh(size := 1.0, solid_factor := 0.8) -> ArrayMesh:
 	var st := SurfaceTool.new()
@@ -95,8 +97,8 @@ static func inner_fan_mesh(size := 1.0, solid_factor := 0.8) -> ArrayMesh:
 		st.add_vertex(inner_vertex_local(i, size, solid_factor))
 	for k in 6:
 		st.add_index(0)
-		st.add_index(1 + k)
 		st.add_index(1 + (k + 1) % 6)
+		st.add_index(1 + k)
 	var mesh := ArrayMesh.new()
 	st.commit(mesh)
 	return mesh
@@ -171,16 +173,20 @@ static func path_strip_mesh(points: PackedVector3Array, width := 0.18) -> Varian
 	return mesh
 
 
-## 单矩形 2 三角（绕序 cross 朝上；flat 法线现算——T4 同款）。
+## 单矩形 2 三角。**发射顶点序 = (a0,b1,a1)+(a0,b0,b1)：俯视顺时针 = Godot 正面**
+##（F-1 修复，2026-10-10）；法线仍按几何序 (a0,a1,b1)/(a0,b1,b0) 现算（朝上侧，
+## flat shading——法线描述面朝向，发射序决定剔除面，两者解耦）。
 static func _emit_quad(st: SurfaceTool, a0: Vector3, a1: Vector3, b1: Vector3, b0: Vector3) -> void:
-	st.set_normal(_face_normal(a0, a1, b1))
+	var n1 := _face_normal(a0, a1, b1)
+	var n2 := _face_normal(a0, b1, b0)
+	st.set_normal(n1)
 	st.add_vertex(a0)
+	st.add_vertex(b1)
 	st.add_vertex(a1)
-	st.add_vertex(b1)
-	st.set_normal(_face_normal(a0, b1, b0))
+	st.set_normal(n2)
 	st.add_vertex(a0)
-	st.add_vertex(b1)
 	st.add_vertex(b0)
+	st.add_vertex(b1)
 
 
 ## 面法线（flat shading；T4 同款实现）。

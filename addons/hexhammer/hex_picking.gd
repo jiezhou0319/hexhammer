@@ -16,8 +16,9 @@
 ##   三格高程 max−min ≥ 2 视作悬崖形角落 → 归最高格（并列最高取 ID 较小者）；
 ##   否则（全等高 / 差一级）按斜坡口径 → 局部 XZ 最近逻辑格心 + ID 决胜。
 ##   【登记为 T5 的解释性落字，与边带规则同构；翻案须明说并回改对应测试。】
-## 最近格心的「相等」判定：|dA−dB| ≤ TIE_EPS·size 视作相等（浮点对称点两条计算
-##   路径差 ~1e-15，实际最近距离差 ≥ 0.05·size 量级——窗口隔开十余个数量级）。
+## 最近格心的「相等」判定：|dA−dB| ≤ TIE_EPS·size² 视作相等（d 为距离**平方**，
+##   容差与被比较量同量纲——L-1 修复 2026-10-10；浮点对称点两条计算路径差 ~1e-15，
+##   实际最近距离差 ≥ 0.05·size 量级——窗口隔开十余个数量级）。
 ## face→格映射（04 M1a-T5 细化「face_index 仅对 ConcavePolygonShape3D 有效」的落实）：
 ## - 碰撞三角形 = T4 mesh 顶点数组按 surface 构建序拼接（builder 逐面 3 顶点显式
 ##   索引提交 → 顶点序 = 三角序，T4 测试已锚定），**自提交顺序即映射顺序**；
@@ -54,8 +55,10 @@ const TIE_EPS := 1e-6
 ## surface 内三角序——与 chunk_face_table 逐索引对应（「自提交碰撞三角形顺序」）；
 ## 三角形**顶点序**逐面翻转为 (a, c, b)：Godot 正面绕序 = 顺时针（从可见侧看，
 ## ConcavePolygonShape3D 射线实测同口径——cross(B−A,C−A) 朝射线来侧的面被当作
-## 背面拒绝），T4 mesh 的 cross 朝上绕序须翻转后提交，否则 intersect_ray 全 miss
-##（2026-10-09 引擎探针实测；渲染 mesh 的绕序问题属 T4，见任务交付说明）。
+## 背面拒绝），T4 mesh 的 raw 顶点 cross 朝上绕序须翻转后提交，否则 intersect_ray
+## 全 miss（2026-10-09 引擎探针实测）。
+## 注：2026-10-10 F-1 修复后，T4 **渲染索引**已单独翻转为 Godot 正面口径；本函数
+## 直读 raw ARRAY_VERTEX（不看 ARRAY_INDEX）→ 碰撞层口径不变、无需联动改动。
 static func chunk_collision_faces(chunk_info: Dictionary) -> PackedVector3Array:
 	var mesh: ArrayMesh = chunk_info["mesh"]
 	var out := PackedVector3Array()
@@ -157,19 +160,20 @@ static func corner_cells(cell: Vector2i, k: int) -> Array[Vector2i]:
 	return [cell, Hex.neighbor(cell, k), Hex.neighbor(cell, k - 1)]
 
 
-## 局部 XZ 最近逻辑格心；距离相等（≤ TIE_EPS·size）→ 稳定 ID（index_of）较小者。
-## 候选顺序不影响结果（决胜只看 ID 与距离）。
+## 局部 XZ 最近逻辑格心；距离相等（≤ TIE_EPS·size²，平方量纲）→ 稳定 ID（index_of）
+##   较小者。候选顺序不影响结果（决胜只看 ID 与距离）。
 static func pick_by_nearest_center(local_pos: Vector3, candidates: Array[Vector2i],
 		map: MapDataClass, size := 1.0) -> Vector2i:
 	var best: Vector2i = candidates[0]
 	var best_d := _xz_dist_sq(local_pos, best, size)
+	var tie := TIE_EPS * size * size  # 与 d 同为距离平方量纲（L-1 修复 2026-10-10）
 	for i in range(1, candidates.size()):
 		var c: Vector2i = candidates[i]
 		var d := _xz_dist_sq(local_pos, c, size)
-		if d < best_d - TIE_EPS * size:
+		if d < best_d - tie:
 			best = c
 			best_d = d
-		elif absf(d - best_d) <= TIE_EPS * size and map.index_of(c) < map.index_of(best):
+		elif absf(d - best_d) <= tie and map.index_of(c) < map.index_of(best):
 			best = c
 			best_d = d
 	return best
