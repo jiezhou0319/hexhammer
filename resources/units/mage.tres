@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="UnitProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/unit_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"mage"
+display_name = "法师"
+atk = 84
+def = 45
+hp = 120
+speed = 4
+attack_range = 3
+dodge = 0.0
+cost = 155
+leadership = 8

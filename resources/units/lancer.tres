@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="UnitProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/unit_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lancer"
+display_name = "骑枪骑士"
+atk = 175
+def = 55
+hp = 200
+speed = 8
+attack_range = 1
+dodge = 0.1
+cost = 185
+leadership = 8

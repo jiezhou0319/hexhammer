@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="UnitProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/unit_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"siege"
+display_name = "攻城器械"
+atk = 85
+def = 130
+hp = 300
+speed = 2
+attack_range = 5
+dodge = 0.0
+cost = 160
+leadership = 9
