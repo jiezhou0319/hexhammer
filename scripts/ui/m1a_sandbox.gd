@@ -55,7 +55,7 @@ enum MapSource { PATTERN, FIXED, RANDOM }
 ## 留空 = 载入主线默认色块库（TerrainMaterialLibrary.DEFAULT_PATH）。
 @export var material_library: TerrainMaterialLibraryClass
 
-## M1a-T7 高亮状态（点击选择 = hover 格确认；Vector2i 不可空，用标志位）
+## M1a-T7 高亮状态（hover 格状态 + 上次选中格；选择走 cell_selected 回执——M-1）
 var _map: MapDataClass = null
 var _hover_layer: HighlightLayerClass = null
 var _selection_layer: HighlightLayerClass = null
@@ -95,6 +95,7 @@ func _ready() -> void:
 	view.add_child(picker)  # 地图根（MapView）之下：世界↔局部转换随根变换
 	var pick_ok := picker.setup(view.build_info, map)
 	picker.cell_picked.connect(_on_cell_picked)
+	picker.cell_selected.connect(_on_cell_selected)
 	picker.pick_missed.connect(_on_pick_missed)
 	print(pick_ok if pick_ok else "[M1a 沙盒] 拾取挂接失败")
 	# M1a-T7 高亮挂接（目检载体）：hover 层（暖黄单格）+ 选择层（蓝多格 + 橙路径）。
@@ -218,7 +219,8 @@ func _dist2(col: int, row: int, cx: int, cy: int) -> float:
 	return dx * dx + dy * dy
 
 ## 拾取请求（M1a-T5/T7 目检）：只入队，物理回调内查询（map_picker.gd 纪律）。
-## 鼠标移动 = hover 高亮更新；左键 = 在当前 hover 格上确认选择（点击即所见）。
+## 鼠标移动 = hover 高亮更新；左键 = 选择请求（经物理回调解析后回 cell_selected——
+## 点击格即选中格；M-1 修复 2026-10-10：不再读 motion 的陈旧 hover）。
 func _unhandled_input(event: InputEvent) -> void:
 	var picker := get_node_or_null("MapView/MapPicker")
 	if picker == null:
@@ -227,8 +229,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		picker.request_pick_at((event as InputEventMouseMotion).position)
 	elif event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
 			and (event as InputEventMouseButton).pressed:
-		_confirm_selection()  # 点击即所见：当前 hover 格上确认（motion 已持续解析）
-		picker.request_pick_at((event as InputEventMouseButton).position)
+		picker.request_select_at((event as InputEventMouseButton).position)
 
 ## hover 更新（M1a-T7）：单格高亮切换走集合差异（同格重复 → 零操作不闪）。
 func _on_cell_picked(cell: Vector2i) -> void:
@@ -237,16 +238,20 @@ func _on_cell_picked(cell: Vector2i) -> void:
 	if _hover_layer != null:
 		_hover_layer.highlight([cell])
 
+## 左键选择回执（M-1 修复 2026-10-10）：点击请求解析到的格 = 选中格；
+## 点空（miss）不改选择。
+func _on_cell_selected(cell: Vector2i) -> void:
+	_confirm_selection_at(cell)
+
 func _on_pick_missed() -> void:
 	_has_hover = false
 	if _hover_layer != null:
 		_hover_layer.clear()
 
-## 左键选择（M1a-T7 目检）：hover 格 + 界内 6 邻入选择层，从上次选中格描直线路径。
-func _confirm_selection() -> void:
-	if not _has_hover or _selection_layer == null:
+## 左键选择（M1a-T7 目检）：目标格 + 界内 6 邻入选择层，从上次选中格描直线路径。
+func _confirm_selection_at(cell: Vector2i) -> void:
+	if _selection_layer == null:
 		return
-	var cell := _hover_cell
 	var cells: Array = [cell]
 	for nb in _map.neighbors_existing(cell):
 		cells.append(nb)

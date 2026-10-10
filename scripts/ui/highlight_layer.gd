@@ -53,6 +53,21 @@ func setup(map_data: MapDataClass, hex_size := 1.0, elev_step := 1.0,
 		path_lift_extra := -1.0) -> bool:
 	clear()
 	clear_path()
+	# 重入防护（M-2 修复 2026-10-10）：setup 再调用 = 换图/换尺寸/换参数——旧图
+	# 节点缓存（position/mesh/material_override 均旧值，_node_for 命中即复用旧值）
+	# 与描线节点**先摘下树再延迟释放**：立即释放名字占位（否则同格新节点会被
+	# 引擎改名 @MeshInstance3D@N，按名查找/校验失效），queue_free 保证安全时点。
+	for node in _nodes.values():
+		var old := node as MeshInstance3D
+		remove_child(old)
+		old.queue_free()
+	_nodes.clear()
+	if _path_node != null:
+		remove_child(_path_node)
+		_path_node.queue_free()
+		_path_node = null
+		_path_mesh = null
+		_last_path = []
 	if map_data == null or map_data.cell_count() == 0 or hex_size <= 0.0 or elev_step <= 0.0 \
 			or solid <= 0.0 or solid >= 1.0:
 		return false

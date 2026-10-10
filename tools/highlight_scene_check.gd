@@ -18,7 +18,9 @@
 ##   E. 高亮层子树无 CollisionObject3D（拾取射线恒不被高亮截获——mask 纪律的
 ##     节点面）；材质深度测试保持开启（no_depth_test=false）。
 ##   F. lift 档位错开（共面治理）：跨层同格双扇面 y 错一档、描线带 y = 本层
-##     扇面 + 半档 extra（带×扇/跨层交叠不共面——远近缩放下无缝合纹/闪）。
+##     扇面 + 半档 extra（带×扇/跨层交叠不共面——远近缩放无缝合纹/闪）。
+##   G. setup 重入（M-2 修复 2026-10-10）：换图重 setup 后旧节点缓存释放——
+##     新集合可见、节点 y/mesh 按新图落值（v1 会复用旧图缓存旧值）。
 ## 退出码：全部通过 0，任一失败 1。
 extends SceneTree
 
@@ -271,3 +273,25 @@ class Checker extends Node:
 			"F2. 描线带 y = 本层扇面 + 半档 extra（带×扇不共面且描线压过扇面可见）")
 		_check(absf(hover_a.position.y - strip_y) > 1e-9 and absf(hover_a.position.y - strip_y) < 0.05,
 			"F3. tier1 扇面与 tier0 描线不共面（半档错开）且仍在贴地量级")
+
+		# ---- G. setup 重入：换图后缓存不残留旧值（M-2 修复 2026-10-10 的回归锚）----
+		# v1 缺陷：重 setup 后 _node_for 缓存命中直接复用旧图节点（position/mesh/
+		# material_override 均旧值）。修复后 setup 释放清空旧缓存，节点按新图重建。
+		# 探针不按名取节点（旧节点 queue_free 前仍占名，新节点会被自动改名 @2）。
+		var map2 := MapDataClass.new(map.width, map.height)
+		for cell2 in map2.cells():
+			map2.set_elevation(cell2, 4)  # 全图高程 4（旧图 a 格高程 ≠4 → y 必然不同）
+			map2.set_terrain(cell2, 0)
+		var re_ok: bool = layer.setup(map2, SIZE, STEP, 0.8)
+		layer.highlight([a])
+		var vis_nodes: Array = []
+		for n2 in _hl_children(layer):
+			if (n2 as MeshInstance3D).visible:
+				vis_nodes.append(n2)
+		_check(re_ok and vis_nodes.size() == 1, "G1. setup 换图后仅新集合可见（旧集已隐藏）")
+		var g_node: MeshInstance3D = vis_nodes[0] if vis_nodes.size() == 1 else null
+		var want_y: float = 4.0 * STEP + layer.lift
+		_check(g_node != null and absf(g_node.position.y - want_y) < 1e-6,
+			"G2. 换图后节点 y = 新图高程 4（不残留旧图缓存位姿）")
+		_check(g_node != null and first_mesh != null and g_node.mesh != first_mesh,
+			"G3. 换图后节点 mesh = 新建 fan mesh 实例（不残留旧 mesh）")

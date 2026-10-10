@@ -13,7 +13,11 @@
 class_name MapPicker
 extends Node3D
 
+## hover 解析结果（motion 持续请求）；M-1 修复（2026-10-10）前选择直接读沙盒侧
+## 陈旧 hover 格——现在点击走独立请求通道，命中经 cell_selected 分派
 signal cell_picked(cell: Vector2i)
+## 选择解析结果（request_select_at 的回执）——点击格即选中格
+signal cell_selected(cell: Vector2i)
 signal pick_missed()
 
 const HexPickingLib := preload("res://addons/hexhammer/hex_picking.gd")
@@ -32,7 +36,7 @@ var map_root: Node3D
 
 var _tables := {}  # body instance_id → 该 chunk face 表（Array[Dictionary]）
 var _bodies: Array[StaticBody3D] = []
-var _pending: Array[Vector2] = []
+var _pending: Array = []  # {"pos": Vector2, "select": bool}（同点同类型去重）
 
 ## 挂碰撞体并建 face 表。map_root 省略 = get_parent()（MeshView/MapView 等地图根）；
 ## 要求地图根的局部坐标 = builder 产出的地图全局坐标（T3 挂载约定）。
@@ -72,8 +76,19 @@ func setup(build_info: Dictionary, map_data: MapDataClass, root: Node3D = null,
 ## 屏幕点拾取请求：**只入队**——物理查询统一挪到 _physics_process（其他时机物理
 ## 空间可能被锁定；04 M1a-T5 细化）。同帧多次同点请求去重。
 func request_pick_at(screen_pos: Vector2) -> void:
-	if not _pending.has(screen_pos):
-		_pending.append(screen_pos)
+	_enqueue(screen_pos, false)
+
+## 选择请求（M-1 修复 2026-10-10）：与 hover 同队列、同物理回调解析，命中经
+## cell_selected 信号分派——调用方不读 hover 状态，点击格即选中格。
+func request_select_at(screen_pos: Vector2) -> void:
+	_enqueue(screen_pos, true)
+
+func _enqueue(screen_pos: Vector2, select: bool) -> void:
+	for e in _pending:
+		var req: Dictionary = e
+		if req["pos"] == screen_pos and req["select"] == select:
+			return
+	_pending.append({"pos": screen_pos, "select": select})
 
 ## 世界射线拾取（公开 API：查询 + 局部转换 + face 表 + 归属规则）。
 ## **物理回调内调用**（_physics_process / 物理信号），返回格坐标；未命中/非地形面 → null。
@@ -106,11 +121,14 @@ func _physics_process(_delta: float) -> void:
 	if camera == null:
 		return  # 无相机：请求留队，相机可用后再查
 	while not _pending.is_empty():
-		var screen_pos: Vector2 = _pending.pop_front()
+		var req: Dictionary = _pending.pop_front()
+		var screen_pos: Vector2 = req["pos"]
 		var cell: Variant = pick_world_ray(
 			camera.project_ray_origin(screen_pos),
 			camera.project_ray_normal(screen_pos))
 		if cell == null:
 			pick_missed.emit()
+		elif req["select"]:
+			cell_selected.emit(cell)
 		else:
 			cell_picked.emit(cell)
