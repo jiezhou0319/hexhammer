@@ -47,7 +47,8 @@ GitHub 镜像（jiezhou0319/hexhammer）。
 4. **02 架构 ADR**（技术域）→ 5. **03/04 排期域**。
 
 通则：**域内冲突，新日期裁决覆盖旧；跨域冲突，上游域胜**。09 只登记未拍事项
-（其台账>正文，仅限 09 内部）；01/11 调研永不构成拍板权威。
+（其台账>正文，仅限 09 内部）；01/11 调研永不构成拍板权威；12/13 内容生产
+管线草案待共创审，亦不构成拍板权威。
 
 | 文档 | 内容 |
 | --- | --- |
@@ -58,13 +59,16 @@ GitHub 镜像（jiezhou0319/hexhammer）。
 | [docs/09-open-questions.md](docs/09-open-questions.md) | 开放问题清单（**v0.3 台账为准**：正文仅存 71 道待拍题；46 题已收口/作废，正文已删、一行式结论留台账 A/B 节） |
 | [docs/10-params-test.md](docs/10-params-test.md) | **参数测试版 v0**：双费表 / 反击系数 / 时钟与账期（开发期持续调整） |
 | [docs/11-research-wc4.md](docs/11-research-wc4.md) | 调研参考（非拍板）：WC4 逆向机制 → 本项目可迁移结论/警示（AI 旋钮/负伤害钳制/平衡手法） |
+| [docs/12-terrain-content-pipeline.md](docs/12-terrain-content-pipeline.md) | 地形与内容物生产总纲 v0.1（**待共创审，非拍板**）：T0~T4 内容物分类学 / 配方制 / 白模三道闸 / 三路供给 / AI 生成硬边界；2026-10-10 入库对账 M1a 实现（河流=ADR-14 格边口径） |
+| [docs/13-local-gen-pipeline.md](docs/13-local-gen-pipeline.md) | 本地 ComfyUI 白模/贴图生产线 v0.1（**非拍板**；§9 部署实录：环境已落地、图生 3D 冒烟 PASS） |
+| [docs/notes/spike-1007-salvage.md](docs/notes/spike-1007-salvage.md) | spike-1007-demo 分支摘取评估（**全部参考件**）：渲染件参数与上桌时机 / Godot 坑位 ×6 / 兵种数据参考（数值=参考，权威 08）/ KayKit 历史速查 |
 | [docs/01-research.md](docs/01-research.md) | 调研：Wesnoth / godot-hexgrid / 三国志11 / HOMM / Dominions 参照系 |
 | [docs/02-architecture.md](docs/02-architecture.md) | 架构 ADR-1~13（**现行口径：ADR-12 时间模型、ADR-13 3D 表现**；ADR-7 消费端收缩、ADR-8 二代 TileMapLayer 废止、ADR-9 钉 4.7.2、ADR-10/11 废止；§1/§3/§5 旧口径已就地标注） |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图（**v2 已重写 2026-10-09**）：M1a 地形地基 + M1b 内核证伪 → M2 经济 → M3 大地图+养成 → M4 AI → M5 打磨 |
 | [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1 任务拆分（**已重写 2026-10-09**）：M1a T1~T9 / M1b T1~T15，单任务粒度（~~估时口径~~ 时间概念已移除，2026-10-09 主创拍板） |
 | [docs/05-extensibility.md](docs/05-extensibility.md) | 扩展性门 1~8（**待审**：门 1/2/4/6/7/8 成立；门 3 已重写为**局内成长**口径——主创 2026-10-09 确认"全局都是战斗"；门 5 对外已关闭——2026-10-09 对账+评审收口） |
-| [docs/hexhammer-fable-review.md](docs/hexhammer-fable-review.md) | 规划文档独立评审（fable，2026-10-09，非拍板）：P0×2 + P1×10 + P2×11——**已全量收口**，裁决记录见 09 附录二「主创二次拍板」 |
-| [docs/hexhammer-m1a-map-implementation-research.md](docs/hexhammer-m1a-map-implementation-research.md) | M1a 地图实现调研（2026-10-09，非拍板）：Red Blob / Catlike / godot_hex_map 学习路线、顶面-边带-角落三角化、归属规则、拾取相机细则——**04 M1a 任务细化的依据** |
+| [docs/09-open-questions.md](docs/09-open-questions.md) 附录二 | 规划文档独立评审（fable，非拍板）裁决记录：P0×2 + P1×10 + P2×11 已全量收口——原 `hexhammer-fable-review.md` 文档已移除（2026-10-10），README 死链更正 |
+| [docs/04-tasks-m1.md](docs/04-tasks-m1.md) | M1a 地图实现调研已吸收进任务卡（原 `hexhammer-m1a-map-implementation-research.md` 已移除，2026-10-10，README 死链更正）——Red Blob / Catlike 学习路线、顶面-边带-角落三角化等结论为 04 M1a 细化依据 |
 | docs/archive/ | 仅存迁移说明（原 02~05 已取回 docs/ 顶层，非作废） |
 
 ## 仓库代码
