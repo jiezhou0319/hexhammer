@@ -114,3 +114,22 @@ exit=0（2026-10-10，跑后工作区无新增改动）。）
   （崩溃文件排最先 / while true / 一文件三失败）实测分别被点名 FAIL、20s 超时拦截、
   总汇总计 5 失败 exit 1；探针文件验证后删除。工作区净（改动 = 两 runner + 两个新
   fixture + 本文件）。
+
+---
+
+## 补记三（2026-10-10，M1a+ 第一批收尾登记）
+
+> 依据 docs/04-tasks-m1.md §M1a+「第一批卡」（完成即登记、不进 M1 验收口径）；
+> 五卡逐卡证据与已知边界详见 04 §M1a+ 表格/已交付证据段、docs/retro/M1a-plus.md。
+
+- **五卡完成**：GATE-02 = `tools/render_probe.gd`（Forward+ 实测：地形/高亮/描线像素
+  全超阈值、PROBE OK exit=0，证据 = `docs/evidence/m1a/` 3 PNG + 统计 txt；
+  Compatibility/Mobile 未测已在 txt 标注）；BLEND-01/02/03 = `tests/
+  test_hex_terrain_blend.gd` / `test_hex_terrain_blend_corner.gd` /
+  `test_terrain_style.gd`（门禁 184/193/202 用例 0 失败 + 三个 scene_check 全绿）；
+  数据合同草案 = `docs/M1a-terrain-data-contract-draft.md`（纯文档，穿格口径待 ADR）。
+- **仍待主创（主观门不随本批关闭）**：F6 目检 blend/blend_corner/style 三个沙盒
+  实际观感与沙盒 55° 全图观感；数据合同草案字段集裁决（T3 前回 02 立 ADR）。
+- **提交遗留**：五卡交付会话 git add 均因仓库根 untracked 垃圾文件 NUL（Windows
+  保留名）失败，提交/推送未完成——待清理 NUL 后统一提交（含 docs/evidence/m1a/
+  证据入库）。

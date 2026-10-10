@@ -135,17 +135,79 @@ F-2 修复 `a7b7b85`）均已落。**T0 唯一剩余 = GATE-02 渲染证据**：
 
 **第一批卡（登记非排期；完成即登记证据，不进 M1 验收口径）**：
 
-| ID | 卡 | 验收（方案 Given/When/Then 摘要） |
-|---|---|---|
-| GATE-02 | 固定图+相机渲染证据 | 旧固定图规定相机渲染，存构建/设备/像素统计与截图；Forward+ 未测明确标注 |
-| BLEND-01 | 相邻两格颜色权重（过渡合同首证） | 草-泥边带：两端对应纯色、中点权重各 0.5、权重和为 1，格心保持纯色 |
-| BLEND-02 | 三格交汇 + 跨 chunk 过渡 | 草-泥-岩共享角跨 chunk：三方权重正确、shared position 一致、无裂缝无重复角面 |
-| BLEND-03 | 纹理可替换不改世界事实 | 同图两套 style：逻辑摘要与可达性不变、材质效果不同、索引/face 映射不变 |
+| ID | 卡 | 验收（方案 Given/When/Then 摘要） | 完成登记（2026-10-10 收尾登记员追加） |
+|---|---|---|---|
+| GATE-02 | 固定图+相机渲染证据 | 旧固定图规定相机渲染，存构建/设备/像素统计与截图；Forward+ 未测明确标注 | **2026-10-10 完成**：`tools/render_probe.gd` 实跑 Forward+（地形 410725px / 高亮 765px / 描线 230px 全超阈值，PROBE OK exit=0，两次运行计数逐位一致）；证据 = `docs/evidence/m1a/render_probe_{terrain,highlight,path}_forwardplus_1280x720.png` + `render_probe_stats_forwardplus_1280x720.txt`（txt 已标注 Compatibility/Mobile 未测）；门禁 169 用例 / 0 失败 |
+| BLEND-01 | 相邻两格颜色权重（过渡合同首证） | 草-泥边带：两端对应纯色、中点权重各 0.5、权重和为 1，格心保持纯色 | **2026-10-10 完成**：`tests/test_hex_terrain_blend.gd`（15 用例）；门禁 184 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
+| BLEND-02 | 三格交汇 + 跨 chunk 过渡 | 草-泥-岩共享角跨 chunk：三方权重正确、shared position 一致、无裂缝无重复角面 | **2026-10-10 完成**：`tests/test_hex_terrain_blend_corner.gd`（9 用例）；门禁 193 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
+| BLEND-03 | 纹理可替换不改世界事实 | 同图两套 style：逻辑摘要与可达性不变、材质效果不同、索引/face 映射不变 | **2026-10-10 完成**：`tests/test_terrain_style.gd`（9 用例）；门禁 202 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
+
+**已交付证据（完成即登记；不进 M1 验收口径）**：
+
+- **BLEND-01（2026-10-10 交付）**：权重/色板/映射纯逻辑合同 =
+  `addons/hexhammer/hex_terrain_blend.gd`（edge_weights/is_valid_weights/blend_color/
+  palette_from_materials/make_blend_material）；构建入口 = `hex_terrain_builder.gd`
+  `build_map_blend`/`build_chunk_blend`（顶点 COLOR 承载权重、沿用 raw 顶点/渲染索引
+  双层口径；几何/UV/法线/索引/faces 与 fallback 材质槽路线**逐位一致**、fallback
+  零改动——测试锚定）；headless 锚 = `tests/test_hex_terrain_blend.gd`（15 用例：
+  端点 (1,0)/(0,1)、中点 (0.5,0.5)、和恒 1、色板往返、草-泥两端纯色 + 格心纯色、
+  三类边带、角落端点规则、碰撞汤/face 表逐位等价、确定性、非法输入显式失败）；
+  目检载体 = `scenes/blend_sandbox.tscn`（F6；6×4 草-泥固定图，检查器 render_style
+  切 BLEND/SLOTS 同图对照，拾取+高亮照常挂接）。门禁 = 184 用例 / 0 失败（exit 0）
+  + 三个 scene_check（picking/highlight/camera）各自 exit 0。「中点 0.5 不加中点
+  顶点」「8-bit 顶点色量化容差」等取舍见 docs/notes/m1aplus-blend-01.md 与
+  docs/retro/M1a-plus.md。
+
+- **BLEND-02（2026-10-10 交付）**：三格权重合同 = `hex_terrain_blend.gd`
+  `corner_weights`（重心参数 (u,v) → (归属格,N(k),N(k−1)) 权重）/`is_valid_weights3`
+  （有限、非负（−eps 浮点零点窗口）、和恒 1）/`blend_color3`（两格同色角逐通道
+  退化为边带合同——「角混三种」的最大=3、常见=2 同一合同覆盖）；角面 mesh 顶点 =
+  合同单位权重锚点（p1=(1,0,0)、p2=(0,1,0)、p3=(0,0,1)，发射序与 BLEND-01 落地
+  规则同构——几何/COLOR **零行为变化**，builder 仅注记指回合同，face 表/碰撞合同
+  不动）；面内三色过渡 = 顶点 COLOR 线性插值（重心 = 1/3 均权）；headless 锚 =
+  `tests/test_hex_terrain_blend_corner.gd`（9 用例：合同锚点/合同域密集不变量/
+  非法拒绝/重心均值+边带退化一致性；草-泥-岩共享角三方顶点色 + 重心等价链路 +
+  重心几何 = p1+(bridge_j+bridge_{j−1})/3 + 三格视角 shared position 跨路径对账；
+  **跨 chunk** = 同图三种划分（单 chunk / 行切 trio 跨 2 块 / 每格一 chunk trio
+  分属 3 块）角面位置+顶点色逐位一致、角面由归属块生成、全图物理角 key 恰一面
+  ×每划分；**无裂缝** = 每格一 chunk（25 块）焊接流形（每边 1/2 面引用、无重复
+  面 key、边界边 = 期望外沿、法线朝上）；拾取 = 跨块划分 blend↔fallback 碰撞汤/
+  face 表逐位一致 + 角面 resolve 归属三格之一）；目检载体 =
+  `scenes/blend_corner_sandbox.tscn`（F6；6×5 草-泥-岩固定图、chunk 按行切 6×1
+  使三格交汇角跨缝，render_style 切 BLEND/SLOTS 对照，拾取+高亮照常挂接）。
+  门禁 = 193 用例 / 0 失败（exit 0）+ 三个 scene_check 各自 exit 0。浮点取舍
+  （float32 权重 1/3 量化 1e-6 窗口、u+v=1 边界 −eps 零点窗口、mesh↔mesh 跨划分
+  逐位精确）见 docs/notes/m1aplus-blend-02.md 与 docs/retro/M1a-plus.md。
+
+- **BLEND-03（2026-10-10 交付）**：style 配置载体 = `scripts/core/data/
+  terrain_style.gd`（TerrainStyle Resource，T8 材质槽同款资源化先例：mode ∈
+  {SLOTS 色块, BLEND 过渡} + material_library 两路线共同外观来源 + blend_material
+  顶点色导管；`inputs_for` 纯解析只对图内被用到的 id 预检，缺库/缺槽/缺导管
+  显式失败不静默换路线）；入库两套 .tres = `resources/terrain/styles/
+  terrain_style_slots_default.tres`（默认色块）与 `terrain_style_blend_default.tres`
+  （混合过渡）+ 代码内对账基准 make_default_slots/blend；换装入口 =
+  `map_view.gd build_with_style`（按 mode 分发到既有 build/build_blend，builder
+  **零改动**）；headless 锚 = `tests/test_terrain_style.gd`（9 用例：同 seed
+  双实例 Given 守卫（seed 7301/12×8 含水含 6 地形连通 ok）；换 style 前后
+  summary 逐字节/to_dict/mods 空 = 规则面零变化；ARRAY_INDEX/顶点/UV/faces/
+  碰撞汤/face 表跨 chunk 逐位一致；MapConnectivity 报告整体一致；SLOTS ≥2
+  库材质实例全不开顶点色 vs BLEND 单一导管材质开顶点色、跨地形边带端点异色
+  = 材质实例确不同）；目检载体 = `scenes/style_sandbox.tscn`（F6；检查器把
+  terrain_style 换 .tres 即同图换装，拾取+高亮照常挂接）。取舍（预检只看图内
+  id、「材质效果不同」headless 锚到材质实例+顶点色通道、像素级差异归 GATE-02）
+  见 docs/notes/m1aplus-blend-03.md 与 docs/retro/M1a-plus.md。门禁 = 202 用例 /
+  0 失败（exit 0）+ 三个 scene_check（picking 6/0、highlight 31/0、camera 11/0）
+  各自 exit 0。
 
 **数据合同冻结建议（T2/T3 开工前置，只登记不实现）**：穿格河流 1入1出
 （RiverReach/WaterBody/Road/Crossing 字段集）、NeighborLinkData 的 link_id 约定、
 WorldData 与 MapData 并存（不塞 `mods`）——见方案「核心设计与数据边界」节；
 **河流穿格 vs 格边为 ADR 级决策**，T3 前须回 02 立 ADR。
+
+  **2026-10-10 完成（草案交付）**：`docs/M1a-terrain-data-contract-draft.md`——纯文档、
+  零代码改动（WorldData + 七实体逐字段表与初版禁止项；兼容性总纲按现行实现静态实读
+  对照、未做运行时实验；RiverReachData 1入1出结构钉死）。「草案非拍板」效力声明不变：
+  穿格 vs 格边仍为 ADR 级悬置决策，T3 前须回 02 立 ADR（现行最新 ADR-13）。
 
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时

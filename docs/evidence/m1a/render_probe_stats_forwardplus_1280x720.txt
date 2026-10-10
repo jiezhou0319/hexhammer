@@ -1,5 +1,5 @@
 Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；方案「T0 与 T1 的第一批任务卡」）
-时间(UTC)：2026-10-10T06:04:29
+时间(UTC)：2026-10-10T08:15:08
 引擎：Godot 4.7.2-stable (official)
 渲染器：forward_plus（Forward+ 本机实测；Compatibility / Mobile 未测）
 设备：adapter=NVIDIA GeForce RTX 2050 vendor=NVIDIA；OS=Windows 10.0.26200；DisplayServer=Windows
