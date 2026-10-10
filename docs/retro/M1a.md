@@ -53,3 +53,34 @@ exit=0（2026-10-10，跑后工作区无新增改动）。）
    `for d in 3`）——无向边覆盖已足，非全 6 方向遍历，勿误读。
 ② 第 1 行自动侧证（不变量全绿）不推出「渲染出来看得见且无缝」：T4 渲染 mesh 绕序
    疑点正落在本行目检范围（见第 5 行①），目检不过时先查该项再谈其他。
+
+---
+
+## 补记（2026-10-10 下午，Fable 5.1 外审处置）
+
+> 外审报告：docs/M1a_Fable_review.md（引擎实跑口径：干净克隆 + Xvfb/Compatibility 像素探针 +
+> runner 故障注入）。下列代码侧已由工作流主控当日修复并过门禁；目测半边仍待主创（清单见下）。
+
+- **F-1 渲染绕序（致命）已修**：确认上注②疑点为真——索引三角俯视逆时针 = Godot 背面，
+  CULL_BACK 下地形/高亮/路径俯视 0 像素（外审像素探针实证）。修法 = 方案 A：**只翻渲染索引**
+  （hex_terrain_builder `_emit_face` 逐面 (base, base+2, base+1)；hex_highlight 扇形索引与
+  `_emit_quad` 顶点序同口径），raw 顶点/法线/UV 与碰撞汤翻转（直读 raw）一律不动；
+  测试改锚**引擎语义**（索引三角俯视顺时针 cross.y<0；raw 几何序 cross.y>0 两层口径分立）。
+- **F-2 干净克隆门禁（致命）已修**：贴图试验库 .tres 原引用 .gitignore 排除的
+  art_tests/*.png——入库占位纹理 resources/terrain/trial/（tools/make_trial_textures.gd
+  确定性生成，grass 田字格 + offset 错位砖纹兼作 UV 朝向目检锚）；本地换真贴图仍走
+  art_tests（.tres ext_resource 指回即可，不入库）。外审实跑的「166 用例 2 失败」为真，
+  本复盘上方「166/0」是本机（含未入库素材）口径，非干净克隆口径——已订正认知。
+- **S-1/S-2/S-4 门禁加固**：run_tests.gd v2 = 逐文件子进程隔离（tools/run_one.gd），
+  父进程扫子输出检 SCRIPT ERROR（运行时错误中止被调函数不冒泡，单进程无法自检）；
+  零断言用例/有参 test_*/空文件 = 失败；浮点断言拒绝 NaN/无穷/负容差；门禁自带
+  变异自检（tools/runner_fixtures/ 五样本：应拦尽拦、应放尽放，全量跑 ~10s）。
+- **M-1/M-2（中）已修**：左键选择改走独立请求通道（request_select_at → cell_selected
+  信号回执——点击格即选中格，不再读陈旧 hover）；HighlightLayer.setup 重入先摘树再释放
+  旧缓存（顺带修了重入时新节点被引擎改自动名 @MeshInstance3D@N 的名字占位问题），
+  回归锚 = tools/highlight_scene_check.gd G 组。
+- **L 级**：TIE_EPS 平方量纲（L-1）已修；README「仅保留 docs 与 tools」过时口径（L-6）
+  已订正；提交信息 undefined 字样维持原样不改史。
+- **目测门清单更新**：外审像素探针仅覆盖 Compatibility 软渲染小图正上方视角，F6 实操
+  仍不可替代（Forward+/真 GPU、55° 视角整图、手感/延迟项）；执行时第 1 项优先核对
+  「地形/高亮/描线从上方全部可见」（F-1 修复的直接验证）。

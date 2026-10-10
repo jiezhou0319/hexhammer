@@ -23,7 +23,7 @@
 纯 Resource 零场景节点；删 `scripts/ui/**` 后 tests 全绿口径不受影响
 （`art_trial.gd` 属 ui，可整体删除）。
 
-**契约测试**（`tests/test_hex_terrain_materials.gd`，14 用例）：
+**契约测试**（`tests/test_hex_terrain_materials.gd`，13 用例——2026-10-10 外审订正：实为 13 个 test 函数）：
 - 表缺槽/值非 Material → null；surface 材质 = 表内共享实例；结果表 echo 恰好被用到的类型；
 - 默认 .tres 可载入、逐类型与 `build_default()` 同色（.tres 与代码默认口径防漂移）；
 - **换表不变量**：同一图、色块表 vs 贴图表两次构建——全部 chunk/surface 的

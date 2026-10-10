@@ -29,7 +29,11 @@ GitHub 镜像（jiezhou0319/hexhammer）。
 
 > 2026-10-06：已移除全部 M0 旧实现——`scenes/`、`scripts/`（含 demo 与计算核心）、
 > `resources/`、`tests/` 均与当前设计撕裂，需要时从 git 历史（`9719eba`）找回。
-> 仓库现仅保留 `docs/` 与 `tools/`（数值模拟器 + 伤害计算台）。
+> ~~仓库现仅保留 `docs/` 与 `tools/`（数值模拟器 + 伤害计算台）。~~
+> **2026-10-10 更正（M1a 已代跑交付）**：仓库现有 `addons/hexhammer/`（hex 数学/
+> 地形/拾取/高亮纯逻辑层）、`scripts/core|content|ui/`、`tests/` + `tools/run_tests.gd`
+> 门禁、`resources/`（材质表/固定图）、`scenes/m1a_sandbox.tscn`（F6 目检沙盒）；
+> 复盘见 [docs/retro/M1a.md](docs/retro/M1a.md)。
 >
 > 2026-10-06 三项设计裁决（棋子即兵/结算全自动/法师并公式）中后两项已被
 > 2026-10-07 实时化改向吸收改写（详见 00 v5 修订记录）。
