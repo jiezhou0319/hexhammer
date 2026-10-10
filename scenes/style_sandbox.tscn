@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/style_sandbox.gd" id="1_style"]
+[ext_resource type="Script" path="res://scripts/ui/strategy_camera.gd" id="2_camera"]
+
+[sub_resource type="Environment" id="Environment_style_sandbox"]
+background_mode = 1
+background_color = Color(0.16, 0.17, 0.2, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.57, 0.62, 1)
+ambient_light_energy = 0.9
+
+[node name="StyleSandbox" type="Node3D"]
+script = ExtResource("1_style")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_style_sandbox")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -32, 0)
+shadow_enabled = true
+light_energy = 1.2
+
+[node name="StrategyCamera" type="Camera3D" parent="."]
+script = ExtResource("2_camera")
+fov = 70
+near = 0.5
+far = 600
+current = true

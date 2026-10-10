@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="TerrainStyle" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/terrain_style.gd" id="1_style"]
+[ext_resource type="Resource" path="res://resources/terrain/terrain_materials_default.tres" id="2_lib"]
+
+[resource]
+script = ExtResource("1_style")
+mode = 0
+material_library = ExtResource("2_lib")
