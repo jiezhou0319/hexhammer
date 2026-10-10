@@ -54,11 +54,27 @@
 ##   的地形 surface。不用顶点色 → 材质不开 vertex_color_use_as_albedo（04 M1a-T3 细化）。
 ##   表缺图内地形 id / 表值非 Material / elevation_step ≤0 / solid_factor ∉ (0,1)
 ##   → 显式失败（null）。
+## - 色板权重混合 style（M1a+ BLEND-01 边带两格权重 / BLEND-02 角落三格权重，
+##   2026-10-10；04 §M1a+ 表现层短切片——与上面材质槽 style 并存，后者保留为
+##   fallback）：build_map_blend / build_chunk_blend 以 palette = {terrain_id: Color}
+##   驱动，把过渡权重写进 mesh 顶点 COLOR——边带端点 = 端点所在格纯色（owner 侧
+##   (1,0)、邻侧 (0,1)）、带内 = GPU 线性插值（中点 0.5/0.5 由权重合同锚定，见
+##   hex_terrain_blend.gd）；顶面全顶点 = 本格纯色（中心主地形纯度）；角落顶点 =
+##   三格权重合同（corner_weights）的单位权重锚点——p1=归属格 (1,0,0)、p2=N(k) 侧
+##   (0,1,0)、p3=N(k−1) 侧 (0,0,1)，面内三色过渡 = 线性插值（重心 = (1/3,1/3,1/3)
+##   权重混合，和恒 1；跨 chunk 角面锚点仍从同一全局参数计算——权重/颜色不随
+##   chunk 划分改变，锚见 tests/test_hex_terrain_blend_corner.gd）。
+##   **几何/UV/法线/索引/faces 元数据与
+##   fallback 逐位一致**（同一 _build_surface 路径，只多 COLOR 通道——face 表/碰撞
+##   合同零改动，测试锚定）；surface 仍按地形分组，材质统一用调用方传入的
+##   blend_material（顶点色 albedo 导管，官方工厂 = HexTerrainBlend.make_blend_material）。
+##   权重/色板是独立渲染数据，不进规则/逻辑层（提案「材质升级的最小安全路径」）。
 ## - 元数据：{"chunk": Rect2i, "mesh": ArrayMesh, "surfaces": [{"terrain": int,
 ##   "cells": Array[Vector2i]（该地形格，chunk 行主序）, "faces": Array[Dictionary]
 ##   （与 mesh 三角一一对应：kind="top"|"edge"|"corner"、cell=归属格、dir=顶面扇区 k/
 ##   边带方向 d/角落顶点 k、edge_face 另带 edge_type）, "face_counts": {top,edge,corner},
-##   "vertex_count": 3×面数, "index_count": 3×面数}]}。
+##   "vertex_count": 3×面数, "index_count": 3×面数}]}（blend style 同 schema——
+##   blend 下 "terrain" 只是分组键，渲染材质统一为 blend_material，见上条）。
 class_name HexTerrainBuilder
 extends RefCounted
 
@@ -195,15 +211,106 @@ static func build_chunk(map: MapDataClass, chunk: Rect2i, materials: Dictionary,
 	return {"chunk": chunk, "mesh": mesh, "surfaces": surfaces}
 
 
+# ---------------- 色板权重混合构建（M1a+ BLEND-01）----------------
+
+## 整图分块构建（blend style）。palette = 地形 id → Color（建议来源 =
+## HexTerrainBlend.palette_from_materials(TerrainMaterialLibrary.materials)——与
+## fallback 共用同一 .tres，换表即两风格同时换观感）；blend_material = 顶点色 albedo
+## 导管（官方工厂 HexTerrainBlend.make_blend_material；builder 只认 Material，
+## 顶点色语义由调用方保证）。
+## 返回 {"chunks": Array[chunk 字典]（schema 同 build_map，材质统一 blend_material）,
+##   "chunk_rects": Array[Rect2i], "palette": {被用到的 terrain id → Color}（echo 输入
+##   色板，不合成新色）, "blend_material": Material（echo）, "style": "blend",
+##   "size"/"elevation_step"/"solid_factor": float}；
+## 色板缺图内地形 id / 色值非 Color / 通道非有限或负 / blend_material 非 Material /
+## 参数非法 → null（先全图预检后建，不做一半丢弃——与 build_map 同纪律）。
+static func build_map_blend(map: MapDataClass, palette: Dictionary, chunk_cols := 10,
+		chunk_rows := 10, blend_material: Material = null, size := 1.0,
+		elevation_step := DEFAULT_ELEVATION_STEP,
+		solid_factor := DEFAULT_SOLID_FACTOR) -> Variant:
+	if elevation_step <= 0.0 or solid_factor <= 0.0 or solid_factor >= 1.0 or size <= 0.0:
+		return null
+	if chunk_cols <= 0 or chunk_rows <= 0:
+		return null
+	if not (blend_material is Material):
+		return null
+	if not _palette_table_valid(map, palette):
+		return null
+	var used := {}
+	for cell in map.cells():
+		used[map.terrain_at(cell)] = true
+	var echo := {}
+	for tid in used:
+		echo[tid] = palette[tid]
+	var chunks: Array = []
+	var rects := chunk_rects_for(map.width, map.height, chunk_cols, chunk_rows)
+	for rect in rects:
+		var built: Variant = build_chunk_blend(map, rect, palette, blend_material, size,
+			elevation_step, solid_factor)
+		if built == null:
+			return null
+		chunks.append(built)
+	return {
+		"chunks": chunks,
+		"chunk_rects": rects,
+		"palette": echo,
+		"blend_material": blend_material,
+		"style": "blend",
+		"size": size,
+		"elevation_step": elevation_step,
+		"solid_factor": solid_factor,
+	}
+
+
+## 单 chunk 构建（blend style）。palette 须含图内全部地形 id（全图预检——邻块格
+## 数据可读，色板覆盖与 chunk 边界无关）；blend_material 非 Material / 空矩形（无格）/
+## 参数非法 → null。几何/UV/索引/faces 与 build_chunk 逐位一致，仅多顶点 COLOR。
+static func build_chunk_blend(map: MapDataClass, chunk: Rect2i, palette: Dictionary,
+		blend_material: Material, size := 1.0, elevation_step := DEFAULT_ELEVATION_STEP,
+		solid_factor := DEFAULT_SOLID_FACTOR) -> Variant:
+	if elevation_step <= 0.0 or solid_factor <= 0.0 or solid_factor >= 1.0 or size <= 0.0:
+		return null
+	if not (blend_material is Material):
+		return null
+	if not _palette_table_valid(map, palette):
+		return null
+	var cells := chunk_cells(map, chunk)
+	if cells.is_empty():
+		return null
+	# 按地形分组（与 build_chunk 同口径：组内 chunk 行主序、surface 序 = 首现序——
+	# 保证 blend 与 fallback 的 faces 序逐位一致，face 表合同不随 style 改变）
+	var groups := {}
+	var order: Array[int] = []
+	for cell in cells:
+		var tid := map.terrain_at(cell)
+		if not groups.has(tid):
+			groups[tid] = [] as Array[Vector2i]
+			order.append(tid)
+		(groups[tid] as Array[Vector2i]).append(cell)
+	var mesh := ArrayMesh.new()
+	var surfaces: Array = []
+	for tid in order:
+		surfaces.append(_build_surface(map, tid, groups[tid], blend_material, size,
+			elevation_step, solid_factor, mesh, palette))
+	return {"chunk": chunk, "mesh": mesh, "surfaces": surfaces}
+
+
 # ---------------- 单 surface（一种地形类型的全部归属几何） ----------------
 
 ## chunk 内同地形格的顶面 + 归属边带 + 归属角落，逐面 emit 到共享 mesh 的新 surface。
+## palette 非空 = blend style（M1a+ BLEND-01）：逐面附顶点 COLOR（端点=所在格纯色，
+## 权重合同见 hex_terrain_blend.gd）；material 此时 = 共享 blend_material。
+## palette 为空 = fallback 材质槽路线（原行为零改动——不设 COLOR 通道）。
 static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vector2i],
 		material: Material, size: float, elevation_step: float, solid_factor: float,
-		mesh: ArrayMesh) -> Dictionary:
+		mesh: ArrayMesh, palette: Dictionary = {}) -> Dictionary:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_material(material)
+	var blend := not palette.is_empty()
+	var c_owner := Color.BLACK  # blend 下 = 本地形纯色（palette 已全图预检，查不落空）
+	if blend:
+		c_owner = palette[terrain_id]
 	var faces: Array[Dictionary] = []
 	var top_count := 0
 	var edge_count := 0
@@ -215,17 +322,22 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 		var center := Hex.axial_to_world(cell, size)
 		center.y = h
 		# ① 顶面：格心 + 六内顶点三角扇（每格恒 6 面；首版平整不扰动；水平面 → 平面 UV）
+		#   blend：全顶点 = 本格纯色（中心主地形纯度——格心不参与混合）
 		for k in 6:
 			var a := center
 			var b := Hex.inner_vertex(cell, k, size, solid_factor, h)
 			var c := Hex.inner_vertex(cell, (k + 1) % 6, size, solid_factor, h)
 			vi = _emit_face(st, vi, a, b, c, Vector3.UP,
-				_uv_planar(a, size), _uv_planar(b, size), _uv_planar(c, size))
+				_uv_planar(a, size), _uv_planar(b, size), _uv_planar(c, size),
+				_cols(c_owner, c_owner, c_owner) if blend else null)
 			faces.append({"kind": "top", "cell": cell, "dir": k})
 			top_count += 1
 		# ② 边带：共享边由两格稳定 ID 较小者生成（界外邻格 → 不生成，无悬空连接）。
 		#   UV 随边分类：平连 = 水平面（与顶面同一世界平面映射，整图连续）；
 		#   斜坡/陡面 = 侧面（u 沿边切向、v 跟高程——T8 约定，见类头注）
+		#   blend：owner 侧端点 (v1,v2) = owner 纯色（权重 (1,0)）、邻格侧 (v3,v4) =
+		#   邻格纯色（权重 (0,1)）——带内过渡交给顶点 COLOR 线性插值（边带 = 仿射
+		#   参数 v3 = v1+bridge，线性插值在几何中点 = 0.5 权重混合，BLEND-01 合同）
 		for d in 6:
 			var nb := Hex.neighbor(cell, d)
 			if not map.has_cell(nb):
@@ -242,26 +354,39 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 			var v4 := v2 + Vector3(br.x, 0.0, br.y)
 			v3.y = hnb
 			v4.y = hnb
+			var c_nb := Color.BLACK  # blend 下 = 邻格纯色
+			if blend:
+				c_nb = palette[map.terrain_at(nb)]
 			var n1 := _face_normal(v1, v3, v4)
 			var n2 := _face_normal(v1, v4, v2)
 			if etype == EDGE_FLAT:
 				vi = _emit_face(st, vi, v1, v3, v4, n1,
-					_uv_planar(v1, size), _uv_planar(v3, size), _uv_planar(v4, size))
+					_uv_planar(v1, size), _uv_planar(v3, size), _uv_planar(v4, size),
+					_cols(c_owner, c_nb, c_nb) if blend else null)
 				vi = _emit_face(st, vi, v1, v4, v2, n2,
-					_uv_planar(v1, size), _uv_planar(v4, size), _uv_planar(v2, size))
+					_uv_planar(v1, size), _uv_planar(v4, size), _uv_planar(v2, size),
+					_cols(c_owner, c_nb, c_owner) if blend else null)
 			else:
 				var tangent := Hex.edge_tangent_world(d)
 				vi = _emit_face(st, vi, v1, v3, v4, n1,
 					_uv_side_edge(v1, tangent, size), _uv_side_edge(v3, tangent, size),
-					_uv_side_edge(v4, tangent, size))
+					_uv_side_edge(v4, tangent, size),
+					_cols(c_owner, c_nb, c_nb) if blend else null)
 				vi = _emit_face(st, vi, v1, v4, v2, n2,
 					_uv_side_edge(v1, tangent, size), _uv_side_edge(v4, tangent, size),
-					_uv_side_edge(v2, tangent, size))
+					_uv_side_edge(v2, tangent, size),
+					_cols(c_owner, c_nb, c_owner) if blend else null)
 			faces.append({"kind": "edge", "cell": cell, "dir": d, "edge_type": etype})
 			faces.append({"kind": "edge", "cell": cell, "dir": d, "edge_type": etype})
 			edge_count += 2
 		# ③ 角落：顶点 k 三格 ID 最小者生成补洞三角（三格任一界外 → 不生成）。
 		#   UV：三格等高 = 水平面 → 平面映射；否则 = 侧面（u 平面、v 跟高程——T8 约定）
+		#   blend：角面顶点 = 三格权重合同的单位权重锚点（M1a+ BLEND-02）——
+		#   p1 = 归属格 (1,0,0)、p2 = N(k) 侧 (0,1,0)、p3 = N(k−1) 侧 (0,0,1)
+		#   （合同 = HexTerrainBlend.corner_weights / blend_color3：面内三色过渡 =
+		#   顶点 COLOR 线性插值，重心 = (1/3,1/3,1/3) 权重混合、和恒 1；锚点从同一
+		#   全局参数计算 → 跨 chunk 角面位置/颜色不随划分改变——锚见
+		#   tests/test_hex_terrain_blend_corner.gd）
 		for k in 6:
 			var nb_k := Hex.neighbor(cell, k)
 			var nb_k1 := Hex.neighbor(cell, k - 1)  # 方向 k−1（neighbor 内部 wrapi）
@@ -276,13 +401,20 @@ static func _build_surface(map: MapDataClass, terrain_id: int, group: Array[Vect
 			var p3 := p1 + Vector3(br_k1.x, 0.0, br_k1.y)  # dir k−1 邻格侧端点
 			p2.y = _y_of(map, nb_k, elevation_step)
 			p3.y = _y_of(map, nb_k1, elevation_step)
+			var c_nbk := Color.BLACK  # blend 下 = N(k) 侧 / N(k−1) 侧端点纯色
+			var c_nbk1 := Color.BLACK
+			if blend:
+				c_nbk = palette[map.terrain_at(nb_k)]
+				c_nbk1 = palette[map.terrain_at(nb_k1)]
 			var n := _face_normal(p1, p3, p2)
 			if map.elevation_at(cell) == map.elevation_at(nb_k) and map.elevation_at(cell) == map.elevation_at(nb_k1):
 				vi = _emit_face(st, vi, p1, p3, p2, n,
-					_uv_planar(p1, size), _uv_planar(p3, size), _uv_planar(p2, size))
+					_uv_planar(p1, size), _uv_planar(p3, size), _uv_planar(p2, size),
+					_cols(c_owner, c_nbk1, c_nbk) if blend else null)
 			else:
 				vi = _emit_face(st, vi, p1, p3, p2, n,
-					_uv_side_corner(p1, size), _uv_side_corner(p3, size), _uv_side_corner(p2, size))
+					_uv_side_corner(p1, size), _uv_side_corner(p3, size), _uv_side_corner(p2, size),
+					_cols(c_owner, c_nbk1, c_nbk) if blend else null)
 			faces.append({"kind": "corner", "cell": cell, "dir": k})
 			corner_count += 1
 	st.commit(mesh)
@@ -307,23 +439,36 @@ static func _y_of(map: MapDataClass, cell: Vector2i, elevation_step: float) -> f
 ## faces 序 = 三角序（本函数只 emit，面记录由调用方追加——两者严格同步）。
 ## UV 由调用方按面分类选取（平面/侧面公式见下方 _uv_*——T8 约定的唯一计算点，
 ## 不在两处各算）。
+## cols 非空（PackedColorArray 恰 3 项）= blend style 附顶点 COLOR（BLEND-01：
+## 端点纯色 → 带内线性插值；null/空 = fallback 不设 COLOR 通道——同一发射路径，
+## 保证两 style 几何逐位一致）。
 ## 索引序 = (base, base+2, base+1)：索引三角俯视**顺时针** = Godot 正面（F-1 修复，
 ## 2026-10-10）；raw 顶点序保持几何逆时针（碰撞/face 表口径，见类头注「绕序双层口径」）。
 static func _emit_face(st: SurfaceTool, base: int, a: Vector3, b: Vector3, c: Vector3,
-		n: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2) -> int:
-	st.set_normal(n)
-	st.set_uv(uv_a)
-	st.add_vertex(a)
-	st.set_normal(n)
-	st.set_uv(uv_b)
-	st.add_vertex(b)
-	st.set_normal(n)
-	st.set_uv(uv_c)
-	st.add_vertex(c)
+		n: Vector3, uv_a: Vector2, uv_b: Vector2, uv_c: Vector2,
+		cols: Variant = null) -> int:
+	var pc: PackedColorArray = cols if cols is PackedColorArray else PackedColorArray()
+	var pts: Array[Vector3] = [a, b, c]
+	var uvs: Array[Vector2] = [uv_a, uv_b, uv_c]
+	for i in 3:
+		if pc.size() == 3:
+			st.set_color(pc[i])
+		st.set_normal(n)
+		st.set_uv(uvs[i])
+		st.add_vertex(pts[i])
 	st.add_index(base)
 	st.add_index(base + 2)
 	st.add_index(base + 1)
 	return base + 3
+
+
+## 三色顶点组（blend style 的 _emit_face cols 参数构造——集中一处，调用点免散装数组）。
+static func _cols(ca: Color, cb: Color, cc: Color) -> PackedColorArray:
+	var out := PackedColorArray()
+	out.append(ca)
+	out.append(cb)
+	out.append(cc)
+	return out
 
 
 ## 水平面 UV（顶面/平连边带/等高角落）：世界平面映射 u = x/2R、v = −z/2R
@@ -362,3 +507,29 @@ static func _material_table_valid(map: MapDataClass, materials: Variant) -> bool
 		if not (table[tid] is Material):
 			return false
 	return true
+
+
+## 全图色板预检（blend style）：图内任一格地形 id 缺槽 / 槽值非 Color / 任一通道
+## 非有限或为负 → false（与材质表同纪律——无缺槽补色、无静默跳格；色板约定
+## alpha=1，混色含 alpha 通道，见 hex_terrain_blend.gd 头注）。
+static func _palette_table_valid(map: MapDataClass, palette: Variant) -> bool:
+	if not (palette is Dictionary):
+		return false
+	var table: Dictionary = palette
+	for cell in map.cells():
+		var tid := map.terrain_at(cell)
+		if tid == MapDataClass.TERRAIN_NONE or not table.has(tid):
+			return false
+		if not _color_entry_valid(table[tid]):
+			return false
+	return true
+
+
+## 单色板槽合法性：Color 且 RGBA 通道全部有限、非负（上界不设——HDR 过亮是
+## 合法美术选择；负通道无意义，拒）。
+static func _color_entry_valid(v: Variant) -> bool:
+	if not (v is Color):
+		return false
+	var col: Color = v
+	return is_finite(col.r) and is_finite(col.g) and is_finite(col.b) and is_finite(col.a) \
+		and col.r >= 0.0 and col.g >= 0.0 and col.b >= 0.0 and col.a >= 0.0
