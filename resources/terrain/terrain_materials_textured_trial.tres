@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="TerrainMaterialLibrary" format=3]
 
-[ext_resource type="Texture2D" path="res://art_tests/grass_tile2x2.png" id="1_capy5"]
-[ext_resource type="Texture2D" path="res://art_tests/offset_test_hd.png" id="2_oni6e"]
+[ext_resource type="Texture2D" path="res://resources/terrain/trial/grass_tile2x2_placeholder.png" id="1_capy5"]
+[ext_resource type="Texture2D" path="res://resources/terrain/trial/offset_test_placeholder.png" id="2_oni6e"]
 [ext_resource type="Script" path="res://scripts/core/data/terrain_material_library.gd" id="3_hnpfy"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lx63h"]

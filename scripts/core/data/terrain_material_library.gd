@@ -11,7 +11,10 @@
 ## - 主线默认表 = resources/terrain/terrain_materials_default.tres（色块起步：
 ##   6 类型 StandardMaterial3D，颜色 = DEFAULT_PALETTE——测试锚定 .tres 与代码同源）；
 ## - 贴图试验表 = resources/terrain/terrain_materials_textured_trial.tres（M1a-T8
-##   美术并行验证分支的产物示例：art_tests 草贴图 albedo_texture + tint 混色，
+##   美术并行验证分支的产物示例：贴图 albedo_texture + tint 混色。2026-10-10 F-2
+##   修复：ext_resource 指向**入库占位纹理** resources/terrain/trial/*.png
+##   （tools/make_trial_textures.gd 确定性生成）——干净克隆门禁可复现；本地换真贴图
+##   = 把 .tres 的 ext_resource 指回 art_tests/*.png（.gitignore 不入库），
 ##   使用说明与合并路径见 docs/notes/m1a-t8-art-branch.md）；
 ## - 色块材质不开 vertex_color_use_as_albedo（builder 无顶点色路线，04 M1a-T3 细化）；
 ## - 纯 Resource：零场景节点（ADR-2；删 scripts/ui/** 不影响本文件与 tests/）。

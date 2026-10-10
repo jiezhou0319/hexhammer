@@ -63,8 +63,8 @@ func test_textured_trial_library_loads() -> void:
 			var tex: Texture2D = (mat as StandardMaterial3D).albedo_texture
 			expect(tex != null, "贴图试验库类型 %d 应带 albedo_texture（换贴图即所见的载体）" % tid)
 			if tex != null:
-				expect(String(tex.resource_path).begins_with("res://art_tests/"),
-					"类型 %d 贴图指向 art_tests 试验素材（got %s）" % [tid, tex.resource_path])
+				expect(String(tex.resource_path).begins_with("res://resources/terrain/trial/"),
+					"类型 %d 贴图指向入库占位纹理（F-2：干净克隆可复现；got %s）" % [tid, tex.resource_path])
 	for tid in [3, 4, 5]:
 		var mat2 := lib.material_for(tid)
 		if mat2 is StandardMaterial3D:
