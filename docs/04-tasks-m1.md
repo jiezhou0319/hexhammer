@@ -243,6 +243,40 @@ WorldData 与 MapData 并存（不塞 `mods`）——见方案「核心设计与
 | GATE-ENTRY | 统一门禁入口（导入→单测→场景→探针） | 全链退出码正确聚合；无图形环境报「未验证」 | **2026-10-11 完成**：tools/gate_all.gd——单命令五步链 + 探针（`-- --with-probe` 或桌面环境触发，否则显式报「未验证」≠全绿）；**全链实测 6/6 PASS exit 0**（导入/单测 203/0/拾取/高亮/相机/真 GPU 探针 4/4）；图形失败计入总失败（不被单测绿覆盖） |
 | LAND-S | 七格测试场（T2-SPIKE 附卡） | 平/坡/阶地/真崖及混合角全覆盖目检 + 步数默认值拍板记录 | **2026-10-11 完成**：`tools/land_spike_probe.gd`（实验几何 spike：terrace 水平均分 + Catlike 竖直剖面 v_step=1/ceil(steps/2)、真崖 = 共享崖线 t=0.5 同 XZ 墙顶/墙底 + 高低裙边 Δ≥3——**不进 addons 合同**）+ `tools/land_spike_fixtures.gd`（测试锚固定小图 fixture：七格 e=[1,2,3,2,1,0] Δ 全档 0-3 + 断面 Δ2/Δ3，make_fixed_maps 特征常量先例，LAND-01 矩阵图/LAND-02 沙盒可复用同一布局）；证据 = `docs/evidence/m1a/land_spike/` 六图 + summary（overview_steps5/3、section_d2_steps5/3、section_d3_ar100/150；真 GPU forward_plus 实跑，两次健全跑哈希逐位一致 = 可复现）；探针结构 CHECK 两道闸（非背景像素 ≥12000 + 断面列跨度 ≥0.30×帧高，按健全帧实测校准）+ 负向变异自检 1 次（yaw 临时改 90° 复现退化被拦 exit 1）；断面相机初版沿边切向正对致证据废片（台阶压 ~15px 细线、真崖侧视退化不可见——像素列审计实证）→ 改低位斜视偏航 38°/俯角 20°（文件头修订条写明理由）；**无新单测**（卡表测试锚明文：spike 产物 = 目检结论 + profile 默认值拍板记录）——门禁实跑：--import exit 0、run_tests 13 文件 / **203 用例** / 0 失败 exit 0（与基线持平，只增不减满足）、gate_all 全链 6/6 含真渲染探针 4/4；拍板素材齐、待主创目检（卡内拍板项 = spike 后与 LAND-02 合并拍）：① 步数默认 5 vs 3（spike 结论 = 5，Catlike 原档）、② cliff 纵横比 ×1.0 vs ×1.5（竖直夸张系数；横轴连接带宽 ≈0.35·size 为合同常量）——均属 LandformProfile 默认值（LAND-02 落地进 §8.1），翻案只改默认值零返工；遗留 low：沙盒未落 .tscn（档对比 = 并列出图 + 候选档常量，非可切换交互件——执行方案 :272「沿 blend_sandbox 先例」未全落）、out/hexhammer-doc-ambiguity-2026-10-11.md 过路件不随本批提交（处置归主创） |
 
+**T2 阶地批登记（2026-10-11 完成；LAND-01/02/03 + GRID-01 四卡——T2 全卡收官，
+无河无路世界完整可玩可渲染）**：
+
+| ID | 卡 | 验收（执行方案 §3 摘要） | 完成登记 |
+|---|---|---|---|
+| LAND-01 | 连接矩阵与 WorldData 落地 | 高程组合及方向旋转穷举矩阵，平/坡/崖全部闭合并可见；§2.5 四件落地（首物） | **2026-10-11 完成**：§2.5 四件 = `scripts/core/data/world_data.gd`（容器 + NeighborLinkData `link_id=(min,max)` + 校验器 + 固定键序序列化；rivers 等未解锁集合恒空、from_dict 拒绝非空）+ `scripts/content/map_io.gd` 增 `.world.json` 第四伴生（缺失→empty()）+ `tests/test_world_data.gd` **12 用例**（Vector2i 显式 [x,y] 转换层：断言落盘 JSON 无 "(3, 17)" 字符串形状、user:// 真文件往返、零回写 MapData）；classify_edge 四分类（flat / slope / terrace(Δ∈[2,threshold)) / cliff(Δ≥threshold=3)，修订记录一口径）threshold 参数化；矩阵图 = `tools/land_matrix_fixtures.gd`（特征常量区、零随机、间距防串扰自检）Δ0..max(3,threshold)×方向 0..5 全对 + 角 (min,mid,max) 等价类全集（默认 20 类、threshold=4 扩 35 类含值域随档扩，修订记录三之 8），兼作 LAND-02/03 fixture 与探针 CHECK 图 |
+| LAND-02 | 阶地与 cliff 交汇 | 同高程端点不移位；阶地-崖角不漏缝；关闭阶地可退回旧坡 | **2026-10-11 完成**：terrace_lerp/terrace_vfrac 按方案原式（v_step=1/ceil(steps/2)，修订记录三之 3）；步数-Δ 绑定 = 每爬一级一组、组边界环恰落高程整数层（测试锚）；阶地环带面数 = 2·n·steps 解析预言逐边核对；真垂直崖 = 共享崖线 XZ(t=0.5) + 同 XZ 墙顶/墙底 + 高低裙边（断言墙顶/墙底 XZ 逐位一致 + 恰 2 竖直面 + 面数 6 + edge_type=cliff_wall）；角落情形分派 = **边界环 3D 耳切三角化**（方案只要求沿 SSF/SCS/CCS 结构枚举——简单扇形在锚点自身侧 tread 段产生零面积裂缝、纯 XZ 耳切在双崖角死锁，3D 耳切以 XZ 退化耳=竖直鳍面统一覆盖等高/阶地扇/坍缩扇/崖×阶地混合角；边界段恰用一次、角面数恒=环点数−2 解析预言）；blend 承接 = 每新顶点 COLOR 由同一 edge_weights(t)/corner_weights(u,v) 显式求值；`scripts/core/data/landform_profile.gd` 独立 Resource（terrace_enabled 默认开 / terrace_steps 默认 5 / cliff_vertical 默认开 / cliff_threshold 默认 3，`resources/terrain/landform_profile_default.tres` + 代码对账）；回退锚 = 全关 profile 与不传 profile 的 mesh 数组 + faces 元数据逐位一致；blend 头注（不设中点顶点→限定回材质级表现切片）与 tests/test_hex_terrain_blend 面数/Δ2 标签锚同步改；矩阵图全量焊接流形锚 = 重复面 0 / 边引用≤2 / 开边⊆基线外沿（位置级对照）/ 全顶点有限 / 绕序 y≥0（竖直面 |cy|≤1e-6 阈 = 坐标 170 处 float32 噪声 ~1e-5 的安全档）；测试 = `tests/test_landform_terraces.gd` **16 用例** + test_hex_terrain_elevation/materials 锚同步改（用例数不减） |
+| LAND-03 | geometry→picking→highlight 合同 | 每类新面拥有稳定候选格，真实 raycast 与归属一致；高亮贴合新表面不埋入阶地 | **2026-10-11 完成**：faces 保持 top/edge/corner、edge_type 细化 terrace/cliff_wall；resolve_face **零分支**（pick_edge_band/pick_corner 仅加 threshold 默认参）——terrace riser 归最近格心+ID 决胜、cliff_wall 归高地侧；corner spread≥threshold→最高格、spread=2 阶地形角→最近格心；threshold 经 chunk_pick_data/resolve_hit/resolve_face/map_picker.setup 全链接线（评审 medium 项，有回归锚）；高亮贴合 = **footprint 口径**（每格顶面恒平 = cell_surface_anchor 合同、扇 y 恒高于覆盖位置地表、riser/崖壁/角面顶点不入 inner hexagon XZ 内部，1e-3 距离余量隔跨视角 float 噪声）；face 表/碰撞汤逐索引对应在新面数下保持；测试 = `tests/test_land_picking_highlight.gd` **5 用例** + test_hex_picking/test_hex_picking_ray 锚按四分类同步改（用例数不减）；`tools/picking_scene_check.gd` 扩 F/G 真实 raycast 用例 |
+| GRID-01 | 格线层（拍板⑦新增：格线层归 T2） | 全部格子细描边、贴各自格面高度、可整体关闭；跨 chunk 一致 | **2026-10-11 完成**：`addons/hexhammer/hex_grid_line_builder.gd` 沿 NeighborLink 边 + 地图外缘边发射、每物理边恰一 strip（内部边归稳定 ID 小格、外缘归本格，计数 = 6N−内部边数 oracle）；贴面高度 = 两侧较高侧 y + lift_for_tier(TIER_GRID_LINE)（hex_highlight 档位表登记 tier2=0.04，预留 tier3+ 给 ROAD-01/WATER-02，半档描线 0.035 之下不冲突）；TerrainStyle 扩 grid_line 参数组（enabled 默认开 / 色 / α0.28 / 宽 0.012，非法参数 problems_for 报缺）；关 = inputs_for 不出键、地形 mesh 逐位回基线；格线 mesh 无 COLOR 不参与 blend 色板、不进拾取层；跨 chunk 三种划分逐位一致；测试 = `tests/test_hex_grid_line.gd` **6 用例**；`tools/render_probe.gd` 新增 CHECK-6 |
+
+**T2 批门禁与证据（本会话实跑）**：`--import` exit 0；run_tests = **17 文件 /
+242 用例 / 0 失败** exit 0（基线 13 文件/203 → +4 文件 +39 用例只增不减；新四件
+12+16+5+6 = 39，均沿 tests/test_case.gd 基类、oracle 独立拼装——方案公式 +
+HexMath 全局参数重推，不复制实现）；gate_all 全链 6/6 PASS exit 0 含真渲染探针
+render_probe **6/6**（forward_plus 真渲染：CHECK-6 格线差分 5632px>300、
+CHECK-T2 阶地/真崖矩阵图差分 1380px>500、基线可见 74180px——证据 =
+`docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt`（CHECK-6/T2 行）
++ blend 帧图同刻重出）；picking_scene_check **8 用例/0 失败** exit 0（新增
+F 阶地 Δ2 最近格心+edge_type=terrace、G 崖壁 Δ3 高地侧+cliff_wall+水平射线正中
+竖直墙的真实 raycast 用例）。评审：七条上轮问题全部实证修复（两 high：阶地 blend
+逐点权重探针 60/60 吻合、崖墙朝向双归属恒朝低侧；medium：threshold 全链接线带
+回归锚），门禁独立复跑 245/0 一致——**通过**。一次性冒烟脚本 smoke_land.gd 已删
+（验证结论并入正式测试）；spike 件 land_spike_probe.gd 未动（只借公式口径）。
+**未尽事项**：① m1a_sandbox 未接默认 profile（观感验证走 render_probe/
+land_spike，接线属后续表现层选择）；② 矩阵图未落 resources/maps/fixed 伴生
+.json（fixture 纯代码件沿 land_spike_fixtures 先例，需 .json 工件时由
+make_fixed_maps 扩展）；③ LAND-S 步数默认（5 vs 3）与 cliff 纵横比拍板仍悬
+——本批按默认 5/×1.0 落档；④ repo 根 out/ 外部产物（会话前已存在）未触碰
+不入本批。**遗留 low（评审登记）**：仓库根 `nul` 垃圾文件（72B shell 报错重定向
+误写，未跟踪不入本批，入库前应删——Windows 保留名须 `\\?\` 路径删）；「渲染探针
+证据早于修复约 28 分钟」一项**已随终跑闭合**（评审时证据 22:51:44 早于修复
+23:19-23:27、像素中性已实证；终跑 gate_all 含探针 23:42:54 重出证据，晚于全部
+修复文件 mtime，现档与终代码同刻）。
+
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
 间等）全为候选目标，T0 基线实测前不构成承诺。

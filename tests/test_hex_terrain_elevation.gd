@@ -160,7 +160,9 @@ func test_cross_chunk_seam_with_elevation() -> void:
 			expect((f["v1"] - f["v0"]).cross(f["v2"] - f["v0"]).y > 0.0, "跨缝边带绕序朝上 %s" % k)
 	expect(seam >= 10, "跨缝边带 ≥ 10 条（20×10 中缝），got %d" % seam)
 	expect(seam_types.has(Builder.EDGE_SLOPE), "跨缝含斜坡（Δ1）")
-	expect(seam_types.has(Builder.EDGE_CLIFF), "跨缝含陡面（Δ2）")
+	# T2 四分类（LAND-01 ①）：本图缝上 Δ2 在默认档为阶地（terrace）；陡面/cliff_wall
+	# 属 profile 几何档（tests/test_landform_terraces.gd 锚），基线 seam 只锚分类
+	expect(seam_types.has(Builder.EDGE_TERRACE), "跨缝含阶地（Δ2 = terrace，默认 threshold=3）")
 	# ③ 跨缝角落抽查：四块共享角的顶点 = 三格高程（含 chunk 边界两侧格）
 	var checked_corner := false
 	for f in faces:
@@ -221,8 +223,8 @@ func test_random_elevation_map_no_broken_faces_no_zfighting() -> void:
 			var nb := Hex.neighbor(cell, d)
 			if m.has_cell(nb):
 				class_counts[Builder.classify_edge(m.elevation_at(cell) - m.elevation_at(nb))] = true
-	for t in [Builder.EDGE_FLAT, Builder.EDGE_SLOPE, Builder.EDGE_CLIFF]:
-		expect(class_counts.has(t), "随机图须含三档连接（%s）" % t)
+	for t in [Builder.EDGE_FLAT, Builder.EDGE_SLOPE, Builder.EDGE_TERRACE, Builder.EDGE_CLIFF]:
+		expect(class_counts.has(t), "随机图须含全部四档连接（%s——T2 四分类）" % t)
 	var r := _build_ok(m)
 	expect_eq((r["chunks"] as Array).size(), 24, "60×40 / 10×10 = 24 chunk")
 	_expect_full_invariants(_collect_faces(r), m, "随机图 60×40")

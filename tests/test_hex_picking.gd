@@ -2,12 +2,14 @@
 ## 覆盖 04 M1a-T5「验收 + 细化新增」的纯规则面：
 ##   - 顶面归本格（微决策 3）+ 顶面 rounding 链一致性（局部 XZ → 浮点 axial → cube
 ##     rounding 恒回本格——内六边形整块在 hex Voronoi 内）；
-##   - 边带归属：flat/slope = 局部 XZ 最近逻辑格心、距离相等按棋盘固定 ID
-##     （index_of）决胜（正反用例 + 全 6 方向对称）；cliff = 高地侧（含「XZ 更近的
-##     低格不得截胡」反例与「ID 决胜偏向低格仍归高格」反例）；
+##   - 边带归属：flat/slope/terrace = 局部 XZ 最近逻辑格心、距离相等按棋盘固定 ID
+##     （index_of）决胜（正反用例 + 全 6 方向对称）；cliff（|Δh|≥cliff_threshold，
+##     默认 3——T2 四分类泛化）= 高地侧（含「XZ 更近的低格不得截胡」反例与
+##     「ID 决胜偏向低格仍归高格」反例）；
 ##   - 角落归属（三格，微决策 3 对角落的泛化口径，见 hex_picking.gd 头注）：
-##     max−min ≥ 2 → 最高格（含并列最高 ID 决胜与「面归属格 ≠ 结果格」判别例）；
-##     否则 → 最近格心（含共享外顶点三向精确平局 → 最小 ID）；
+##     max−min ≥ cliff_threshold（默认 3）→ 最高格（含并列最高 ID 决胜与
+##     「面归属格 ≠ 结果格」判别例）；否则（全等高 / 差一级 / 阶地形 spread=2）
+##     → 最近格心（含共享外顶点三向精确平局 → 最小 ID）；
 ##   - face→格映射数据层：碰撞三角形汤 = mesh surface 顶点数组按构建序拼接（逐位）、
 ##     face 表逐索引对应、ConcavePolygonShape3D set/get_faces 往返保序
 ##     （引擎 face_index 语义的小场景校验在 tools/picking_scene_check.gd，见其头注）；
@@ -154,17 +156,21 @@ func test_cliff_goes_to_high_side_all_dirs() -> void:
 			"cliff 方向 %d 反转：a 高且远侧命中仍归 a" % d)
 
 func test_cliff_vs_slope_classification_boundary() -> void:
-	# |Δh|=2 即 cliff（Catlike 口径 ≥2）；|Δh|=1 是 slope——分类边界两侧规则切换
+	# T2 四分类边界（LAND-01 ①/LAND-03 ①）：Δ0 flat / Δ1 slope / Δ2 terrace
+	#（阶地 riser 沿最近格心）/ Δ≥3 cliff（含 cliff_wall 真垂直墙，归高地侧）
 	var m := MapDataClass.new(5, 5)
 	var a := Hex.axial_of(Vector2i(2, 2))
 	var b := Hex.neighbor(a, 0)
 	m.set_elevation(a, 0)
 	m.set_elevation(b, 2)
-	expect_eq(Picking.pick_edge_band(_lerp_centers(a, b, 0.45), a, 0, m, SIZE), b,
-		"|Δh|=2 = cliff：归高地侧")
+	expect_eq(Picking.pick_edge_band(_lerp_centers(a, b, 0.45), a, 0, m, SIZE), a,
+		"|Δh|=2 = terrace：归最近格心（近 a 侧——不因高差偏袒高格）")
 	m.set_elevation(b, 1)
 	expect_eq(Picking.pick_edge_band(_lerp_centers(a, b, 0.45), a, 0, m, SIZE), a,
 		"|Δh|=1 = slope：归最近格心（近 a 侧）")
+	m.set_elevation(b, 3)
+	expect_eq(Picking.pick_edge_band(_lerp_centers(a, b, 0.45), a, 0, m, SIZE), b,
+		"|Δh|=3 = cliff：归高地侧（XZ 更近 a 也不截胡）")
 
 # ================= 角落：三格归属（微决策 3 泛化口径）=================
 
@@ -197,8 +203,9 @@ func _corner_centroid(m, owner: Vector2i, j: int) -> Vector3:
 	return (p1 + p2 + p3) / 3.0
 
 func test_corner_cliff_goes_to_highest() -> void:
-	# max−min ≥ 2（悬崖形角落）→ 最高格：含 (0,0,2)/(0,1,2)/(0,2,1)/负层组合
-	var combos := [[0, 0, 2], [0, 1, 2], [0, 2, 1], [-1, 0, 2], [2, 2, 0]]
+	# max−min ≥ cliff_threshold（悬崖形角落，默认 3）→ 最高格：含 (0,0,3)/(0,1,3)/
+	# (0,3,1)/负层组合（T2 泛化：spread=2 的阶地形角移入最近格心口径，见下一条）
+	var combos := [[0, 0, 3], [0, 1, 3], [0, 3, 1], [-1, 0, 3], [3, 3, 0]]
 	for combo in combos:
 		var ha: int = combo[0]
 		var hb: int = combo[1]
@@ -234,14 +241,15 @@ func test_corner_cliff_goes_to_highest() -> void:
 			"resolve_face 角落分发（组合 %d/%d/%d）" % [ha, hb, hc])
 
 func test_corner_highest_tie_breaks_by_id() -> void:
-	# (2,0,2)：并列最高 {a,c} → index_of 小者 c——与面归属格（owner）解耦的判别例
+	# (3,0,3)：spread=3 悬崖形、并列最高 {a,c} → index_of 小者 c——与面归属格（owner）
+	# 解耦的判别例（T2 泛化：spread=2 的 (2,0,2) 属阶地形角 → 最近格心口径）
 	var m := MapDataClass.new(5, 5)
 	var a := Hex.axial_of(Vector2i(1, 1))
 	var b := Hex.neighbor(a, 2)
 	var c := Hex.neighbor(a, 1)
-	m.set_elevation(a, 2)
+	m.set_elevation(a, 3)
 	m.set_elevation(b, 0)
-	m.set_elevation(c, 2)
+	m.set_elevation(c, 3)
 	var oc := _owner_and_corner(m, a, b, c)
 	var owner: Vector2i = oc[0]
 	var j: int = oc[1]
@@ -250,8 +258,10 @@ func test_corner_highest_tie_breaks_by_id() -> void:
 	expect(owner != c, "判别前提：面归属格 owner ≠ 期望结果格 c")
 
 func test_corner_slope_like_nearest_center() -> void:
-	# max−min ≤ 1（等高/差一级）→ 最近格心：期望由测试侧独立距离算术推导
-	var combos := [[0, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 0], [-1, 0, 0]]
+	# max−min ≤ cliff_threshold−1（等高/差一级/**阶地形 spread=2**——T2 泛化）→
+	# 最近格心：期望由测试侧独立距离算术推导
+	var combos := [[0, 0, 1], [0, 1, 1], [1, 1, 1], [0, 0, 0], [-1, 0, 0],
+		[0, 0, 2], [0, 2, 2], [0, 1, 2]]
 	for combo in combos:
 		var ha: int = combo[0]
 		var hb: int = combo[1]

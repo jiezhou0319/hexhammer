@@ -36,6 +36,14 @@ const DEFAULT_LIFT := 0.02
 ## 层间 lift 档距：同格多层面（如 hover 层 × 选择层）各错一档，消除跨层同格
 ## 共面 z-fighting（几何重叠 + 精确同 y = 远近缩放下的缝合纹/闪源）
 const LIFT_TIER_STEP := 0.01
+## **lift 档位表（统一登记防冲突——GRID-01 起维护；新层取档先查此表）**：
+##   tier 0 = 选择/范围集扇面（lift_for_tier(0) = 0.02）
+##   tier 1 = hover 瞬时反馈扇面（0.03）
+##   tier 2 = 格线层 GRID-01（0.04；T2 登记——格线贴两侧较高侧格面，须高于任何
+##             高亮档防与扇面共面；关格线即无本档消费者）
+##   半档   = 描线带额外抬升 DEFAULT_PATH_LIFT_EXTRA（0.015 → 0.035，永不落整档）
+##   tier 3+ 预留：ROAD-01 路面 / WATER-02 水面（同批登记时续表）
+const TIER_GRID_LINE := 2
 ## 描线带相对本层扇面的额外抬升 = **1.5 档**（半档：0.015 不是 LIFT_TIER_STEP 的
 ## 整数倍 → 任何层的描线 lift 永不落在任何整档扇面 lift 上，带×扇全组合不共面；
 ## 见 tests/test_hex_highlight.gd test_lift_tiers_separate_coplanar_surfaces）
@@ -115,6 +123,17 @@ static func lift_for_tier(tier: int) -> float:
 static func cell_top_y(map: MapDataClass, cell: Vector2i,
 		elevation_step := 1.0, lift := DEFAULT_LIFT) -> float:
 	return float(map.elevation_at(cell)) * elevation_step + lift
+
+
+## CellSurfaceSampler 最小版（T2 LAND-03 ② 显式合同）：格面采样锚点 = 格心 XZ +
+## elevation×step——**不含 lift**（采样的是地表本身，不是高亮层）。拍板不做顶面
+## 扰动（Catlike Part 4 竖直抖动不采）→ 格面恒平、本公式在阶地/真崖档下不变
+## （高亮/单位贴合的锚点合同；测试锚定其恒等于该格顶面平面且扇面 lift 恒高于
+## footprint 覆盖位置地表——footprint 口径，修订记录三之 8）。
+static func cell_surface_anchor(map: MapDataClass, cell: Vector2i,
+		size := 1.0, elevation_step := 1.0) -> Vector3:
+	var c := Hex.axial_to_world(cell, size)
+	return Vector3(c.x, float(map.elevation_at(cell)) * elevation_step, c.z)
 
 
 ## 高亮节点放置位（世界坐标）：格心 xz + 内顶面 y。mesh 顶点已是局部形状 →

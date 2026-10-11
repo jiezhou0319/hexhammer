@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="LandformProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/landform_profile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+terrace_enabled = true
+terrace_steps = 5
+cliff_vertical = true
+cliff_threshold = 3

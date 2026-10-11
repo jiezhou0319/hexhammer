@@ -17,6 +17,13 @@
 ##   CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲——俯视可见
 ##     像素须过 CHECK-1 同款阈值（防纯白失败样），且与 SLOTS 地形帧差分 >
 ##     BLEND_DIFF_MIN_PX（证明 BLEND 材质效果真实存在，非只有数组测试）。
+##   CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与
+##     CHECK-4 帧（默认开格线）差分 > GRID_DIFF_MIN_PX——格线层真实可见的像素证据
+##     （同 style 同材质，差分归因唯一 = 格线层；执行方案 §3 GRID-01 测试锚）。
+##   CHECK-T2 阶地/崖几何对照（T2 LAND-01 ④：矩阵图 = render_probe 新 CHECK 图）：
+##     矩阵图（tools/land_matrix_fixtures.gd——Δ0..Δ3 × 方向 + 角等价类穷举的固定
+##     小图）以 LandformProfile 默认档重建，与同图基线帧差分 > T2_DIFF_MIN_PX
+##     ——阶地环带/真垂直崖/角情形分派的像素证据（§8.3「T2 阶地/崖目检 CHECK」）。
 ## 固定条件（GATE-02「给定旧固定图和规定相机」）：
 ##   - 图 = 沙盒同源 FIXED 手工固定图（resources/maps/fixed/playable_60x40.json，digest 入统计）；
 ##   - 相机 = 图包络中心正上方 y=CAM_HEIGHT 直视下（basis 显式：屏幕上 = 世界 −Z 北），
@@ -65,6 +72,8 @@ class Checker extends Node:
 	const MapViewClass := preload("res://scripts/ui/map_view.gd")
 	const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
 	const TerrainStyleClass := preload("res://scripts/core/data/terrain_style.gd")
+	const LandformProfileClass := preload("res://scripts/core/data/landform_profile.gd")
+	const MatrixFixtures := preload("res://tools/land_matrix_fixtures.gd")
 
 	# ---- 规定相机（数值写死并进统计——「规定相机」的可复现口径）----
 	## 相机高度（世界单位；图上方直视下。60×40/size=1 图包络约 105×61，
@@ -73,6 +82,9 @@ class Checker extends Node:
 	const CAM_FOV := 70.0
 	const CAM_NEAR := 0.5
 	const CAM_FAR := 600.0
+	## CHECK-T2 矩阵图相机高度（T2 阶地/崖目检）：矩阵图包络 ≈ 176×14（100×9 格），
+	## fov70/16:9 下可视宽 ≈ 2.49·h → h=90 覆盖 224 宽（余量 ~27%）
+	const MATRIX_CAM_HEIGHT := 90.0
 
 	# ---- 阈值（实测首报后按余量 ≥3× 定档；见统计 txt 实测值）----
 	## 地形可见像素下限 = 帧总像素 × 15%（整图入画预期 ~50%）
@@ -84,6 +96,10 @@ class Checker extends Node:
 	## CHECK-4：BLEND 帧与 SLOTS 地形帧的差分像素下限（S-4，2026-10-11——
 	## 保守起步值；实测首报后按「余量 ≥3×」规则上调）
 	const BLEND_DIFF_MIN_PX := 200
+	## CHECK-6：格线层差分像素下限（T2 GRID-01——起步保守值，实测首报后上调）
+	const GRID_DIFF_MIN_PX := 300
+	## CHECK-T2：阶地/真崖几何差分像素下限（矩阵图 + 默认 LandformProfile vs 基线）
+	const T2_DIFF_MIN_PX := 500
 
 	# ---- 高亮/描线固定格（固定条件；两组互不相交 → 差分归因干净）----
 	const HIGHLIGHT_COL_ROW := Vector2i(30, 20)  # 图中部内点（60×40 界内且 6 邻全在）
@@ -229,11 +245,62 @@ class Checker extends Node:
 		var sb_r := _count_diff(img_blend, img_terrain)
 		var style_diff_px: int = sb_r["count"]
 
+		# ---- CHECK-6 格线差分（T2 GRID-01）：同 BLEND style 关格线重渲，与
+		#      CHECK-4 帧（默认 style 开格线）差分——差分归因唯一 = 格线层 ----
+		var grid_off_style: TerrainStyleClass = (TerrainStyleClass.load_default_blend() as TerrainStyleClass)
+		if grid_off_style == null:
+			_fail("BLEND 默认 style 载入失败（CHECK-6 前置）")
+			return
+		grid_off_style.grid_line_enabled = false
+		if not _view.build_with_style(_map, grid_off_style, 10, 10, 1.0, 1.0):
+			_fail("格线关重渲失败（CHECK-6——style 解析问题？）")
+			return
+		await _frames(SETTLE_TERRAIN_FRAMES)
+		var img_grid_off: Image = await _capture()
+		if img_grid_off == null:
+			return
+		var g_r := _count_diff(img_blend, img_grid_off)
+		var grid_diff_px: int = g_r["count"]
+
+		# ---- CHECK-T2 阶地/崖几何对照（T2 LAND-01 ④：矩阵图 + 默认 LandformProfile
+		#      vs 同图基线帧——相机移到矩阵图包络上空，完检后不再回移）----
+		var matrix_map: MapDataClass = MatrixFixtures.build_matrix(3)
+		var matrix_center := HexCameraLib.map_focus_bounds(matrix_map, 1.0).get_center()
+		_cam.global_transform = Transform3D(
+			Basis(Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, -1.0), Vector3(0.0, 1.0, 0.0)),
+			Vector3(matrix_center.x, MATRIX_CAM_HEIGHT, matrix_center.y))
+		if not _view.build(matrix_map, 10, 10,
+				(TerrainMaterialLibraryClass.load_default() as TerrainMaterialLibraryClass).materials,
+				1.0, 1.0, 0.8):
+			_fail("矩阵图基线构建失败（CHECK-T2 前置）")
+			return
+		await _frames(SETTLE_TERRAIN_FRAMES)
+		var img_m0: Image = await _capture()
+		if img_m0 == null:
+			return
+		if not _view.build(matrix_map, 10, 10,
+				(TerrainMaterialLibraryClass.load_default() as TerrainMaterialLibraryClass).materials,
+				1.0, 1.0, 0.8, LandformProfileClass.make_default()):
+			_fail("矩阵图 profile 构建失败（CHECK-T2）")
+			return
+		await _frames(SETTLE_TERRAIN_FRAMES)
+		var img_m1: Image = await _capture()
+		if img_m1 == null:
+			return
+		var t2_r := _count_diff(img_m1, img_m0)
+		var t2_diff_px: int = t2_r["count"]
+		var m0_bg := _corner_bg(img_m0)
+		var m0_vis: int = 0
+		if m0_bg.get("ok", false):
+			m0_vis = int(_count_vs_color(img_m0, m0_bg["color"])["count"])
+
 		# ---- 判定 ----
 		var ok1 := terrain_px > terrain_min
 		var ok2 := highlight_px > HIGHLIGHT_MIN_PX
 		var ok3 := path_px > PATH_MIN_PX
 		var ok4 := blend_px > terrain_min and style_diff_px > BLEND_DIFF_MIN_PX
+		var ok6 := grid_diff_px > GRID_DIFF_MIN_PX
+		var okT2 := t2_diff_px > T2_DIFF_MIN_PX and m0_vis > int(float(img_m0.get_width() * img_m0.get_height()) * 0.05)
 		var pct := 100.0 * float(terrain_px) / float(maxi(total, 1))
 		var blend_pct := 100.0 * float(blend_px) / float(maxi(total, 1))
 		_print_check(ok1, "CHECK-1 地形顶面（SLOTS）：俯视可见 px=%d/%d（%.1f%%），阈值=%d（%.0f%%）"
@@ -244,6 +311,10 @@ class Checker extends Node:
 			% [path_px, PATH_MIN_PX, str(path_r["bbox"])])
 		_print_check(ok4, "CHECK-4 BLEND 对照：可见 px=%d/%d（%.1f%%）过地形阈值，与 SLOTS 帧差分 px=%d，阈值=%d，bbox=%s"
 			% [blend_px, total, blend_pct, style_diff_px, BLEND_DIFF_MIN_PX, str(sb_r["bbox"])])
+		_print_check(ok6, "CHECK-6 格线差分（GRID-01）：开格线 vs 关格线差分 px=%d，阈值=%d，bbox=%s"
+			% [grid_diff_px, GRID_DIFF_MIN_PX, str(g_r["bbox"])])
+		_print_check(okT2, "CHECK-T2 阶地/崖几何（矩阵图 + LandformProfile）：profile vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）"
+			% [t2_diff_px, T2_DIFF_MIN_PX, str(t2_r["bbox"]), m0_vis])
 
 		# ---- 留档（截图 + 统计 txt；写入失败按 FAIL——证据是本卡交付物）----
 		var saved := _save_evidence(img_terrain, img_hl, img_path, img_blend, {
@@ -251,16 +322,19 @@ class Checker extends Node:
 			"terrain_pct": pct, "highlight_px": highlight_px, "path_px": path_px,
 			"blend_px": blend_px, "blend_pct": blend_pct,
 			"style_diff_px": style_diff_px, "blend_min": BLEND_DIFF_MIN_PX,
-			"ok": [ok1, ok2, ok3, ok4], "bg": bg, "hl_bbox": hl_r["bbox"],
-			"path_bbox": path_r["bbox"], "sb_bbox": sb_r["bbox"]})
+			"grid_diff_px": grid_diff_px, "grid_min": GRID_DIFF_MIN_PX,
+			"t2_diff_px": t2_diff_px, "t2_min": T2_DIFF_MIN_PX, "t2_base_px": m0_vis,
+			"ok": [ok1, ok2, ok3, ok4, ok6, okT2], "bg": bg, "hl_bbox": hl_r["bbox"],
+			"path_bbox": path_r["bbox"], "sb_bbox": sb_r["bbox"],
+			"grid_bbox": g_r["bbox"], "t2_bbox": t2_r["bbox"]})
 		if saved == "":
 			_fail("证据文件写入失败（见上方输出）")
 			return
 		print("[渲染探针] 证据已留档：%s" % saved)
-		var all_ok := ok1 and ok2 and ok3 and ok4
+		var all_ok := ok1 and ok2 and ok3 and ok4 and ok6 and okT2
 		var runtime_backend := RenderingServer.get_current_rendering_method()
 		if all_ok:
-			print("PROBE OK — 4/4 检查通过（F-1 修复在 %s 俯视下成立：默认 CULL_BACK 全可见；SLOTS/BLEND 双路线均有像素证据）" % runtime_backend)
+			print("PROBE OK — 6/6 检查通过（F-1 修复在 %s 俯视下成立：默认 CULL_BACK 全可见；SLOTS/BLEND/格线/阶地真崖几何均有像素证据）" % runtime_backend)
 		else:
 			print("PROBE FAIL — 可见性/材质对照回归（%s 下有检查未过阈值，须上报）" % runtime_backend)
 		get_tree().quit(0 if all_ok else 1)
@@ -428,13 +502,18 @@ class Checker extends Node:
 		L.append("CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲，可见 px=%d / %d（%.1f%%，阈值同 CHECK-1），与 SLOTS 地形帧差分 px=%d，阈值=%d，bbox=%s → %s" % [
 			r["blend_px"], r["total"], r["blend_pct"], r["style_diff_px"], r["blend_min"],
 			str(r["sb_bbox"]), "PASS" if oks[3] else "FAIL"])
+		L.append("CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与 CHECK-4 帧（开格线）差分 px=%d，阈值=%d，bbox=%s → %s" % [
+			r["grid_diff_px"], r["grid_min"], str(r["grid_bbox"]), "PASS" if oks[4] else "FAIL"])
+		L.append("CHECK-T2 阶地/崖几何（T2 LAND-01 ④ 矩阵图）：LandformProfile 默认档 vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）→ %s" % [
+			r["t2_diff_px"], r["t2_min"], str(r["t2_bbox"]), r["t2_base_px"],
+			"PASS" if oks[5] else "FAIL"])
 		L.append("")
 		L.append("F-1 语义：默认 CULL_BACK 下俯视三图层可见像素均超阈值 = 渲染索引俯视顺时针（Godot 正面）仍成立；")
 		L.append("若任一为 0/不足 = 可见性回归（F-1 修复存疑，须上报，不在本工具内修）。")
 		L.append("口径：本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。")
 		L.append("截图（同目录）：%s" % "、".join(shot_paths))
 		L.append("标识：%s" % tag)
-		if oks[0] and oks[1] and oks[2] and oks[3]:
+		if oks[0] and oks[1] and oks[2] and oks[3] and oks[4] and oks[5]:
 			L.append("PROBE OK")
 		else:
 			L.append("PROBE FAIL")

@@ -121,8 +121,9 @@ func test_cliff_band_via_ray() -> void:
 		expect(got != a, "悬崖反例：低格 a 不得截获（t=%s）" % str(tt))
 
 func test_corner_via_ray() -> void:
-	# 三格角落组合：悬崖形（max−min≥2）→ 最高格；斜坡形 → 最近格心（测试侧独立推导）
-	var combos := [[0, 0, 2], [0, 1, 2], [0, 2, 1], [0, 1, 1], [0, 0, 1]]
+	# 三格角落组合：悬崖形（max−min ≥ cliff_threshold，默认 3——T2 泛化）→ 最高格；
+	# 斜坡形/阶地形（spread ≤ 2）→ 最近格心（测试侧独立推导）
+	var combos := [[0, 0, 3], [0, 1, 3], [0, 3, 1], [0, 0, 2], [0, 1, 2], [0, 1, 1], [0, 0, 1]]
 	for combo in combos:
 		var ha: int = combo[0]
 		var hb: int = combo[1]
@@ -159,7 +160,7 @@ func test_corner_via_ray() -> void:
 		for cell in trio:
 			hi = maxi(hi, m.elevation_at(cell))
 			lo = mini(lo, m.elevation_at(cell))
-		if hi - lo >= 2:
+		if hi - lo >= 3:  # 悬崖形角阈值 = cliff_threshold 默认档（T2 泛化，hex_picking.gd 头注）
 			for cell in trio:
 				if m.elevation_at(cell) > m.elevation_at(want) \
 						or (m.elevation_at(cell) == m.elevation_at(want) and m.index_of(cell) < m.index_of(want)):

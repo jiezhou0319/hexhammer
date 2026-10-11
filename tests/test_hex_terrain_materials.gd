@@ -261,10 +261,10 @@ func test_uv_slope_band_side_anchor() -> void:
 func test_uv_cliff_band_side_anchor() -> void:
 	var m := MapDataClass.new(2, 1)
 	var a := Hex.axial_of(Vector2i(0, 0))
-	m.set_elevation(Hex.neighbor(a, 0), 2)  # Δ2 → 陡面
+	m.set_elevation(Hex.neighbor(a, 0), 2)  # Δ2 → 阶地档（基线几何仍单斜面，UV 侧面口径不变）
 	var r := _build_table_ok(m, _default_table())
-	var cliffs := _faces_of(r, func(f): return f["kind"] == "edge" and f["edge_type"] == Builder.EDGE_CLIFF)
-	expect_eq(cliffs.size(), 2, "恰 2 陡面")
+	var cliffs := _faces_of(r, func(f): return f["kind"] == "edge" and f["edge_type"] == Builder.EDGE_TERRACE)
+	expect_eq(cliffs.size(), 2, "恰 2 阶地档陡面（基线单斜面——T2 四分类：Δ2 = terrace）")
 	var tangent := Hex.edge_tangent_world(0)
 	for f in cliffs:
 		for j in 3:

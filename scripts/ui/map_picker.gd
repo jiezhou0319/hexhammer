@@ -22,6 +22,7 @@ signal pick_missed()
 
 const HexPickingLib := preload("res://addons/hexhammer/hex_picking.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const LandformProfileClass := preload("res://scripts/core/data/landform_profile.gd")
 
 ## 拾取射线 mask：只查地形层（HexPickingLib.LAYER_TERRAIN 单一位；
 ## 棋子/高亮/装饰挂 LAYER_PICKABLE——mask 恒不含，不得截获地形拾取）
@@ -31,6 +32,10 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 
 var size := 1.0
 var map: MapDataClass
+## 归属分类阈值（与几何构建同档——T2 评审修复 2026-10-11：setup 从 build_info
+## echo 的 profile 取 cliff_threshold，resolve_hit 按同档分类归属；无 profile =
+## Builder 默认 3。阈值不接线时 threshold=4 档 terrace 面会被按 cliff 归高侧）
+var _cliff_threshold: int = LandformProfileClass.DEFAULT_CLIFF_THRESHOLD
 ## 地图根（世界↔局部转换参照；默认取父节点——本节点须挂在地图根下）
 var map_root: Node3D
 
@@ -39,7 +44,8 @@ var _bodies: Array[StaticBody3D] = []
 var _pending: Array = []  # {"pos": Vector2, "select": bool}（同点同类型去重）
 
 ## 挂碰撞体并建 face 表。map_root 省略 = get_parent()（MeshView/MapView 等地图根）；
-## 要求地图根的局部坐标 = builder 产出的地图全局坐标（T3 挂载约定）。
+## 要求地图根的局部坐标 = builder 产出的地图全局坐标（T3 挂载约定）。cliff 分档
+## 阈值取 build_info echo 的 profile（构建与拾取同档——LAND-01 ① 管线接线）。
 func setup(build_info: Dictionary, map_data: MapDataClass, root: Node3D = null,
 		hex_size := 1.0) -> bool:
 	clear()
@@ -50,12 +56,16 @@ func setup(build_info: Dictionary, map_data: MapDataClass, root: Node3D = null,
 	map_root = root
 	map = map_data
 	size = hex_size
+	var profile: Variant = (build_info as Dictionary).get("profile", null)
+	if profile is LandformProfileClass:
+		# 非法档构建不出 build_info（builder 显式拒建），此处只接线不复议
+		_cliff_threshold = (profile as LandformProfileClass).cliff_threshold
 	var chunks: Array = build_info["chunks"]
 	if chunks.is_empty():
 		return false
 	for chunk_info in chunks:
 		var cd: Dictionary = chunk_info
-		var pd: Dictionary = HexPickingLib.chunk_pick_data(cd)
+		var pd: Dictionary = HexPickingLib.chunk_pick_data(cd, _cliff_threshold)
 		var soup: PackedVector3Array = pd["collision_faces"]
 		if soup.size() == 0:
 			return false
@@ -103,7 +113,7 @@ func pick_world_ray(origin: Vector3, dir: Vector3) -> Variant:
 		return null
 	var table: Array = _tables.get(hit["collider_id"], [])
 	return HexPickingLib.resolve_hit(map_root.to_local(hit["position"]),
-		int(hit["face_index"]), table, map, size)
+		int(hit["face_index"]), table, map, size, _cliff_threshold)
 
 func clear() -> void:
 	for body in _bodies:
@@ -113,6 +123,7 @@ func clear() -> void:
 	_pending.clear()
 	map = null
 	map_root = null
+	_cliff_threshold = LandformProfileClass.DEFAULT_CLIFF_THRESHOLD
 
 func _physics_process(_delta: float) -> void:
 	if _pending.is_empty():

@@ -6,8 +6,9 @@
 ##     提取往返一致、非 StandardMaterial3D 槽显式拒绝；blend 通道材质开顶点色 albedo；
 ##   - mesh 顶点色锚（builder *_blend）：草-泥边带两端 = 对应纯色（owner 侧/邻侧）、
 ##     格心与顶面扇面恒本格纯色（中心主地形纯度）、角落端点 = 所在格纯色；
-##     中点 0.5 权重经「端点纯色 + 仿射线性行插值」链路锚定（mesh 不设中点顶点——
-##     改面数会动 face 表/碰撞合同，表现层切片不许，见任务卡实现要点 5）；
+##     中点 0.5 权重经「端点纯色 + 仿射线性行插值」链路锚定（**材质级表现切片**
+##     不设中点顶点——T2 起几何级细分合法（§8.1 扩档），细分顶点权重锚在
+##     tests/test_landform_terraces.gd，本文件限平边带口径）；
 ##   - 表现层切片不变量：blend 与 fallback（材质槽）几何/UV/法线/索引/faces 元数据
 ##     逐位一致、碰撞汤与 face 表逐位一致、fallback 无 COLOR 通道（旧路线零改动）；
 ##     flat/slope/cliff 三类边带同色规则；
@@ -178,7 +179,7 @@ func test_grass_mud_band_colors_across_edge_types() -> void:
 		expect_eq(found.size(), 2, "|Δh|=%d 恰 2 个边带面" % delta)
 		if found.size() != 2:
 			return
-		var want_type := "slope" if delta == 1 else "cliff"
+		var want_type := "slope" if delta == 1 else "terrace"  # T2 四分类：Δ2 = terrace
 		var faces: Array = chunk["surfaces"][found[0]["surface"]]["faces"]
 		expect_eq(faces[found[0]["face"]]["edge_type"], want_type, "|Δh|=%d 边带分类" % delta)
 		var mesh: ArrayMesh = chunk["mesh"]

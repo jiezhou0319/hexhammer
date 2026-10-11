@@ -27,7 +27,12 @@
 ##   未用到的非 StandardMaterial3D 槽不构成失败，BLEND 色板提取按用到的 id 逐个提）。
 ##   SLOTS → {"mode":"slots", "materials":{用到的 id: Material}}；
 ##   BLEND → {"mode":"blend", "palette":{用到的 id: Color}, "blend_material": Material}。
-##   非法（库缺失/缺槽/槽值类型不符/BLEND 缺导管）→ null（无隐式兜底，不静默换路线）。
+##   两者另附可选 "grid_line"（T2 GRID-01 格线参数组——材质级、可关：
+##   grid_line_enabled=false 时不附该键 = view 不建格线层，地形 mesh 与无格线
+##   基线逐位一致；enabled=true 时 = {"material": 格线材质（HexGridLineBuilder.
+##   make_material(color, alpha)——参数级工厂，不落 .tres）, "width": float}）。
+##   非法（库缺失/缺槽/槽值类型不符/BLEND 缺导管/格线参数非法）→ null（无隐式
+##   兜底，不静默换路线）。
 ## - 纯 Resource：零场景节点（ADR-2）；不写 MapData、不参与任何结算/查询/摘要
 ##   （表现层数据，提案「世界事实/游戏规则/表现三层分离」的表现层）。
 ## 维护方式（ADR-3 编辑器原生编辑）：双击 .tres 在检查器换 mode/库/导管材质即可；
@@ -39,6 +44,7 @@ extends Resource
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const TerrainMaterialLibraryClass := preload("res://scripts/core/data/terrain_material_library.gd")
 const HexTerrainBlendClass := preload("res://addons/hexhammer/hex_terrain_blend.gd")
+const HexGridLineBuilderClass := preload("res://addons/hexhammer/hex_grid_line_builder.gd")
 
 ## 色块默认 style（.tres）路径——SLOTS 模式 + 主线默认材质库
 const SLOTS_DEFAULT_PATH := "res://resources/terrain/styles/terrain_style_slots_default.tres"
@@ -57,6 +63,17 @@ enum Mode {
 @export var material_library: TerrainMaterialLibraryClass
 ## BLEND 模式的顶点色 albedo 导管（SLOTS 模式忽略；BLEND 缺失 → 解析失败）
 @export var blend_material: Material
+
+# ---- 格线层参数组（T2 GRID-01：材质级、可关——「换 style 可关可调」；观感档 =
+#      spike 参考件目检值：宽 0.012 / α 0.28。格线层不进拾取/blend 色板，关 = 无层）----
+## 格线总开关（false = 不附 grid_line 输入键 → view 不建格线层）
+@export var grid_line_enabled := true
+## 格线色（近黑暖色：浅色地形上读得出、深色地形上不抢戏——grimdark 低饱和大地色调）
+@export var grid_line_color := Color(0.08, 0.07, 0.06)
+## 格线透明度（(0,1]；spike 参考件 α 0.28 目检档）
+@export var grid_line_alpha := 0.28
+## 格线宽（世界单位，> 0；spike 参考件 0.012 目检档）
+@export var grid_line_width := HexGridLineBuilderClass.DEFAULT_WIDTH
 
 
 ## 载入 style .tres；路径不存在 / 类型不符 → null（显式失败，调用方判空）。
@@ -127,6 +144,15 @@ func problems_for(map: MapDataClass) -> Array[String]:
 			# 外审 S-2（2026-10-11）：BLEND 只取 albedo_color——带贴图的槽必须显式
 			# 报缺并拒绝，不得静默丢贴图把整类地形退化成纯色
 			out.append("BLEND 模式：地形 id %d 的材质带 albedo_texture——当前 BLEND 只做 albedo_color 颜色过渡，贴图会被丢弃（换纯色库或等 splat 升级）" % tid)
+	# 格线参数组（GRID-01）：非法参数显式报缺（材质级观感档——非法即不可解析）
+	if grid_line_enabled:
+		if not is_finite(grid_line_width) or grid_line_width <= 0.0:
+			out.append("格线开但 grid_line_width 非法（须有限 > 0）")
+		if not is_finite(grid_line_alpha) or grid_line_alpha <= 0.0 or grid_line_alpha > 1.0:
+			out.append("格线开但 grid_line_alpha 非法（须 ∈ (0,1]）")
+		var gc: Color = grid_line_color
+		if not (is_finite(gc.r) and is_finite(gc.g) and is_finite(gc.b) and is_finite(gc.a)):
+			out.append("格线开但 grid_line_color 通道非有限")
 	return out
 
 
@@ -136,24 +162,33 @@ func inputs_for(map: MapDataClass) -> Variant:
 	if not problems_for(map).is_empty():
 		return null
 	var used := used_terrain_ids(map)
+	var inputs := {}
 	if mode == Mode.BLEND:
 		var palette := {}
 		for tid in used:
 			# problems_for 已保证槽值是 StandardMaterial3D（用到的 id 才提——
 			# 库里未用到的非标准槽不挡图）
 			palette[tid] = (material_library.material_for(tid) as StandardMaterial3D).albedo_color
-		return {
+		inputs = {
 			"mode": "blend",
 			"palette": palette,
 			"blend_material": blend_material,
 		}
-	var materials := {}
-	for tid in used:
-		materials[tid] = material_library.material_for(tid)
-	return {
-		"mode": "slots",
-		"materials": materials,
-	}
+	else:
+		var materials := {}
+		for tid in used:
+			materials[tid] = material_library.material_for(tid)
+		inputs = {
+			"mode": "slots",
+			"materials": materials,
+		}
+	# 格线层输入（GRID-01）：关 = 不附键（view 不建层 = 地形与基线逐位一致）
+	if grid_line_enabled:
+		inputs["grid_line"] = {
+			"material": HexGridLineBuilderClass.make_material(grid_line_color, grid_line_alpha),
+			"width": grid_line_width,
+		}
+	return inputs
 
 
 ## 人读标签（沙盒/日志用）：mode + 库/导管来源。

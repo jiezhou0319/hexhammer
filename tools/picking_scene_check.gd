@@ -17,6 +17,11 @@
 ##   D. 射线 mask：棋子层（LAYER_PICKABLE）悬空箱体不截获地形拾取；mask 含该层
 ##      时被截获（正反对照）；
 ##   E. 地图根整体平移：root.position=T 后世界射线拾取仍正确（to_local 转换）。
+##   F. 阶地面归属（T2 LAND-03：新面型真实 raycast 用例）：3×1 对图 |Δh|=2 +
+##      LandformProfile（阶地环带）：t=0.45/0.55 最近格心 + 命中面 edge_type=terrace；
+##   G. 崖壁归属（T2 LAND-03）：|Δh|=3 + profile（真垂直墙）：直下射线归高地侧 +
+##      命中面 edge_type=cliff_wall + **水平射线正中竖直墙**（墙顶/墙底同 XZ 的
+##      竖直面——直下射线打不到的面，专项命中）。
 ## 场景切换纪律：每阶段「释旧+建新」后隔 ≥2 个物理帧再查（同帧切换旧碰撞体
 ##   尚在空间中且 XZ 与新场景重叠，必串扰）。
 ## 退出码：全部通过 0，任一失败 1。
@@ -40,6 +45,7 @@ class Checker extends Node:
 	const Lib := preload("res://scripts/core/data/terrain_material_library.gd")
 	const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 	const Picking := preload("res://addons/hexhammer/hex_picking.gd")
+	const ProfileClass := preload("res://scripts/core/data/landform_profile.gd")
 
 	const SIZE := 1.0
 	const SOLID := 0.8
@@ -86,6 +92,12 @@ class Checker extends Node:
 				settle = SETTLE_FRAMES
 			4:
 				_run_check_e()
+				_stage_build_pair(2, ProfileClass.make_default())  # F：阶地档（T2）
+			5:
+				_run_check_f()
+				_stage_build_pair(3, ProfileClass.make_default())  # G：真垂直崖档（T2）
+			6:
+				_run_check_g()
 				_finish()
 
 	# ---------------- 场景阶段 ----------------
@@ -127,20 +139,23 @@ class Checker extends Node:
 		phase = 0
 		settle = SETTLE_FRAMES
 
-	func _stage_build_pair(delta: int) -> void:
+	func _stage_build_pair(delta: int, profile: ProfileClass = null) -> void:
 		_teardown()
 		map = MapDataClass.new(3, 1)
 		var a := Hex.axial_of(Vector2i(1, 0))
 		map.set_elevation(Hex.neighbor(a, 0), delta)
-		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID)
+		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID, profile)
 		if not (r is Dictionary):
 			_hard_fail("对图场景构建失败（delta=%d）" % delta)
 			return
 		_attach_bodies(r as Dictionary)
-		phase = delta_to_phase(delta)
+		phase = _pair_phase(delta, profile)
 		settle = SETTLE_FRAMES
 
-	func delta_to_phase(delta: int) -> int:
+	## 对图场景的 phase 派发：基线档 1/2；T2 profile 档 5（阶地 Δ2）/6（崖壁 Δ3）
+	func _pair_phase(delta: int, profile: ProfileClass) -> int:
+		if profile != null:
+			return 5 if delta == 2 else 6
 		return 1 if delta == 1 else 2
 
 	## 单类型材质表（M1a-T8 起 builder 只认 {terrain_id: Material}）
@@ -275,6 +290,86 @@ class Checker extends Node:
 				var got: Variant = (res as Dictionary).get("cell", "miss")
 				print("[拾取小场景校验] FAIL E：平移后 %s got=%s" % [str(cell), str(got)])
 		_check(ok, "E. 地图根整体平移后拾取仍正确（to_local 转换）")
+
+	# ---------------- T2 新面型真实 raycast（LAND-03 ④ 扩用例）----------------
+
+	func _run_check_f() -> void:
+		# F. 阶地档（Δ2 + profile）：直下射线命中阶地环带面 → 最近格心；面型 terrace
+		var a := Hex.axial_of(Vector2i(1, 0))
+		var b := Hex.neighbor(a, 0)
+		var ca := Hex.axial_to_world(a, SIZE)
+		var cb := Hex.axial_to_world(b, SIZE)
+		var ok := true
+		for t in [0.45, 0.55]:
+			var tt: float = t
+			var x := ca.x + (cb.x - ca.x) * tt
+			var z := ca.z + (cb.z - ca.z) * tt
+			var res: Variant = _pick_down(x, z)
+			if res["miss"]:
+				ok = false
+				print("[拾取小场景校验] FAIL F：t=%s 未命中（阶地环带面缺口？）" % str(tt))
+				continue
+			var hit: Dictionary = res["hit"]
+			var table: Array = tables.get(hit["collider_id"], [])
+			var fi := int(hit["face_index"])
+			if fi < 0 or fi >= table.size():
+				ok = false
+				continue
+			var face: Dictionary = table[fi]
+			var want: Vector2i = a if tt < 0.5 else b  # 阶地 riser = 最近格心（T2 泛化）
+			if String(face.get("edge_type", "")) != Builder.EDGE_TERRACE:
+				ok = false
+				print("[拾取小场景校验] FAIL F：t=%s 命中面非 terrace（got %s）" % [str(tt), str(face)])
+			if res["cell"] != want:
+				ok = false
+				print("[拾取小场景校验] FAIL F：t=%s got=%s want=%s（最近格心）" % [str(tt), str(res["cell"]), str(want)])
+		_check(ok, "F. 阶地面归属（|Δh|=2 + profile：最近格心 / edge_type=terrace）")
+
+	func _run_check_g() -> void:
+		# G. 真垂直崖档（Δ3 + profile）：直下射线归高地侧 + cliff_wall 面型；
+		#    水平射线正中竖直墙（直下打不到的面——墙顶/墙底同 XZ 的竖直面专项）
+		var a := Hex.axial_of(Vector2i(1, 0))
+		var b := Hex.neighbor(a, 0)
+		var ca := Hex.axial_to_world(a, SIZE)
+		var cb := Hex.axial_to_world(b, SIZE)
+		var ok := true
+		for t in [0.45, 0.55]:
+			var tt: float = t
+			var x := ca.x + (cb.x - ca.x) * tt
+			var z := ca.z + (cb.z - ca.z) * tt
+			var res: Variant = _pick_down(x, z)
+			if res["miss"]:
+				ok = false
+				continue
+			var hit: Dictionary = res["hit"]
+			var table: Array = tables.get(hit["collider_id"], [])
+			var face: Dictionary = table[int(hit["face_index"])]
+			if String(face.get("edge_type", "")) != Builder.EDGE_CLIFF_WALL:
+				ok = false
+				print("[拾取小场景校验] FAIL G：t=%s 命中面非 cliff_wall（got %s）" % [str(tt), str(face)])
+			if res["cell"] != b:
+				ok = false
+				print("[拾取小场景校验] FAIL G：t=%s 直下射线 got=%s want=%s（高地侧）" % [str(tt), str(res["cell"]), str(b)])
+		# 水平射线：从低格上空朝墙（墙立于带中点 XZ，跨 y 0..3——y=1.5 高度正中）
+		var mid := (ca + cb) * 0.5
+		var origin := Vector3(ca.x, 1.5, ca.z)
+		var dir := Vector3(mid.x - ca.x, 0.0, mid.z - ca.z).normalized()
+		var wall_res: Variant = _pick(origin, dir, Picking.MASK_TERRAIN_ONLY)
+		if wall_res["miss"]:
+			ok = false
+			print("[拾取小场景校验] FAIL G：水平射线未命中竖直墙（墙顶/墙底 XZ 错位？）")
+		else:
+			var whit: Dictionary = wall_res["hit"]
+			var wtable: Array = tables.get(whit["collider_id"], [])
+			var wface: Dictionary = wtable[int(whit["face_index"])]
+			var vertical := absf(whit["normal"].y) < 0.01
+			if String(wface.get("edge_type", "")) != Builder.EDGE_CLIFF_WALL or not vertical:
+				ok = false
+				print("[拾取小场景校验] FAIL G：水平射线命中非竖直 cliff_wall（got %s normal=%s）" % [str(wface), str(whit["normal"])])
+			if wall_res["cell"] != b:
+				ok = false
+				print("[拾取小场景校验] FAIL G：墙面命中 got=%s want=%s（高地侧）" % [str(wall_res["cell"]), str(b)])
+		_check(ok, "G. 崖壁归属（|Δh|=3 + profile：高地侧 / cliff_wall / 水平射线正中竖直墙）")
 
 	func _finish() -> void:
 		set_physics_process(false)

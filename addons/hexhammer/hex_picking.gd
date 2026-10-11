@@ -4,17 +4,27 @@
 ##   scripts/ui/map_picker.gd）→ 世界坐标 → **地图根局部坐标** → 本模块解析 → 格子。
 ##   本文件只做「局部命中点 + 命中面 → 格子」与「碰撞数据/面映射构建」，全部纯静态
 ##   函数、零场景节点（ADR-2；删 scripts/ui/** 不影响本文件与 tests/）。
-## 归属规则（微决策 3，2026-10-09 拍板；翻案须先改 04 对应验收，不动架构）：
+## 归属规则（微决策 3，2026-10-09 拍板；T2 LAND-03 ① 口径泛化——翻案须先改 04
+##   对应验收，不动架构）：
 ## - 顶面（kind="top"）：归本格（面归属格即命中格；与浮点 axial+rounding 的交叉
 ##   一致性由 tests/test_hex_picking.gd 锚定——内六边形整块 round 回本格）。
 ## - 边带（kind="edge"，两格候选）：
-##   · flat（|Δh|=0）/ slope（|Δh|=1）：**局部 XZ 最近逻辑格心**；距离相等 →
-##     棋盘固定 ID（MapData.index_of，行主序存储下标——与 T4 归属规则同一比较器）
-##     较小者决胜；
-##   · cliff（|Δh|≥2，Catlike 式陡连接面）：归**高地侧**（并列最高取 ID 较小者）。
-## - 角落（kind="corner"，三格候选）：微决策 3 未单列角落，按同一分类口径泛化——
-##   三格高程 max−min ≥ 2 视作悬崖形角落 → 归最高格（并列最高取 ID 较小者）；
-##   否则（全等高 / 差一级）按斜坡口径 → 局部 XZ 最近逻辑格心 + ID 决胜。
+##   · flat（|Δh|=0）/ slope（|Δh|=1）/ **terrace（|Δh| ∈ [2, cliff_threshold)，
+##     T2 起——阶地 riser 沿最近格心 + ID 决胜）**：**局部 XZ 最近逻辑格心**；距离
+##     相等 → 棋盘固定 ID（MapData.index_of，行主序存储下标——与 T4 归属规则同一
+##     比较器）较小者决胜；
+##   · cliff（|Δh|≥cliff_threshold，默认 3——含 cliff_wall 真垂直墙面）：
+##     归**高地侧**（并列最高取 ID 较小者）。
+##   分类由 classify_edge(delta, cliff_threshold) 现算——阈值参数与 LandformProfile
+##   同档。管线接线（T2 评审修复 2026-10-11）：chunk_pick_data / resolve_hit /
+##   resolve_face 全链透传 cliff_threshold（此前只在 pick_edge_band/pick_corner
+##   签名层成立，面表 edge_type=terrace 而拾取按默认档归高侧——语义脱钩）；
+##   resolve_face 不加归属分支：edge/corner 口径直接泛化，函数签名只多默认参数。
+##   生产入口（map_picker.setup）从 build_map echo 的 profile 取阈值传入——
+##   「拾取归属随分类切换」（LAND-01 ①）在全链路成立。
+## - 角落（kind="corner"，三格候选）：同一分类口径泛化——三格高程 max−min ≥
+##   cliff_threshold 视作悬崖形角落 → 归最高格（并列最高取 ID 较小者）；否则
+##   （全等高 / 差一级 / 阶地形）按斜坡口径 → 局部 XZ 最近逻辑格心 + ID 决胜。
 ##   【登记为 T5 的解释性落字，与边带规则同构；翻案须明说并回改对应测试。】
 ## 最近格心的「相等」判定：|dA−dB| ≤ TIE_EPS·size² 视作相等（d 为距离**平方**，
 ##   容差与被比较量同量纲——L-1 修复 2026-10-10；浮点对称点两条计算路径差 ~1e-15，
@@ -86,58 +96,73 @@ static func chunk_face_table(chunk_info: Dictionary) -> Array[Dictionary]:
 
 
 ## 单 chunk 拾取数据一次成形（view 层碰撞体与测试/工具共用入口）：
-## {"chunk": Rect2i, "collision_faces": PackedVector3Array, "face_table": Array[Dictionary]}
-static func chunk_pick_data(chunk_info: Dictionary) -> Dictionary:
+## {"chunk": Rect2i, "collision_faces": PackedVector3Array, "face_table": Array[Dictionary],
+##  "cliff_threshold": int（echo——归属分类与几何构建同档的可见面，view/测试按此
+##  对账 profile 接线，T2 评审修复）}
+static func chunk_pick_data(chunk_info: Dictionary,
+		cliff_threshold := Builder.DEFAULT_CLIFF_THRESHOLD) -> Dictionary:
 	return {
 		"chunk": chunk_info["chunk"],
 		"collision_faces": chunk_collision_faces(chunk_info),
 		"face_table": chunk_face_table(chunk_info),
+		"cliff_threshold": cliff_threshold,
 	}
 
 # ---------------- 命中解析（局部坐标 + face → 格子）----------------
 
 ## 射线命中解析入口：local_pos = 命中点（**地图根局部坐标**），face_index = 引擎
 ## ConcavePolygonShape3D 命中面号，face_table = 该碰撞体的 chunk_face_table。
+## cliff_threshold 透传给 corner 面三格分类（edge 面同参现算）——与几何构建
+## 同档（T2 评审修复：生产入口从 build_info echo 的 profile 取值）。
 ## face_index 越界（非地形面/未知面命中——mask 纪律下不应发生）→ null（显式失败，
 ## 无静默兜底；调用方按 miss 处理）。
 static func resolve_hit(local_pos: Vector3, face_index: int, face_table: Array,
-		map: MapDataClass, size := 1.0) -> Variant:
+		map: MapDataClass, size := 1.0,
+		cliff_threshold := Builder.DEFAULT_CLIFF_THRESHOLD) -> Variant:
 	if face_index < 0 or face_index >= face_table.size():
 		return null
-	return resolve_face(local_pos, face_table[face_index], map, size)
+	return resolve_face(local_pos, face_table[face_index], map, size, cliff_threshold)
 
 
 ## 单面归属分发。face 为 T4 builder 面记录（{"kind","cell","dir"[,"edge_type"]}）；
-## kind 未知 / 字段缺失 → null。
+## cliff_threshold 透传给 pick_edge_band/pick_corner（分类与几何同档，见类头注
+## 「管线接线」）；kind 未知 / 字段缺失 → null。
 static func resolve_face(local_pos: Vector3, face: Dictionary,
-		map: MapDataClass, size := 1.0) -> Variant:
+		map: MapDataClass, size := 1.0,
+		cliff_threshold := Builder.DEFAULT_CLIFF_THRESHOLD) -> Variant:
 	match String(face.get("kind", "")):
 		"top":
 			return face["cell"]  # 顶面归本格
 		"edge":
-			return pick_edge_band(local_pos, face["cell"], int(face["dir"]), map, size)
+			return pick_edge_band(local_pos, face["cell"], int(face["dir"]), map, size,
+				cliff_threshold)
 		"corner":
-			return pick_corner(local_pos, face["cell"], int(face["dir"]), map, size)
+			return pick_corner(local_pos, face["cell"], int(face["dir"]), map, size,
+				cliff_threshold)
 		_:
 			return null
 
 # ---------------- 归属规则（微决策 3；纯逻辑重点覆盖面）----------------
 
-## 边带归属（两格候选）：flat/slope → 局部 XZ 最近逻辑格心 + ID 决胜；
-## cliff（|Δh|≥2）→ 高地侧。
+## 边带归属（两格候选）：flat/slope/terrace → 局部 XZ 最近逻辑格心 + ID 决胜；
+## cliff（|Δh|≥cliff_threshold，默认 3）→ 高地侧。cliff_threshold 与几何档
+## （LandformProfile.cliff_threshold）同参——分类与几何用同一分档。
 static func pick_edge_band(local_pos: Vector3, cell: Vector2i, dir: int,
-		map: MapDataClass, size := 1.0) -> Vector2i:
+		map: MapDataClass, size := 1.0,
+		cliff_threshold := Builder.DEFAULT_CLIFF_THRESHOLD) -> Vector2i:
 	var candidates := edge_cells(cell, dir)
 	var delta := map.elevation_at(candidates[0]) - map.elevation_at(candidates[1])
-	if Builder.classify_edge(delta) == Builder.EDGE_CLIFF:
+	if Builder.classify_edge(delta, cliff_threshold) == Builder.EDGE_CLIFF:
 		return pick_highest(candidates, map)
 	return pick_by_nearest_center(local_pos, candidates, map, size)
 
 
-## 角落归属（三格候选）：max−min ≥ 2（悬崖形）→ 最高格；否则最近格心 + ID 决胜。
-## 调用契约：cell/k 对应的角落面存在（三格界内——builder 只为界内 trio 生成角落）。
+## 角落归属（三格候选）：max−min ≥ cliff_threshold（悬崖形，默认 3）→ 最高格；
+## 否则最近格心 + ID 决胜。调用契约：cell/k 对应的角落面存在（三格界内——builder
+## 只为界内 trio 生成角落）。
 static func pick_corner(local_pos: Vector3, cell: Vector2i, k: int,
-		map: MapDataClass, size := 1.0) -> Vector2i:
+		map: MapDataClass, size := 1.0,
+		cliff_threshold := Builder.DEFAULT_CLIFF_THRESHOLD) -> Vector2i:
 	var candidates := corner_cells(cell, k)
 	var lowest := map.elevation_at(candidates[0])
 	var highest := lowest
@@ -145,7 +170,7 @@ static func pick_corner(local_pos: Vector3, cell: Vector2i, k: int,
 		var h := map.elevation_at(candidates[i])
 		lowest = mini(lowest, h)
 		highest = maxi(highest, h)
-	if highest - lowest >= 2:
+	if highest - lowest >= cliff_threshold:
 		return pick_highest(candidates, map)
 	return pick_by_nearest_center(local_pos, candidates, map, size)
 

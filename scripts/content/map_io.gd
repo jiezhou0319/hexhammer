@@ -13,6 +13,7 @@ class_name MapIO
 extends RefCounted
 
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
+const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 
 ## 固定测试图（手工固定，tools/make_fixed_maps.gd 落盘；沙盒默认加载 → 一键可玩）
 const FIXED_MAP_PATH := "res://resources/maps/fixed/playable_60x40.json"
@@ -80,6 +81,35 @@ static func write_summary(map: MapDataClass, path: String) -> int:
 		return FAILED
 	f.store_string(map.summary())
 	return OK
+
+# ---------------- 世界事实层（第四伴生 .world.json，T2 LAND-01 §2.5）----------------
+
+## 地图路径 → 世界伴生文件路径（<name>.json → <name>.world.json——三伴生先例旁的
+## 第四件）。固定图常量形态：playable_60x40.world.json。
+static func world_path_for(map_path: String) -> String:
+	return map_path.trim_suffix(".json") + ".world.json"
+
+## WorldData → <path>.world.json（WorldData.to_dict 已做 Vector2i→[x,y] 显式转换，
+## 落盘形状对 JSON 直接可序列化）。返回 Error（OK = 成功）。
+static func write_world(world: WorldDataClass, path: String) -> int:
+	return write_json(world.to_dict(), path)
+
+## <path>.world.json → WorldData。**文件缺失/为空 → WorldData.empty()**（旧图零
+## 迁移：缺伴生 = 无河无路无 POI 的合法态，不报错、不重新随机生成——§2.2；
+## 空文件同口径：无数据 ≠ 坏数据，不与解析失败混同）；文件存在但解析失败/
+## 字段非法 → null（显式判空，与 read_map 同口径）。
+static func read_world(path: String) -> WorldDataClass:
+	if not FileAccess.file_exists(path):
+		return WorldDataClass.empty()
+	var text := FileAccess.get_file_as_string(path)
+	if text.is_empty():
+		# 空文本不能走 read_json 的 null 双态（会与「解析失败」混同）——合同区分
+		# 三态：缺失/空 = 合法空世界，坏 JSON/字段非法 = null（T2 评审修复）
+		return WorldDataClass.empty()
+	var parsed: Variant = JSON.parse_string(text)
+	if not (parsed is Dictionary):
+		return null
+	return WorldDataClass.from_dict(parsed)
 
 
 # ---------------- 通用 JSON ----------------

@@ -13,19 +13,27 @@ extends Node3D
 const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const TerrainStyleClass := preload("res://scripts/core/data/terrain_style.gd")
+const LandformProfileClass := preload("res://scripts/core/data/landform_profile.gd")
+const GridLineBuilder := preload("res://addons/hexhammer/hex_grid_line_builder.gd")
 
 var chunk_nodes: Array[MeshInstance3D] = []
+## 格线层节点（GRID-01：独立 mesh 层，每 chunk 一个 MeshInstance3D、零碰撞体——
+## 不进拾取层；style 关格线时恒空）
+var grid_nodes: Array[MeshInstance3D] = []
 var build_info: Dictionary = {}
 
 ## 按材质表构建（materials = 地形 id → Material 映射；.tres 载体 =
 ## TerrainMaterialLibrary.materials，主线默认表 resources/terrain/terrain_materials_default.tres
-## ——M1a-T8 材质槽；elevation_step/solid_factor 透传 T4 高程几何参数）。
+## ——M1a-T8 材质槽；elevation_step/solid_factor 透传 T4 高程几何参数；
+## profile = LandformProfile 几何档（T2 起：null/全关 = 基线单斜面+80° 陡面，
+## 阶地/真崖档见 addons/hexhammer/hex_terrain_builder.gd 头注））。
 ## 构建失败（材质表缺图内 id、表值非 Material、参数非法等）→ false。
 func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, materials := {},
-		size := 1.0, elevation_step := 1.0, solid_factor := 0.8) -> bool:
+		size := 1.0, elevation_step := 1.0, solid_factor := 0.8,
+		profile: LandformProfileClass = null) -> bool:
 	clear()
 	var result: Variant = Builder.build_map(map, chunk_cols, chunk_rows, materials,
-		size, elevation_step, solid_factor)
+		size, elevation_step, solid_factor, profile)
 	return _mount(result)
 
 
@@ -37,10 +45,10 @@ func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, materials := {
 ## 构建失败（色板缺图内 id、色值非法、参数非法等）→ false。
 func build_blend(map: MapDataClass, palette: Dictionary, chunk_cols := 10, chunk_rows := 10,
 		blend_material: Material = null, size := 1.0, elevation_step := 1.0,
-		solid_factor := 0.8) -> bool:
+		solid_factor := 0.8, profile: LandformProfileClass = null) -> bool:
 	clear()
 	var result: Variant = Builder.build_map_blend(map, palette, chunk_cols, chunk_rows,
-		blend_material, size, elevation_step, solid_factor)
+		blend_material, size, elevation_step, solid_factor, profile)
 	return _mount(result)
 
 
@@ -50,21 +58,49 @@ func build_blend(map: MapDataClass, palette: Dictionary, chunk_cols := 10, chunk
 ## 本方法只按 mode 分发到 build / build_blend 同一挂载面——换 style 不换几何/
 ## face 表/碰撞（不变量锚 = tests/test_terrain_style.gd：summary/ARRAY_INDEX/
 ## face 表逐位一致、材质实例不同）。
-## style 为空 / 对本图不可解析（缺库/缺槽/BLEND 缺导管）→ false。
+## style 为空 / 对本图不可解析（缺库/缺槽/BLEND 缺导管/格线参数非法）→ false。
 func build_with_style(map: MapDataClass, style: TerrainStyleClass, chunk_cols := 10,
 		chunk_rows := 10, size := 1.0, elevation_step := 1.0,
-		solid_factor := 0.8) -> bool:
+		solid_factor := 0.8, profile: LandformProfileClass = null) -> bool:
 	if style == null:
 		return false
 	var inputs: Variant = style.inputs_for(map)
 	if not (inputs is Dictionary):
 		return false
 	var d: Dictionary = inputs
+	var ok := false
 	if d["mode"] == "blend":
-		return build_blend(map, d["palette"], chunk_cols, chunk_rows,
-			d["blend_material"], size, elevation_step, solid_factor)
-	return build(map, chunk_cols, chunk_rows, d["materials"], size,
-		elevation_step, solid_factor)
+		ok = build_blend(map, d["palette"], chunk_cols, chunk_rows,
+			d["blend_material"], size, elevation_step, solid_factor, profile)
+	else:
+		ok = build(map, chunk_cols, chunk_rows, d["materials"], size,
+			elevation_step, solid_factor, profile)
+	if not ok:
+		return false
+	# 格线层（GRID-01）：输入带 grid_line 键（style.grid_line_enabled）才建——
+	# 独立 mesh、零碰撞体（不截获拾取）；关 = 不建 = 地形与无格线基线逐位一致
+	if d.has("grid_line"):
+		return _mount_grid(map, chunk_cols, chunk_rows, d["grid_line"], size, elevation_step)
+	return true
+
+
+## 格线层挂载：每 chunk 一个 MeshInstance3D（同地形挂载面：顶点已是全局坐标、
+## 节点零偏移；材质 = style 解析出的格线材质）。
+func _mount_grid(map: MapDataClass, chunk_cols: int, chunk_rows: int,
+		grid_inputs: Dictionary, size: float, elevation_step: float) -> bool:
+	var result: Variant = GridLineBuilder.build_map(map, chunk_cols, chunk_rows,
+		grid_inputs["material"], size, elevation_step, grid_inputs["width"])
+	if not (result is Dictionary):
+		return false
+	for chunk_info in (result as Dictionary)["chunks"]:
+		var cd: Dictionary = chunk_info
+		var rect: Rect2i = cd["chunk"]
+		var node := MeshInstance3D.new()
+		node.name = "GridLine_c%d_r%d" % [rect.position.x, rect.position.y]
+		node.mesh = cd["mesh"] as ArrayMesh
+		add_child(node)
+		grid_nodes.append(node)
+	return true
 
 
 ## 构建结果挂载（两 style 共用：每 chunk 一个 MeshInstance3D、节点置原点零偏移——
@@ -88,4 +124,7 @@ func clear() -> void:
 	for node in chunk_nodes:
 		node.queue_free()
 	chunk_nodes.clear()
+	for node in grid_nodes:
+		node.queue_free()
+	grid_nodes.clear()
 	build_info = {}
