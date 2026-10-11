@@ -1,5 +1,5 @@
 Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；方案「T0 与 T1 的第一批任务卡」）
-时间(UTC)：2026-10-11T18:52:03
+时间(UTC)：2026-10-11T20:39:57
 引擎：Godot 4.7.2-stable (official)
 渲染器（实际运行时）：forward_plus（本机实测 = 此值；取自 RenderingServer.get_current_rendering_method()——S-1）
 渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）
@@ -17,6 +17,7 @@ CHECK-3 描线带（12 格直线，offset 行 32 列 10..21）：差分可见 px
 CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲，可见 px=410725 / 921600（44.6%，阈值同 CHECK-1），与 SLOTS 地形帧差分 px=410724，阈值=200，bbox=[P: (214, 115), S: (851, 489)] → PASS
 CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与 CHECK-4 帧（开格线）差分 px=5724，阈值=300，bbox=[P: (220, 118), S: (839, 483)] → PASS
 CHECK-W 水面差分（T3 WATER-02，2026-10-11）：固定图 + .world.json（边河+河口湖+东北湖）构建，水面层开/关差分 px=14610，阈值=3000，水面节点=9，bbox=[P: (377, 132), S: (595, 470)] → PASS
+CHECK-5 道路/桥面差分（T4 ROAD-01/02）：同一世界构建（东西横路+跨河桥 CrossingData），路面层开/关差分 px=640，阈值=150，路面节点=3，bbox=[P: (481, 181), S: (225, 2)] → PASS
 CHECK-T2 阶地/崖几何（T2 LAND-01 ④ 矩阵图）：LandformProfile 默认档 vs 基线差分 px=1380，阈值=500，bbox=[P: (253, 323), S: (844, 68)]（基线可见 px=74180）→ PASS
 
 F-1 语义：默认 CULL_BACK 下俯视三图层可见像素均超阈值 = 渲染索引俯视顺时针（Godot 正面）仍成立；

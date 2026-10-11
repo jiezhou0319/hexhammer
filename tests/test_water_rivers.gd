@@ -393,10 +393,10 @@ func test_from_dict_rejects_bad_river_shapes() -> void:
 		for k in patch:
 			((d2["rivers"] as Array)[0] as Dictionary)[k] = patch[k]
 		expect(WorldDataClass.from_dict(d2) == null, "%s 非法 → null" % str(patch))
-	# 未解锁集合仍拒绝（roads 非空——T4 前不产伪字段）
+	# roads 形状非法仍拒（T4 起解析路/桥——条目缺字段走形状层拒绝）
 	var roads := good.duplicate(true)
 	roads["roads"] = [{"any": 1}]
-	expect(WorldDataClass.from_dict(roads) == null, "roads 非空 → null（T4 前未解锁）")
+	expect(WorldDataClass.from_dict(roads) == null, "roads 条目缺字段 → null（形状层拒绝）")
 
 # ================= 固定图数据化面（WATER-01 ③）=================
 

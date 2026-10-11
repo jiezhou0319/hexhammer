@@ -1,5 +1,16 @@
 {
-	"crossings": [],
+	"crossings": [
+		{
+			"bank_a": 324,
+			"bank_b": 325,
+			"crossing_id": 0,
+			"kind": 0,
+			"river_edge": [
+				324,
+				325
+			]
+		}
+	],
 	"links": [
 		{
 			"link_id": [
@@ -67,11 +78,59 @@
 		},
 		{
 			"link_id": [
+				318,
+				319
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				319,
+				320
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				320,
+				321
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				321,
+				322
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				322,
+				323
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				323,
+				324
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
 				324,
 				325
 			],
 			"river_reach_id": 0,
-			"road_id": -1
+			"road_id": 0
 		},
 		{
 			"link_id": [
@@ -80,6 +139,78 @@
 			],
 			"river_reach_id": 0,
 			"road_id": -1
+		},
+		{
+			"link_id": [
+				325,
+				326
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				326,
+				327
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				327,
+				328
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				328,
+				329
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				329,
+				330
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				330,
+				331
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				331,
+				332
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				332,
+				333
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				333,
+				334
+			],
+			"river_reach_id": -1,
+			"road_id": 0
 		},
 		{
 			"link_id": [
@@ -1028,7 +1159,33 @@
 			]
 		}
 	],
-	"roads": [],
+	"roads": [
+		{
+			"cells": [
+				318,
+				319,
+				320,
+				321,
+				322,
+				323,
+				324,
+				325,
+				326,
+				327,
+				328,
+				329,
+				330,
+				331,
+				332,
+				333,
+				334
+			],
+			"connects_pois": [],
+			"is_loop": false,
+			"road_class": 0,
+			"road_id": 0
+		}
+	],
 	"schema_version": 1,
 	"water_bodies": [
 		{

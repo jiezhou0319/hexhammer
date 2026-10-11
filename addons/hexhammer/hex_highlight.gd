@@ -42,11 +42,18 @@ const LIFT_TIER_STEP := 0.01
 ##   tier 2 = 格线层 GRID-01（0.04；T2 登记——格线贴两侧较高侧格面，须高于任何
 ##             高亮档防与扇面共面；关格线即无本档消费者）
 ##   半档   = 描线带额外抬升 DEFAULT_PATH_LIFT_EXTRA（0.015 → 0.035，永不落整档）
-##   tier 3+ 预留：ROAD-01 路面；**WATER-02 水面不取地表 lift 档**（2026-10-11
-##             T3 登记：水面 y = (water_level − 0.5)×elevation_step 半档错位，
-##             自成面系、与地形顶面恒差半档高程步——WaterGeometryBuilder，取档
-##             先查此表的登记先例）
+##   tier 3 = 路面 ROAD-01（0.05；T4 登记——路面贴地条带，高于格线防与描边带
+##             共面；无路世界无本档消费者）
+##   tier 4 = 桥面 ROAD-02（0.06；T4 登记——桥面中段 y = max(两岸)+本档，桥头
+##             落两岸顶面；与路面差一档防桥头路面带重叠处共面）
+##   **WATER-02 水面不取地表 lift 档**（2026-10-11 T3 登记：水面 y =
+##   (water_level − 0.5)×elevation_step 半档错位，自成面系、与地形顶面恒差半档
+##   高程步——WaterGeometryBuilder，取档先查此表的登记先例）
 const TIER_GRID_LINE := 2
+## 路面档（ROAD-01；路面贴地条带 = 地表 y + lift_for_tier(3)）
+const TIER_ROAD := 3
+## 桥面档（ROAD-02；桥面中段 = max(两岸 y) + lift_for_tier(4)——河在下路在上）
+const TIER_BRIDGE_DECK := 4
 ## 描线带相对本层扇面的额外抬升 = **1.5 档**（半档：0.015 不是 LIFT_TIER_STEP 的
 ## 整数倍 → 任何层的描线 lift 永不落在任何整档扇面 lift 上，带×扇全组合不共面；
 ## 见 tests/test_hex_highlight.gd test_lift_tiers_separate_coplanar_surfaces）

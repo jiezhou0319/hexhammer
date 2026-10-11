@@ -319,6 +319,62 @@ medium 修复；H 河床归属 |Δh|=4 高岸不截胡）；render_probe **7/7 P
 水体用例）——属 v1 已知留白而非缺陷，异体水-水图首次进 fixture 时须补恰一
 patch/裙边相接锚再动。
 
+**T4 手工道路与桥批登记（2026-10-12 完成；ROAD-01/02/03 三卡——数据面
+（RoadData/CrossingData/校验器/双向对账）+ 几何面（路面第二 mesh 格心网络/
+桥面五段剖面/碰撞汤拾取）+ 生成期连通查询 + 固定图路桥数据化；自动路网已随
+修订记录三之 6 上移 T5 WORLD-05，本批零 T5 依赖）**：
+
+| ID | 卡 | 验收（执行方案 §5 摘要） | 完成登记 |
+|---|---|---|---|
+| ROAD-01 | 道路图与路口 | 相邻双向一致；端点/直路/转弯/三叉/更多路口同一 data contract；非法高差按配置拒绝（初版 road_class 恒 0） | **2026-10-12 完成**：RoadData 落 `scripts/core/data/world_data.gd`（cells 有序格序列 / is_loop 闭合边同进对账 / road_class 值域单点恒 0——from_dict+validate 双拒绝 / connects_pois T5 前恒空）+ link.road_id ↔ roads 相邻对**双向对账**（LINK_ROAD_MISMATCH 两向：link 声明无实体、实体相邻对缺 link 均拒）；路口 = 多路共享格、共享 link = ROAD_LINK_REUSE 拒绝；Δ≥2 拒绝按生成配置参数化（validate 第三参 max_road_delta=−1 不查——§7「阈值在生成配置不进数据/有配置才拒」；被 crossing 认领的河 link 跳过、归桥址校验管辖）；几何 = `addons/hexhammer/road_geometry_builder.gd` 纯逻辑类——格心网络构型通式（每格按 6 邻道路方向子集发射格心→内边扇区+连接带条带、min-ID 边归属；宽度调制 = 相邻 ±1 方向全宽/孤悬收窄，Catlike Part 7 通式字面移植）；lift 档位表登记 tier3 路面 0.05 / tier4 桥面 0.06（`hex_highlight.gd`——档位表扩档统一登记防冲突）；TerrainStyle 扩 road_material（与 water_material 同批口径；桥面材质首版不进槽、走 make_bridge_material 工厂默认——方案只要求一槽）；测试 = `tests/test_roads.gd` **9 用例**（形状 fixture 同合同/双向对账/三叉四叉共享格不共享 link/63 子集+14 旋转等价类/结构拒绝/值域/Δ 有配置才拒/序列化往返/零回写/固定图路桥）+ `tests/test_road_geometry.gd` **8 用例**之路面锚（面数解析预言 6\|D\| 全配置/宽度调制/格心扇区坐标 oracle/Δ1 贴坡/三划分 chunk 逐位一致/参数非法） |
+| ROAD-02 | 横切河道的桥 | 桥端落在两岸合法锚点；道路确实横切河槽而非纵向覆盖；跨越边在查询中对应桥 | **2026-10-12 完成**：CrossingData 按 §2.3 重写表（river_edge 单边、有河才有桥 CROSSING_NO_RIVER；bank_a/b == link 两端格 canonical、BRIDGE_ENDPOINT_INVALID 拒错；Kind.BRIDGE 唯一合法值——FERRY 枚举存在但 from_dict+validate 双拒绝；一 link 至多一 crossing CROSSING_DUP；桥必被路跨接 CROSSING_NO_ROAD = 两岸都有路的机器表达）；横切机器定义 = 未认领跨接 RIVER_FORD_FORBIDDEN 禁渡、与 BRIDGE_ENDPOINT_INVALID 分开报（锚 = 两错误码互斥断言）；桥址首版 = 桥头（bank Δ ≤ max_bridge_bank_delta 配置）+ 净空（max 两岸高程 ≥ 河水位），净跨单边恒定、坡度由桥头 Δ 覆盖——不得整桥抬高留悬空桥头；急弯判据 `river_bend_is_sharp`（edge[k] 与 edge[k+2] 切向点积平行性，拍板⑩走向几何版；k<0 或 k+2 越界 = 非急弯，首尾边界专测）；桥几何五段剖面 = 两岸平台段（桥头落地 y=本岸+lift4 无悬空，测试逐位断言）→ 接坡段（Δ>0 爬升）→ 中段跨水（y=max(两岸)+lift4，与水面条带同 RIVER_BANK_FRACTION 参数对齐）；长轴⊥河 abs(dot(t,n))≤1e-6 测试独立拼装断言（修订记录三之 2）；桥面碰撞汤 deck_collision/deck_face_table（逐面 (a,c,b) Godot 正面）+ `hex_picking.gd` resolve_face 新 bridge_deck 分支（候选 = bank 两格、最近格心+ID 决胜）+ `map_view.gd` 挂载（路面零碰撞、桥面挂 LAYER_TERRAIN）；测试 = `tests/test_bridges.gd` **6 用例**（两岸==link 端格+认领表/禁渡与桥端错误分开报/结构拒绝四件/FERRY+净空/急弯判据几何 oracle+首尾边界/序列化）+ test_road_geometry.gd 之桥面锚（桥面⊥河+桥头落地+中段跨水/桥面碰撞汤+归属） |
+| ROAD-03 | 生成期连通查询（重定义，修订记录三之 6：原「聚落道路骨架」整卡上移 T5 WORLD-05） | 无桥不能过阻挡河边、有合法桥可过；失败具名到河段；手工 fixture 驱动（零 T5 依赖） | **2026-10-12 完成**：`scripts/content/map_generation_connectivity.gd` 单一入口——edge_open（格 passable × 有河 link 无认领 = 禁渡 × 认领表）/ reachable_set（blocked_river 指向具体 link+reach——错误指向河段）/ required_connected，供 T5 WORLD-05/WORLD-04 共用（「最终边级通行图」落点即此）；手工 fixture 驱动（行 0 起贯穿贪心河+同侧过滤聚落，零 T5 依赖）；测试 = `tests/test_generation_connectivity.gd` **6 用例**（边原子四态/无桥失败指向河段+手工聚落/有桥通过/双口径湖墙/无河等价 MapConnectivity/只读+确定性） |
+
+**T4 批门禁与证据（本会话实跑）**：`--import` exit 0；run_tests = **24 文件 /
+314 用例 / 0 失败** exit 0——⚠ 基线实况与执行方案成文口径不符：仓库当前基线
+实测 20 文件/285 用例（T2/T3 批已落地，非 13 文件/203），本批按「只增不减」
+执行 +4 文件 +29 用例（test_roads 9 + test_bridges 6 + test_road_geometry 8 +
+test_generation_connectivity 6，均沿 tests/test_case.gd 基类、oracle 独立拼装）
+全绿；锚更新 test_world_data.gd（road_id 对账锚 + pois 单锁）+ test_water_rivers.gd
+（roads 形状层拒绝锚）；picking_scene_check **11 用例/0 失败** exit 0（扩 I 阶段
+桥面真实 raycast：桥面先于河床命中 / kind=bridge_deck / bank 两格归属）；
+highlight_scene_check **31/31** exit 0；render_probe **8/8 PASS** exit 0（真 GPU
+forward_plus：CHECK-5 路面/桥面层差分实测 517px、按「余量 ≥3×」定档 150——
+证据 = `docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt`）；
+gate_all 全链 6/6 PASS exit 0（导入/单测+故障自检/拾取/高亮/相机/真渲染探针）。
+固定图 = `make_fixed_maps.gd` 东西横路（行 5 列 18..34）+ 跨河桥（边 (324,325)，
+行扫描 = 等高行/恰一有河边/非源终点/非急弯——放置规则的固定图示范）；map
+digest 不变（仅 .world.json/.meta.json 更新，test_map_source digest 锚不动）；
+FORD_ROWS 代码零残留（grep 复核——仅 make_fixed_maps.gd:28 头注划线记史）。
+**首版取舍（头注登记）**：① 桥面材质不进 style 槽（走 make_bridge_material
+工厂默认，方案只要求 road_material 一槽）；② 沙盒未接线 world/路面层（沿
+T3 沙盒不加载水的先例，证据走探针+scene check）；③ map_picker 未动（生产
+拾取的桥面体注册随 T5 沙盒接线时接入，避免无人消费的死代码）。**已知非本批
+问题（如实报告）**：camera_scene_check C1/C2（缩放收敛容差）在本机 9/11——
+已用 `git archive HEAD` 原始快照（未经本批改动）同机复跑、失败数值逐位一致
+（got 62.81/17.14），证明为既有的机器/时序状态；本批未触碰相机栈（git status
+佐证），沙盒不加载 world、路层不挂。**评审结论**：三卡实现与证据链全部独立
+复现（门禁 314/0、拾取 11/11 含桥面真 raycast、探针 8/8 含 CHECK-5、固定图
+工具重跑逐字节一致、全部卡表测试锚在场且真跑、认领/禁渡/湖墙/chunk 无关合同
+均实证成立）——**通过**，仅四处口径级弱点随遗留 low 登记。
+
+**遗留 low（评审登记，四处）**：① 桥面长轴⊥河断言结构恒真——n/t 均由
+HexMath 原语计算、不读 built mesh（探针 T1：6 方向 dot 全为构造零；T3 宽度
+写反时 ⊥ 仍过、桥头落地角点断言 FAIL；T2 built mesh 主方向 |dot|=0.995——
+builder 实际正确），「走向写反」实际由同测试的桥头落地角点断言间接抓住、
+中段（接坡/跨水点）横向错位无断言覆盖（`tests/test_road_geometry.gd:300-305`）；
+② 卡表「数据合同影响」承诺的草案 §8 整节格边重写与 §7 禁令格边重述未随卡
+执行——草案仍为穿格口径、§7 禁令引用不存在的 RiverReachData.cell_id 字段
+（格边化前残句），`world_data.gd` 头注引用「草案 §7/§8」成悬空引用（权威链
+经执行方案 §2.3 仍可解析、语义无歧义；草案最后提交 = f799822/T3，其头注自认
+「§8 待 T4 按执行方案 §2.3 重写」未发生——`docs/M1a-terrain-data-contract-draft.md`
+:243-247、§8）；③ 数据层接受在格语义水体（湖格 passable=false）上修路（探针
+validate 返回空串——footprint 冲突校验属 T5 WORLD-03，计划未在 T4 禁此；连通
+查询不受影响、读 passable，信息性记录——`scripts/core/data/world_data.gd`
+:664-745）；④ 桥面碰撞体层号硬编码字面量 1（`scripts/ui/map_view.gd:199` 仅
+注释口头引用 HexPicking.LAYER_TERRAIN=1），与 picking_scene_check 的
+`1 << (LAYER_TERRAIN − 1)` 同一事实两处字面重复，层号变更时 view 侧静默漂移。
+
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
 间等）全为候选目标，T0 基线实测前不构成承诺。

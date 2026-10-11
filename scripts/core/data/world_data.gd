@@ -1,14 +1,19 @@
-## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体（M1a T2 首物 → T3 水系解锁；
-##   执行方案 docs/M1a-terrain-T2-T5-execution-plan.md §2.5 + §2.2/§2.4（格边重议已拍，
-##   §2.6 全关）+ §4 WATER-01/03 + 数据合同草案 docs/M1a-terrain-data-contract-draft.md
-##   §3/§4/§5/§6/§11/§12）
+## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体/道路/桥（M1a T2 首物 →
+##   T3 水系 → T4 道路桥解锁；执行方案 docs/M1a-terrain-T2-T5-execution-plan.md
+##   §2.5 + §2.2/§2.3/§2.4（格边重议已拍，§2.6 全关）+ §4 WATER-01/03 + §5
+##   ROAD-01/02 + 数据合同草案 docs/M1a-terrain-data-contract-draft.md
+##   §3/§4/§5/§6/§7/§8/§11/§12）
 ## 职责：格子数据（MapData）旁边的**第四伴生文件 `<name>.world.json`** 载体——
 ##   NeighborLinkData 邻接边表（link_id = (min,max) 格稳定 ID 对）+ RiverReachData
 ##   格边河段（§2.2 重写表：河 = 共享边有序序列，ADR-14）+ WaterBodyData 湖/海
-##   （格语义水体，WATER-03 转正）+ 校验器 + 序列化（固定键序）。路/桥/POI 集合属
-##   T4/T5 逐实体解锁，本版**恒空**（「关闭一个尚未实现能力不产生伪字段」的镜像：
-##   没有能力就没有数据——from_dict 对非空未解锁集合显式拒绝，不做半吊子解析）。
-## 合同（翻案须先改草案对应节与 tests/test_world_data.gd / test_water_*.gd，不动架构）：
+##   （格语义水体，WATER-03 转正）+ RoadData 道路（§7 转正，ROAD-01：格心有序
+##   序列 + link.road_id 对账）+ CrossingData 桥（§8 格边重写表，ROAD-02：认领
+##   语义——「路是格中心与格中心之间，河是单纯沿着边，他俩只会交叉，交叉时就是
+##   桥」，拍板⑤）+ 校验器 + 序列化（固定键序）。POI 集合属 T5 解锁，本版恒空
+##   （「关闭一个尚未实现能力不产生伪字段」的镜像：没有能力就没有数据——
+##   from_dict 对非空未解锁集合显式拒绝，不做半吊子解析）。
+## 合同（翻案须先改草案对应节与 tests/test_world_data.gd / test_water_*.gd /
+##   test_roads.gd / test_bridges.gd，不动架构）：
 ## - 旧图零迁移（§2.2）：伴生文件缺失/为空 → empty()（无河无路无 POI 的合法态），
 ##   不报错、不重新随机生成——MapData 的 dict 与 SCHEMA_VERSION=1 零改动；
 ## - **Vector2i（link_id）不得直接交给 JSON.stringify**（引擎 4.7.2 实测坑：落成
@@ -35,6 +40,29 @@
 ## - **湖/河双口径（有意设计，§2.2 禁令行）**：湖/海 = 格语义水体（占格、terrain/
 ##   passable 结算面在格上，本表只加 water_level/inlet/outlet 标高与拓扑）；河 = 边
 ##   语义水体（水在边上、两侧格保持陆地地形与 passable——reach 永不回写 MapData）；
+## - **道路合同（ROAD-01，草案 §7 转正）**：RoadData.cells 有序格序列（相邻两格
+##   互为界内邻居 = 一条 link；单路内格不重复 → link 不复用）；路口 = 多路共享格
+##   （重数合法，共享 **格** 而非 link——link.road_id 单值，两路跨接同一条 link 由
+##   对账拒绝）；road_class 值域单点恒 0（能力关闭的显式表达，≠0 → from_dict 与
+##   validate 双拒绝）；connects_pois T5 前恒空（POI 实体未解锁，非空即拒）；
+##   link.road_id 与 roads.cells 相邻对**双向对账**（§4：本 link 两端恰为序列相邻
+##   两格——与 river_reach_id 对账同构）；**Δ≥n 修路拒绝的阈值来自生成配置不进
+##   数据**（validate 只在 max_road_delta ≥ 0 时校验——「有配置才拒」；被 crossing
+##   认领的河 link 跳过：桥面高差由桥址校验管辖，ROAD-02 ③）；
+## - **桥合同（ROAD-02，§2.3 格边重写表 + §2.4 连带对账）**：crossing = {有河
+##   link，河在下、路在上} 的**认领关系**——格边口径下桥不占额外 link，跨接即该
+##   link 本身（~~bridge_cell/traversable_edges 两条 link~~ 穿格版作废）；river_edge
+##   = 被跨的有河 link（初版单边）、bank_a/bank_b == 该 link 两端格（两岸格，规范
+##   序 bank_a=river_edge.x/bank_b=river_edge.y——字段保留为草案形状、校验钉死与
+##   link 端点一致）；Kind.BRIDGE 唯一合法值（Kind.FERRY 枚举预留**不开**——
+##   from_dict/validate 双拒绝，枚举存在 ≠ 能力开放）；一 link 至多一 crossing
+##   （格边版桥锚定单 link——穿格版「方向所有权去重」结构性退化自动满足）；
+##   **横切机器定义（§2.3 重写版）**：道路相邻对构成的有河 link 被 crossing 认领 =
+##   合法横切 / 未认领的有河 link 出现在任何道路序列 = RIVER_FORD_FORBIDDEN 禁渡
+##   拒绝（与 BRIDGE_ENDPOINT_INVALID 分开报）；桥无路跨接（两岸都有路的机器表达）
+##   = CROSSING_NO_ROAD 拒绝；桥址合法性首版 = 桥头（bank Δ ≤ max_bridge_bank_delta，
+##   生成配置口径同道路）+ 净空（max(bank 高程) ≥ 河水位——桥面中段 y = max+lift
+##   恒于水面之上的数据面前提），违例 = BRIDGE_ENDPOINT_INVALID（草案 §11 错误码）；
 ## - WorldData 零回写 MapData（含 mods——草案 §11 全局项；测试锚定 summary 不变）；
 ## - 纯数据类：RefCounted、零场景节点、不 preload 任何场景（ADR-2；删 scripts/ui/**
 ##   后 tests 全绿）。锚点绝对坐标不落盘（§2.3）：边锚 = 两格心连线与共享边交点，
@@ -65,7 +93,9 @@ class NeighborLinkData:
 	## 两端格须互为界内邻居（WorldData.validate 查——不存在邻格不产生连接）
 	var link_id := NO_LINK
 
-	## 本边被哪条道路占用（无向）；ID_NONE = 无路。T4 前恒 ID_NONE（引用不可解析即非法）
+	## 本边被哪条道路占用（无向）；ID_NONE = 无路。T4 起与 roads.cells 相邻对双向
+	## 对账（§4：本 link 两端恰为该道路格序列中的相邻两格；单值字段 = 一 link 至多
+	## 一路，两路跨接同一条 link 由对账拒绝）
 	var road_id: int = ID_NONE
 
 	## 本边有河水时所属河段（RiverReachData 主键引用）；ID_NONE = 无河。
@@ -143,6 +173,60 @@ class WaterBodyData:
 	var terminal := true
 
 
+## 道路（草案 §7 转正，ROAD-01）：格中心网络的有序格序列——道路是**格与格之间**
+## 的连接（拍板⑤语义正典），与沿边的河只会在共享 link 上交叉（交叉即桥，
+## CrossingData 认领）。路口 = 多路共享 cell（共享格合法、共享 link 非法）。
+class RoadData:
+	extends RefCounted
+
+	## 主键（道路表 road_id 升序为规范序）
+	var road_id: int = ID_NONE
+
+	## 有序格序列（cell_id，行主序稳定 ID）：相邻两格须互为界内邻居（构成 link）；
+	## 单路内格不重复（重复格 = link 复用，拒绝）；is_loop 时首尾格另须相邻（环
+	## 闭合边同样进对账/Δ/禁渡检查）
+	var cells: Array[int] = []
+
+	## 环路标记（可选回路的形状面，草案 §7 字段；闭合边 = cells[last]→cells[0]）
+	var is_loop := false
+
+	## 道路等级：**值域单点恒 0**（能力关闭的显式表达——分级路网属后续版本；
+	## ≠0 由 from_dict 与 validate 双拒绝，序列化锚定）
+	var road_class := 0
+
+	## 连接的 POI 主键列表（草案 §7 字段）；POI 实体属 T5，本版恒空（非空即拒——
+	## 「没有能力就没有数据」）
+	var connects_pois: Array[int] = []
+
+
+## 桥/渡口（草案 §8 格边重写表全量，ROAD-02；ADR-14 + 拍板⑤认领语义反转）：
+## crossing = 「有河 link 上、河在下路在上」的认领关系——格边口径下桥不占额外
+## link，跨接即该 link 本身；跨河可达的唯一查询入口 = CrossingData 认领表
+## （crossing_index，ROAD-02 验收原文；生成期连通查询 map_generation_connectivity.gd
+## 消费）。~~bridge_cell / river_cells / traversable_edges~~ 穿格版字段全部作废。
+class CrossingData:
+	extends RefCounted
+
+	## 跨河结构类型：BRIDGE 唯一合法值；FERRY 预留**不开**（枚举存在 ≠ 能力开放
+	## ——from_dict/validate 双拒绝，草案 §8 禁止项原文）
+	enum Kind { BRIDGE, FERRY }
+
+	## 主键（桥表 crossing_id 升序为规范序）
+	var crossing_id: int = ID_NONE
+
+	## Kind.BRIDGE（初版单值）
+	var kind: int = Kind.BRIDGE
+
+	## 被跨的有河 link（初版单边；宽河多边列表第二版）——须 ∈ 某河段 edges
+	## （有河才有桥，CROSSING_NO_RIVER 拒绝无河边）
+	var river_edge: Vector2i = NO_LINK
+
+	## 两岸格 = river_edge 两端格（规范序 bank_a = river_edge.x、bank_b = river_edge.y
+	## ——字段为草案形状保留，校验钉死与 link 端点一致，天然互异且均陆地地形）
+	var bank_a: int = ID_NONE
+	var bank_b: int = ID_NONE
+
+
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
@@ -152,10 +236,14 @@ var rivers: Array[RiverReachData] = []
 ## 水体表（T3 WATER-03 解锁；water_body_id 升序规范序）
 var water_bodies: Array[WaterBodyData] = []
 
-## 以下三集合 + meta 的实体定义属 T4（路/桥）→ T5（POI）逐卡解锁（草案 §12.4）；
-## 本版恒空数组——from_dict 对非空显式拒绝（不产伪字段也不假解析）。
-var roads: Array = []
-var crossings: Array = []
+## 道路表（T4 ROAD-01 解锁；road_id 升序规范序）
+var roads: Array[RoadData] = []
+
+## 桥表（T4 ROAD-02 解锁；crossing_id 升序规范序）
+var crossings: Array[CrossingData] = []
+
+## POI 集合属 T5 逐卡解锁（草案 §12.4）；本版恒空数组——from_dict 对非空显式拒绝
+## （不产伪字段也不假解析）。
 var pois: Array = []
 
 ## WorldMeta（草案 §10 字段集的占位形状；attempt/repair/first_pass 落码进 WORLD-04）。
@@ -202,6 +290,64 @@ func water_body_by_id(body_id: int) -> WaterBodyData:
 	return null
 
 
+## road_id → 道路（不存在 → null；线性查——T4 手工路网规模下不做索引）。
+func road_by_id(road_id: int) -> RoadData:
+	for r in roads:
+		if r.road_id == road_id:
+			return r
+	return null
+
+
+## crossing_id → 桥（不存在 → null）。
+func crossing_by_id(crossing_id: int) -> CrossingData:
+	for c in crossings:
+		if c.crossing_id == crossing_id:
+			return c
+	return null
+
+
+## 桥认领表（link_id → CrossingData，ROAD-02「跨河可达的唯一查询入口」）：
+## 生成期连通查询（map_generation_connectivity.gd）与 T5 WORLD-05 桥址搜索共用。
+## 一 link 至多一 crossing 由 validate 保证（构造期无冲突）。
+func crossing_index() -> Dictionary:
+	var out := {}
+	for c in crossings:
+		out[c.river_edge] = c
+	return out
+
+
+## 急弯判据（ROAD-02 ②，拍板⑩走向几何版——无转弯语义）：河段边序列第 k 步处
+## 急弯 ⇔ edge[k] 与 edge[k+2] **不平行**（平行 = 平缓走廊、不平行 = 急弯）；
+## **首尾索引边界**：k < 0 或 k+2 ≥ edges.size() 即非急弯（序列首尾勿漏——单边/
+## 两边序列无从判定走向）。桥址候选（生成侧 WORLD-05）据此排除急弯边；判据与
+## 河段端点边排除（源/终点不设桥）同属候选偏好、非桥址合法性硬约束（ROAD-02 ③）。
+## 平行判定 = 两条边切向的单位点积绝对值 ≥ 1−PARALLEL_EPS（切向取自任一端格的
+## dir_between——两端格推导差一个符号，取绝对值即无向平行）。
+const PARALLEL_EPS := 1e-6
+
+static func river_bend_is_sharp(map: MapDataClass, reach: RiverReachData, k: int) -> bool:
+	if k < 0 or k + 2 >= reach.edges.size():
+		return false  # 首尾索引边界：越界即非急弯
+	var t1: Variant = _edge_tangent_of(map, reach.edges[k])
+	var t2: Variant = _edge_tangent_of(map, reach.edges[k + 2])
+	if not (t1 is Vector3) or not (t2 is Vector3):
+		return false  # 非法边（越界/非邻居）——形状由 validate 拒，此处保守非急弯
+	var v1: Vector3 = t1
+	var v2: Vector3 = t2
+	return absf(v1.dot(v2)) < 1.0 - PARALLEL_EPS
+
+
+## link 两端格 → 该共享边的切向单位向量（HexMath.edge_tangent_world，世界 XZ 平面；
+## 两端格不互为邻居 → null）。
+static func _edge_tangent_of(map: MapDataClass, link: Vector2i) -> Variant:
+	var a := _cell_of_id(map, link.x)
+	var b := _cell_of_id(map, link.y)
+	var d := Hex.dir_between(a, b)
+	if d < 0:
+		return null
+	return Hex.edge_tangent_world(d)
+
+
 ## 有河边索引（link_id → {"reach": int, "water": int, "bed": int}）：地形河床下切与
 ## 水面条带共用的唯一查询面（WaterGeometryBuilder / HexTerrainBuilder / 测试）。
 ## 同一 link 双 reach 归属由 validate 拒绝（构造期无冲突）。
@@ -246,11 +392,15 @@ static func shore_links_of(map: MapDataClass, b: WaterBodyData) -> Array[Vector2
 
 # ---------------- 校验器（草案 §11：T3 面 = link 表 + 河段四条 + 水体 + 双向对账）----------------
 
-## 校验入口：""=合法；原因串指向具体 link/reach/body/约束（最小诊断输出）。
-## water_terrain_id ≥ 0 时启用成员格 terrain 对账（草案 §6「成员应 TERRAIN_WATER」
-## ——校验不是回写；水体地形 id 属内容层约定 3 号槽，核心层不硬编码，-1 = 跳过）。
+## 校验入口：""=合法；原因串指向具体 link/reach/body/road/crossing/约束（最小诊断
+## 输出）。water_terrain_id ≥ 0 时启用成员格 terrain 对账（草案 §6「成员应
+## TERRAIN_WATER」——校验不是回写；水体地形 id 属内容层约定 3 号槽，核心层不
+## 硬编码，-1 = 跳过）。**max_road_delta / max_bridge_bank_delta = 生成配置口径的
+## 高差阈值（Δ>max 拒绝），-1 = 无配置不查**（§7 禁止项「阈值在生成配置不进
+## 数据」——数据层只校验「有配置才拒」，ROAD-01 ③/ROAD-02 ③）。
 ## 零回写 MapData：本函数只读（结构性保证，测试锚定 summary 不变）。
-func validate(map: MapDataClass, water_terrain_id := -1) -> String:
+func validate(map: MapDataClass, water_terrain_id := -1,
+		max_road_delta := -1, max_bridge_bank_delta := -1) -> String:
 	var river_claim := {}  # link 表声明：link_id → river_reach_id
 	var prev := NO_LINK
 	for i in links.size():
@@ -269,8 +419,8 @@ func validate(map: MapDataClass, water_terrain_id := -1) -> String:
 		var cb := _cell_of_id(map, lid.y)
 		if not map.has_cell(ca) or not map.has_cell(cb) or Hex.dir_between(ca, cb) < 0:
 			return "links[%d] 两端格不互为界内邻居（%s：%s / %s）" % [i, str(lid), str(ca), str(cb)]
-		if lk.road_id != ID_NONE:
-			return "links[%d] road_id=%d 引用不可解析（T4 前道路实体未解锁，恒 ID_NONE）" % [i, lk.road_id]
+		if lk.road_id != ID_NONE and lk.road_id < 0:
+			return "links[%d] road_id=%d 非法（负值）" % [i, lk.road_id]
 		if lk.river_reach_id != ID_NONE:
 			if lk.river_reach_id < 0:
 				return "links[%d] river_reach_id=%d 非法（负值）" % [i, lk.river_reach_id]
@@ -281,6 +431,12 @@ func validate(map: MapDataClass, water_terrain_id := -1) -> String:
 	var body_err := _validate_water_bodies(map, water_terrain_id)
 	if body_err != "":
 		return body_err
+	var crossing_err := _validate_crossings(map, max_bridge_bank_delta)
+	if crossing_err != "":
+		return crossing_err
+	var road_err := _validate_roads(map, max_road_delta)
+	if road_err != "":
+		return road_err
 	return _validate_reconciliation(map, river_claim)
 
 
@@ -443,6 +599,152 @@ func _body_has_member(b: WaterBodyData, cell_id: int) -> bool:
 	return b.member_cells.has(cell_id)
 
 
+## 桥面（ROAD-02 ②③）：主键/规范序/kind（FERRY 拒绝开启）/两岸格形状（==
+## river_edge 两端格）/一 link 至多一 crossing/river_edge 有河/桥址合法性（桥头
+## Δ 与净空——生成配置口径，-1 不查）。river_edge「有河」按河段表投影判定
+## （river_edge_index）；link.river_reach_id ↔ reach.edges 的对账在
+## _validate_reconciliation（与桥无关的河对账面，不在此重复）。
+func _validate_crossings(map: MapDataClass, max_bridge_bank_delta: int) -> String:
+	var river_idx := river_edge_index()
+	var claimed := {}
+	var prev_id := ID_NONE
+	for ci in crossings.size():
+		var c := crossings[ci]
+		if c.crossing_id < 0:
+			return "crossings[%d] crossing_id=%d 非法（负主键）" % [ci, c.crossing_id]
+		if prev_id != ID_NONE and c.crossing_id <= prev_id:
+			return "crossings[%d] 破坏规范序（须按 crossing_id 严格升序——含主键重复）" % ci
+		prev_id = c.crossing_id
+		if c.kind == CrossingData.Kind.FERRY:
+			return "CROSSING_FERRY：crossings[%d]（id %d）Kind.FERRY 预留不开（草案 §8 禁止项——枚举存在 ≠ 能力开放）" \
+				% [ci, c.crossing_id]
+		if c.kind != CrossingData.Kind.BRIDGE:
+			return "crossings[%d]（id %d）kind=%d 非法（Kind.BRIDGE 唯一合法值）" \
+				% [ci, c.crossing_id, c.kind]
+		var e := c.river_edge
+		if e.x < 0 or e.x >= e.y or e.y >= map.cell_count():
+			return "crossings[%d]（id %d）river_edge=%s 非规范（须 0≤x<y 的界内 link）" \
+				% [ci, c.crossing_id, str(e)]
+		var ca := _cell_of_id(map, e.x)
+		var cb := _cell_of_id(map, e.y)
+		if Hex.dir_between(ca, cb) < 0:
+			return "crossings[%d]（id %d）river_edge=%s 两端格不互为界内邻居" \
+				% [ci, c.crossing_id, str(e)]
+		if c.bank_a != e.x or c.bank_b != e.y:
+			return "BRIDGE_ENDPOINT_INVALID：crossings[%d]（id %d）两岸格 (%d,%d) ≠ river_edge 两端格 (%d,%d)" \
+				% [ci, c.crossing_id, c.bank_a, c.bank_b, e.x, e.y]
+		if not river_idx.has(e):
+			return "CROSSING_NO_RIVER：crossings[%d]（id %d）river_edge=%s 不属于任何河段（有河才有桥）" \
+				% [ci, c.crossing_id, str(e)]
+		if claimed.has(e):
+			return "CROSSING_DUP：边 %s 同时被 crossing %d 与 %d 认领（一 link 至多一 crossing）" \
+				% [str(e), int(claimed[e]), c.crossing_id]
+		claimed[e] = c.crossing_id
+		# 桥址合法性首版 = 桥头/净空（ROAD-02 ③：净跨单边恒定、坡度由桥头 Δ 覆盖，
+		# 「相隔两边平行」降为候选偏好非硬约束）——桥头 Δ 超配置 = 整桥抬高必留
+		# 悬空桥头，拒绝该桥址（不接坡不留悬空；几何侧 3 段接坡见 RoadGeometryBuilder）
+		var ea := map.elevation_at(ca)
+		var eb := map.elevation_at(cb)
+		if max_bridge_bank_delta >= 0 and absi(ea - eb) > max_bridge_bank_delta:
+			return "BRIDGE_ENDPOINT_INVALID：crossing %d 两岸高差 |%d−%d|=%d > 配置 %d（接坡超限——拒绝该桥址，不留悬空桥头）" \
+				% [c.crossing_id, ea, eb, absi(ea - eb), max_bridge_bank_delta]
+		# 净空：桥面中段 y = max(两岸)×step + lift 须恒于水面 (level−0.5)×step 之上——
+		# 离散纲下 max(两岸高程) ≥ 河水位是充分条件（逐位几何断言在桥几何测试锚）
+		if maxi(ea, eb) < int(river_idx[e]["water"]):
+			return "BRIDGE_ENDPOINT_INVALID：crossing %d 桥面净空不足（max 两岸高程 %d < 河水位 %d——桥面将不高于水面）" \
+				% [c.crossing_id, maxi(ea, eb), int(river_idx[e]["water"])]
+	return ""
+
+
+## 道路面（ROAD-01 ①③ + ROAD-02 ②横切机器定义）：主键/规范序/值域（road_class
+## 单点、connects_pois 恒空）/cells 结构（界内/相邻/不重复/is_loop 闭合）/Δ 生成
+## 配置拒绝/禁渡（有河 link 未认领 = RIVER_FORD_FORBIDDEN，与 BRIDGE_ENDPOINT_
+## INVALID 分开报）/桥服务对账（两岸都有路）/link↔road 双向对账（§4，与河对账
+## 同构）。被 crossing 认领的 link 跳过 Δ 检查——桥面高差由桥址校验管辖。
+func _validate_roads(map: MapDataClass, max_road_delta: int) -> String:
+	var river_idx := river_edge_index()
+	var claims := crossing_index()
+	var road_links := {}  # 全部道路相邻对投影：link → road_id
+	var served := {}     # 被道路实际跨接的认领边（两岸都有路的机器表达）
+	var prev_id := ID_NONE
+	for ri in roads.size():
+		var r := roads[ri]
+		if r.road_id < 0:
+			return "roads[%d] road_id=%d 非法（负主键）" % [ri, r.road_id]
+		if prev_id != ID_NONE and r.road_id <= prev_id:
+			return "roads[%d] 破坏规范序（须按 road_id 严格升序——含主键重复）" % ri
+		prev_id = r.road_id
+		if r.road_class != 0:
+			return "ROAD_CLASS：roads[%d]（road %d）road_class=%d ≠ 0（值域单点——能力关闭的显式表达）" \
+				% [ri, r.road_id, r.road_class]
+		if not r.connects_pois.is_empty():
+			return "ROAD_POI：roads[%d]（road %d）connects_pois 非空（POI 实体属 T5——没有能力就没有数据）" \
+				% [ri, r.road_id]
+		var min_cells := 3 if r.is_loop else 2
+		if r.cells.size() < min_cells:
+			return "roads[%d]（road %d）cells 至少 %d 格（%s）" % [ri, r.road_id, min_cells,
+				"环路 ≥3（2 格环 = 同一 link 往返复用）" if r.is_loop else "非环 ≥2（端点路也有首尾两格）"]
+		var seen := {}
+		for k in r.cells.size():
+			var cid := r.cells[k]
+			if cid < 0 or cid >= map.cell_count():
+				return "roads[%d]（road %d）cells[%d]=%d 指向界外格（图共 %d 格）" \
+					% [ri, r.road_id, k, cid, map.cell_count()]
+			if seen.has(cid):
+				return "roads[%d]（road %d）cells 重复格 %d（单路内格不重复——link 不复用）" \
+					% [ri, r.road_id, cid]
+			seen[cid] = true
+		# 相邻对枚举：非环 k = 0..size−2；环路含闭合对 cells[last]→cells[0]
+		#（闭合边同样进 Δ/禁渡/对账检查）
+		var pair_last := r.cells.size() - 1 if r.is_loop else r.cells.size() - 2
+		for k in pair_last + 1:
+			var a := r.cells[k]
+			var b := r.cells[0] if k == r.cells.size() - 1 else r.cells[k + 1]
+			var cell_a := _cell_of_id(map, a)
+			var cell_b := _cell_of_id(map, b)
+			if Hex.dir_between(cell_a, cell_b) < 0:
+				return "roads[%d]（road %d）cells[%d]→cells[%d]（%s→%s）不互为界内邻居（道路相邻格）" \
+					% [ri, r.road_id, k, (k + 1) % r.cells.size(), str(cell_a), str(cell_b)]
+			var link := link_id_of(a, b)
+			if road_links.has(link):
+				return "ROAD_LINK_REUSE：边 %s 同时属于 road %d 与 %d（一 link 至多一路——共享格成路口、共享 link 非法）" \
+					% [str(link), int(road_links[link]), r.road_id]
+			road_links[link] = r.road_id
+			if claims.has(link):
+				served[link] = true
+				continue  # 桥面：Δ 由桥址校验管辖（ROAD-02 ③），禁渡不适用（已认领）
+			if max_road_delta >= 0:
+				var delta := absi(map.elevation_at(cell_a) - map.elevation_at(cell_b))
+				if delta > max_road_delta:
+					return "ROAD_DELTA：roads[%d]（road %d）cells[%d]→cells[%d] 高差 %d > 配置 %d（Δ 超限修路按生成配置拒绝）" \
+						% [ri, r.road_id, k, (k + 1) % r.cells.size(), delta, max_road_delta]
+			if river_idx.has(link):
+				return "RIVER_FORD_FORBIDDEN：roads[%d]（road %d）cells[%d]→cells[%d] 跨有河边 %s（reach %d）未被 crossing 认领——禁渡拒绝（横切机器定义 §2.3；禁渡与桥端无效是两类错误，分开报）" \
+					% [ri, r.road_id, k, (k + 1) % r.cells.size(), str(link),
+						int(river_idx[link]["reach"])]
+	# 桥服务对账：每座桥的认领边必被某条道路实际跨接（两岸都有路——Catlike 放置
+	# 规则①的格边转译，横切定义自动含）
+	for c in crossings:
+		if not served.has(c.river_edge):
+			return "CROSSING_NO_ROAD：crossing %d 认领边 %s 无任何道路相邻对跨接（两岸都有路才设桥）" \
+				% [c.crossing_id, str(c.river_edge)]
+	# link ↔ road 双向对账（草案 §4：link 表 road_id 与 roads 相邻对零冗余互证）
+	var road_claim := {}
+	for lk in links:
+		if lk.road_id != ID_NONE:
+			road_claim[lk.link_id] = lk.road_id
+	for e in road_links:
+		var claimed: Variant = road_claim.get(e, ID_NONE)
+		if int(claimed) != int(road_links[e]):
+			return "LINK_ROAD_MISMATCH：road %d 的相邻对 %s 在 link 表缺失或 road_id≠%d（got %s）——双向对账" \
+				% [int(road_links[e]), str(e), int(road_links[e]), str(claimed)]
+	for e in road_claim:
+		if not road_links.has(e):
+			return "LINK_ROAD_MISMATCH：link %s 声明有路（road %d）但无任何道路相邻对含此边" \
+				% [str(e), int(road_claim[e])]
+	return ""
+
+
 ## 对账段：河段↔水体（终点/水位/河口边）、水体↔河段（inlet 镜像）、湖出口水位、
 ## link↔reach 双向。
 func _validate_reconciliation(map: MapDataClass, river_claim: Dictionary) -> String:
@@ -536,7 +838,11 @@ static func corner_id_of(map: MapDataClass, cell: Vector2i, vertex: int) -> int:
 ##    "water_bodies": [{"water_body_id": int, "kind": int, "water_level": int,
 ##      "member_cells": [int, …], "inlet_links": [[x, y], …],
 ##      "outlet_links": [[x, y], …], "terminal": bool}, …]，
-##    "roads": [], "crossings": [], "pois": [], "meta": {§10 字段集}}
+##    "roads": [{"road_id": int, "cells": [int, …], "is_loop": bool,
+##      "road_class": int, "connects_pois": []}, …]，
+##    "crossings": [{"crossing_id": int, "kind": int, "river_edge": [x, y],
+##      "bank_a": int, "bank_b": int}, …]，
+##    "pois": [], "meta": {§10 字段集}}
 ##   全部 Vector2i 显式转 [x, y] 数组（引擎直写 JSON.stringify 落成 "(3, 17)" 字符串
 ##   不可还原，草案 §2.2 实测坑）。
 func to_dict() -> Dictionary:
@@ -577,20 +883,39 @@ func to_dict() -> Dictionary:
 			"outlet_links": outlets,
 			"terminal": b.terminal,
 		})
+	var out_roads: Array = []
+	for r in roads:
+		out_roads.append({
+			"road_id": r.road_id,
+			"cells": r.cells.duplicate(),
+			"is_loop": r.is_loop,
+			"road_class": r.road_class,
+			"connects_pois": r.connects_pois.duplicate(),
+		})
+	var out_crossings: Array = []
+	for c in crossings:
+		out_crossings.append({
+			"crossing_id": c.crossing_id,
+			"kind": c.kind,
+			"river_edge": [c.river_edge.x, c.river_edge.y],
+			"bank_a": c.bank_a,
+			"bank_b": c.bank_b,
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
 		"rivers": out_rivers,
 		"water_bodies": out_bodies,
-		"roads": [],
-		"crossings": [],
+		"roads": out_roads,
+		"crossings": out_crossings,
 		"pois": [],
 		"meta": meta.duplicate(true),
 	}
 
 
-## 版本不符 / 字段缺失 / 形状非法（link_id/edges/inlet 等长度≠2、非整数、负分量、
-## x≥y；water_levels 与 edges 长度不齐）/ 未解锁集合非空 / meta 非字典 → null
+## 版本不符 / 字段缺失 / 形状非法（link_id/edges/river_edge 等长度≠2、非整数、负
+## 分量、x≥y；water_levels 与 edges 长度不齐；road_class≠0、crossings kind≠BRIDGE
+## 等值域单点字段）/ 未解锁集合（pois）非空 / meta 非字典 → null
 ## （调用方显式判空，无隐式兜底）。兼容 JSON 数值形状（整数以 float 3.0 出现亦可
 ## 还原——MapData._is_integral_number 同款）。拓扑/对账语义由 validate 查（分层：
 ## from_dict 管形状，validate 管世界事实一致性）。
@@ -602,12 +927,10 @@ static func from_dict(data: Dictionary) -> WorldData:
 		return null
 	if not (data["links"] is Array) or not (data["meta"] is Dictionary):
 		return null
-	for locked in ["roads", "crossings", "pois"]:
-		if not (data[locked] is Array):
-			return null
-		if not (data[locked] as Array).is_empty():
-			return null  # 能力未解锁（T4/T5 逐实体开）——不产伪字段也不假解析
-	for needed in ["rivers", "water_bodies"]:
+	# POI 仍未解锁（T5 逐实体开）——不产伪字段也不假解析；路/桥已随 T4 解锁解析
+	if not (data["pois"] is Array) or not (data["pois"] as Array).is_empty():
+		return null
+	for needed in ["rivers", "water_bodies", "roads", "crossings"]:
 		if not (data[needed] is Array):
 			return null
 	var out := empty()
@@ -637,6 +960,12 @@ static func from_dict(data: Dictionary) -> WorldData:
 		return null
 	var bodies_err := _bodies_from_dict(data["water_bodies"], out)
 	if bodies_err:
+		return null
+	var roads_err := _roads_from_dict(data["roads"], out)
+	if roads_err:
+		return null
+	var crossings_err := _crossings_from_dict(data["crossings"], out)
+	if crossings_err:
 		return null
 	var m := (data["meta"] as Dictionary)
 	for k in ["schema_version", "seed", "generator_version", "rules_version",
@@ -745,6 +1074,71 @@ static func _bodies_from_dict(src: Variant, out: WorldData) -> bool:
 				else:
 					b.outlet_links.append(lk)
 		out.water_bodies.append(b)
+	return false
+
+
+## roads 数组 → RoadData（形状校验：cells 全非负 int、is_loop bool、road_class
+## **值域单点 == 0**、connects_pois 恒空——值域检查在形状层（flow_level ≥1 同款
+## 先例），语义层 validate 不再复议）。
+static func _roads_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["road_id", "cells", "is_loop", "road_class", "connects_pois"]):
+			return true
+		for k in ["road_id", "road_class"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["road_id"]) < 0 or int(d["road_class"]) != 0:
+			return true
+		if not (d["cells"] is Array) or not (d["is_loop"] is bool) \
+				or not (d["connects_pois"] is Array):
+			return true
+		if not (d["connects_pois"] as Array).is_empty():
+			return true  # POI 实体属 T5——没有能力就没有数据
+		var r := RoadData.new()
+		r.road_id = int(d["road_id"])
+		r.is_loop = bool(d["is_loop"])
+		r.road_class = int(d["road_class"])
+		for cv in (d["cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			r.cells.append(int(cv))
+		out.roads.append(r)
+	return false
+
+
+## crossings 数组 → CrossingData（形状校验：kind **值域单点 == Kind.BRIDGE**——
+## FERRY 预留不开，形状层即拒；river_edge 显式 [x,y] 转换层；bank 非负 int）。
+static func _crossings_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["crossing_id", "kind", "river_edge", "bank_a", "bank_b"]):
+			return true
+		for k in ["crossing_id", "kind", "bank_a", "bank_b"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["crossing_id"]) < 0 or int(d["bank_a"]) < 0 or int(d["bank_b"]) < 0:
+			return true
+		if int(d["kind"]) != CrossingData.Kind.BRIDGE:
+			return true  # Kind.BRIDGE 唯一合法值（FERRY 拒绝开启）
+		var e: Variant = _link_id_from(d["river_edge"])
+		if e == null:
+			return true
+		var c := CrossingData.new()
+		c.crossing_id = int(d["crossing_id"])
+		c.kind = int(d["kind"])
+		c.river_edge = e
+		c.bank_a = int(d["bank_a"])
+		c.bank_b = int(d["bank_b"])
+		out.crossings.append(c)
 	return false
 
 # ---------------- 内部 ----------------

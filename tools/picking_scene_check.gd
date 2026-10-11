@@ -29,6 +29,10 @@
 ##      零碰撞体）后射线「穿水」直落河床——水层不截获地形拾取的引擎级证据含
 ##      水面层本体（将来挂载侧误给水面加 LAYER_TERRAIN 碰撞体 → 射线先中水面、
 ##      face 表查无此碰撞体 → 本检查变红）。
+##   I. 桥面归属（T4 ROAD-02 ④：桥面进碰撞则先于河床命中——候选 = bank 两格）：
+##      3×3 图单边河 + 跨接路 + 认领桥，桥面碰撞汤挂 LAYER_TERRAIN（沿
+##      map_view._mount_road 同构）：t=0.45/0.55/0.5 直下射线命中 kind=bridge_deck
+##      （河床上方先命中——河在下路在上的拾取面）且归**最近格心**（平局 ID 决胜）。
 ## 场景切换纪律：每阶段「释旧+建新」后隔 ≥2 个物理帧再查（同帧切换旧碰撞体
 ##   尚在空间中且 XZ 与新场景重叠，必串扰）。
 ## 退出码：全部通过 0，任一失败 1。
@@ -55,6 +59,7 @@ class Checker extends Node:
 	const ProfileClass := preload("res://scripts/core/data/landform_profile.gd")
 	const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 	const WaterB := preload("res://addons/hexhammer/water_geometry_builder.gd")
+	const RoadB := preload("res://addons/hexhammer/road_geometry_builder.gd")
 
 	const SIZE := 1.0
 	const SOLID := 0.8
@@ -109,8 +114,11 @@ class Checker extends Node:
 			6:  # G 查完 → 换 H 场景（T3 河床）
 				_run_check_g()
 				_stage_build_river()
-			7:
+			7:  # H 查完 → 换 I 场景（T4 桥面）
 				_run_check_h()
+				_stage_build_bridge()
+			8:
+				_run_check_i()
 				_finish()
 
 	# ---------------- 场景阶段 ----------------
@@ -508,3 +516,141 @@ class Checker extends Node:
 				print("[拾取小场景校验] FAIL H：t=%s got=%s want=%s（最近格心；高侧 Δ4 不截胡）"
 					% [str(tt), str(res["cell"]), str(want)])
 		_check(ok, "H. 河床归属（|Δh|=4 高岸 × 河：最近格心 + ID 决胜 / kind=riverbed / 射线穿水）")
+
+	# ---------------- T4 桥面真实 raycast（ROAD-02 ④ 扩用例）----------------
+
+	## I 场景：3×3 图单边河（a=(1,1) 与东邻 b）+ 跨接路 + 认领桥；两岸高程 1、
+	## 水位 1（河口湖成员侧 a 涂 0/不可通行 → 桥两岸 Δ1 接坡样本）。地形碰撞体
+	## （含河床下切）+ 桥面碰撞汤（LAYER_TERRAIN，沿 map_view._mount_road 同构）
+	## 双体并存——射线先中高处的桥面。
+	func _stage_build_bridge() -> void:
+		_teardown()
+		map = MapDataClass.new(3, 3)
+		for cell in map.cells():
+			map.set_elevation(cell, 1)
+		var a := Hex.axial_of(Vector2i(1, 1))
+		var b := Hex.neighbor(a, 0)
+		var world := WorldDataClass.empty()
+		var link := WorldDataClass.link_id_of(map.index_of(a), map.index_of(b))
+		var reach := WorldDataClass.RiverReachData.new()
+		reach.reach_id = 0
+		reach.edges = [link]
+		reach.water_levels = [1]
+		reach.bed_level = 0
+		reach.water_body_id = 0
+		world.rivers.append(reach)
+		# 河口湖（终点边对账——v1 每河必汇入声明水体；H 场景同款）
+		var members: Array[int] = [link.x]
+		var mcell := Hex.axial_of(Vector2i(link.x % map.width, link.x / map.width))
+		for d in 6:
+			var nb := Hex.neighbor(mcell, d)
+			if map.has_cell(nb) and map.index_of(nb) != link.y and not members.has(map.index_of(nb)):
+				members.append(map.index_of(nb))
+		for cid in members:
+			var c := Hex.axial_of(Vector2i(cid % map.width, cid / map.width))
+			map.set_elevation(c, 0)
+			map.set_passable(c, false)
+		members.sort()
+		var mouth_body := WorldDataClass.WaterBodyData.new()
+		mouth_body.water_body_id = 0
+		mouth_body.water_level = 1
+		mouth_body.member_cells = members
+		mouth_body.inlet_links = [link]
+		mouth_body.terminal = true
+		world.water_bodies.append(mouth_body)
+		var road := WorldDataClass.RoadData.new()
+		road.road_id = 0
+		road.cells = [link.x, link.y]
+		world.roads.append(road)
+		var crossing := WorldDataClass.CrossingData.new()
+		crossing.crossing_id = 0
+		crossing.river_edge = link
+		crossing.bank_a = link.x
+		crossing.bank_b = link.y
+		world.crossings.append(crossing)
+		var lk := WorldDataClass.NeighborLinkData.new()
+		lk.link_id = link
+		lk.river_reach_id = 0
+		lk.road_id = 0
+		world.links.append(lk)
+		var verr := world.validate(map)
+		if verr != "":
+			_hard_fail("I 场景世界非法：%s" % verr)
+			return
+		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID,
+			null, world)
+		if not (r is Dictionary):
+			_hard_fail("I 场景地形构建失败（河床下切）")
+			return
+		_attach_bodies(r as Dictionary)
+		# 桥面碰撞汤（LAYER_TERRAIN——桥面进碰撞则先于河床命中，ROAD-02 ④）
+		var rb: Variant = RoadB.build_map(map, world, 10, 10, RoadB.make_road_material())
+		if not (rb is Dictionary):
+			_hard_fail("I 场景路面层构建失败")
+			return
+		var deck_bodies := 0
+		for chunk_info in (rb as Dictionary)["chunks"]:
+			var cd: Dictionary = chunk_info
+			var soup: PackedVector3Array = cd["deck_collision"]
+			if soup.size() == 0:
+				continue
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(soup)
+			var body := StaticBody3D.new()
+			body.name = "DeckCollision_c%d_r%d" % [(cd["chunk"] as Rect2i).position.x,
+				(cd["chunk"] as Rect2i).position.y]
+			body.collision_layer = 1 << (Picking.LAYER_TERRAIN - 1)
+			body.collision_mask = 0
+			var cs := CollisionShape3D.new()
+			cs.shape = shape
+			body.add_child(cs)
+			map_root.add_child(body)
+			tables[body.get_instance_id()] = cd["deck_face_table"]
+			deck_bodies += 1
+		if deck_bodies == 0:
+			_hard_fail("I 场景无桥面碰撞体（crossing 认领边未产桥面？）")
+			return
+		phase = 8
+		settle = SETTLE_FRAMES
+
+	func _run_check_i() -> void:
+		# 直下射线过桥面：命中 kind=bridge_deck（高处的桥面先于河床——河在下路在上）
+		# 且归属 = bank 两格最近格心（平局 ID 决胜——与 riverbed 同口径）
+		var a := Hex.axial_of(Vector2i(1, 1))
+		var b := Hex.neighbor(a, 0)
+		var ca := Hex.axial_to_world(a, SIZE)
+		var cb := Hex.axial_to_world(b, SIZE)
+		var ok := true
+		for t in [0.45, 0.5, 0.55]:
+			var tt: float = t
+			var x := ca.x + (cb.x - ca.x) * tt
+			var z := ca.z + (cb.z - ca.z) * tt
+			var res: Variant = _pick_down(x, z)
+			if res["miss"]:
+				ok = false
+				print("[拾取小场景校验] FAIL I：t=%s 未命中（桥面碰撞汤缺口？）" % str(tt))
+				continue
+			var hit: Dictionary = res["hit"]
+			var table: Array = tables.get(hit["collider_id"], [])
+			var fi := int(hit["face_index"])
+			if fi < 0 or fi >= table.size():
+				ok = false
+				continue
+			var face: Dictionary = table[fi]
+			if String(face["kind"]) != "bridge_deck":
+				ok = false
+				print("[拾取小场景校验] FAIL I：t=%s 命中面非 bridge_deck（got %s——桥面未先于河床命中？）"
+					% [str(tt), str(face)])
+				continue
+			var want: Vector2i
+			if tt < 0.5:
+				want = a
+			elif tt > 0.5:
+				want = b
+			else:
+				want = a if map.index_of(a) < map.index_of(b) else b  # 平局 ID 决胜
+			if res["cell"] != want:
+				ok = false
+				print("[拾取小场景校验] FAIL I：t=%s got=%s want=%s（bank 两格最近格心）"
+					% [str(tt), str(res["cell"]), str(want)])
+		_check(ok, "I. 桥面归属（跨河桥 + 河床：桥面先命中 / kind=bridge_deck / bank 两格最近格心 + ID 决胜）")

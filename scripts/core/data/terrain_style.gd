@@ -33,7 +33,10 @@
 ##   make_material(color, alpha)——参数级工厂，不落 .tres）, "width": float}）与
 ##   "water_material"（T3 WATER-02 ④ 水面层材质：style 值或官方工厂
 ##   WaterGeometryBuilder.make_water_material()——view 传 world 且有河/水体时建
-##   水面第二 mesh，几何/拾取不随 style 变）。
+##   水面第二 mesh，几何/拾取不随 style 变）与 "road_material"（T4 ROAD-01 ④
+##   路面层材质：style 值或官方工厂 RoadGeometryBuilder.make_road_material()
+##   ——view 传 world 且有路/桥时建路面第二 mesh + 桥面碰撞汤；桥面材质首版
+##   不进 style 槽、走 make_bridge_material 工厂默认——ROAD-01 只登记一槽）。
 ##   非法（库缺失/缺槽/槽值类型不符/BLEND 缺导管/格线参数非法）→ null（无隐式
 ##   兜底，不静默换路线）。
 ## - 纯 Resource：零场景节点（ADR-2）；不写 MapData、不参与任何结算/查询/摘要
@@ -49,6 +52,7 @@ const TerrainMaterialLibraryClass := preload("res://scripts/core/data/terrain_ma
 const HexTerrainBlendClass := preload("res://addons/hexhammer/hex_terrain_blend.gd")
 const HexGridLineBuilderClass := preload("res://addons/hexhammer/hex_grid_line_builder.gd")
 const WaterGeomClass := preload("res://addons/hexhammer/water_geometry_builder.gd")
+const RoadGeomClass := preload("res://addons/hexhammer/road_geometry_builder.gd")
 
 ## 色块默认 style（.tres）路径——SLOTS 模式 + 主线默认材质库
 const SLOTS_DEFAULT_PATH := "res://resources/terrain/styles/terrain_style_slots_default.tres"
@@ -86,6 +90,12 @@ enum Mode {
 ## 参数组不同：水面材质状态多（透明/深度/流动参数位），直接持 Material 实例；
 ## .tres 缺省属性与本默认一致 = 代码/.tres 同源不漂移）
 @export var water_material: Material = null
+
+# ---- 路面层（T4 ROAD-01 ④：材质级——路面 mesh/几何不随 style 变，变的是观感）----
+## 路面材质（道路/桥面第二 mesh 层的渲染面）；null = 官方工厂
+## RoadGeometryBuilder.make_road_material()（不透明无光照——贴地条带的稳定色；
+## 桥面用 make_bridge_material 工厂默认，首版不单设槽——见类头注）
+@export var road_material: Material = null
 
 
 ## 载入 style .tres；路径不存在 / 类型不符 → null（显式失败，调用方判空）。
@@ -205,6 +215,10 @@ func inputs_for(map: MapDataClass) -> Variant:
 	# 无「缺了就错」的合同面，区别于 BLEND 缺导管）
 	inputs["water_material"] = water_material \
 		if water_material != null else WaterGeomClass.make_water_material()
+	# 路面层输入（T4 ROAD-01 ④）：view 传 world 且有路/桥时才建路面第二 mesh；
+	# 材质口径与水面层同（null 默认与 .tres 缺省同源）
+	inputs["road_material"] = road_material \
+		if road_material != null else RoadGeomClass.make_road_material()
 	return inputs
 
 

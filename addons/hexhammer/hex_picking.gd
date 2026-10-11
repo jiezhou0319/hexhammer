@@ -19,6 +19,9 @@
 ##     （岸坡+河床整段）——候选 = **两侧两格**，最近格心 + ID 决胜（无高程档
 ##     参与：点击水/河床后的逻辑结果由河床归属合同决定——提案原文的可执行
 ##     表达；水面第二 mesh 不进碰撞/拾取层，射线穿水命中即本类面）。
+##   · **bridge_deck（kind="bridge_deck"，T4 ROAD-02 ④）**：桥面碰撞汤（桥面进
+##     碰撞则先于河床命中）——候选 = **bank 两格**（两岸格），最近格心 + ID 决胜
+##     （与 riverbed 同口径：无高程档，桥在水上不改变两岸均等候选）。
 ##   分类由 classify_edge(delta, cliff_threshold) 现算——阈值参数与 LandformProfile
 ##   同档。管线接线（T2 评审修复 2026-10-11）：chunk_pick_data / resolve_hit /
 ##   resolve_face 全链透传 cliff_threshold（此前只在 pick_edge_band/pick_corner
@@ -146,6 +149,11 @@ static func resolve_face(local_pos: Vector3, face: Dictionary,
 			# 决胜——无高程档（不归高地侧：河床低不代表归高岸，两侧均等候选）
 			return pick_by_nearest_center(local_pos,
 				edge_cells(face["cell"], int(face["dir"])), map, size)
+		"bridge_deck":
+			# T4 ROAD-02 ④：桥面候选 = bank 两格（两岸格），最近格心 + ID 决胜——
+			# 与 riverbed 同口径（无高程档：桥在水上不改变两岸均等候选）
+			return pick_by_nearest_center(local_pos,
+				[face["bank_a"], face["bank_b"]], map, size)
 		"corner":
 			return pick_corner(local_pos, face["cell"], int(face["dir"]), map, size,
 				cliff_threshold)

@@ -26,10 +26,11 @@
 		"edge_river_with_mouth_lake",
 		"forest_patches",
 		"mud_flat",
-		"rock_outcrops"
+		"rock_outcrops",
+		"cross_river_road_with_bridge"
 	],
 	"kind": "fixed",
-	"note": "hand-authored (no noise/random) by tools/make_fixed_maps.gd; JSON carries MapData.to_dict field set — same set as future M2 MapDef .tres; river = edge-sequence WorldData (ADR-14, T3 WATER-01)",
+	"note": "hand-authored (no noise/random) by tools/make_fixed_maps.gd; JSON carries MapData.to_dict field set — same set as future M2 MapDef .tres; river = edge-sequence WorldData (ADR-14, T3 WATER-01); road/bridge = cells + CrossingData claim (T4 ROAD-01/02)",
 	"schema_version": 1,
 	"terrain_counts": {
 		"0": 2082,
