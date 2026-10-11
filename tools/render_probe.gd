@@ -1,7 +1,7 @@
 ## render_probe.gd — M1a+ GATE-02 渲染证据工具（独立工具，非门禁；04 §M1a+ 第一批卡）
 ## 用法（**非 headless**——本卡要求真渲染；与门禁同款命令去掉 --headless 即可）：
-##   "C:/Users/zerat/godot_tmp/Godot_v4.7.2-stable_win64_console.exe" \
-##     --path C:/code/hexhammer --script res://tools/render_probe.gd
+##   "E:/Godot/Godot_v4.7.2-stable_win64_console.exe" \
+##     --path <repo> --script res://tools/render_probe.gd
 ##   （跑真渲染帧，沿 picking_scene_check.gd / camera_scene_check.gd 的独立小场景先例：
 ##   探针跑若干帧后自行 quit(0/1)，退出码 0 = 全部可见性检查通过。）
 ## 定位与边界（卡 4/5 条）：
@@ -10,10 +10,13 @@
 ##     默认 CULL_BACK 下俯视地形/高亮/描线全部 0 像素 → 本探针 FAIL（exit 1）上报，
 ##     不在本工具里修（那说明 F-1 修复有问题）；
 ##   - 探针**不进 headless 套件**（run_tests.gd 只收集 tests/test_*.gd，不感知本文件）。
-## 校验项（卡 2 条：默认 CULL_BACK 下俯视可见像素数 > 阈值；俯视 = 相机正下直视）：
+## 校验项（卡 2 条 + 准备批 GATE-EVIDENCE S-4 扩充）：
 ##   CHECK-1 地形顶面：与背景色相异的像素数 > 总像素 × TERRAIN_MIN_FRACTION；
 ##   CHECK-2 高亮扇面：HighlightLayer.highlight(7 格) 后与前一帧图的差分像素数 > HIGHLIGHT_MIN_PX；
-##   CHECK-3 描线带：HighlightLayer.show_path(12 格直线) 后与前一帧图的差分像素数 > PATH_MIN_PX。
+##   CHECK-3 描线带：HighlightLayer.show_path(12 格直线) 后与前一帧图的差分像素数 > PATH_MIN_PX；
+##   CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲——俯视可见
+##     像素须过 CHECK-1 同款阈值（防纯白失败样），且与 SLOTS 地形帧差分 >
+##     BLEND_DIFF_MIN_PX（证明 BLEND 材质效果真实存在，非只有数组测试）。
 ## 固定条件（GATE-02「给定旧固定图和规定相机」）：
 ##   - 图 = 沙盒同源 FIXED 手工固定图（resources/maps/fixed/playable_60x40.json，digest 入统计）；
 ##   - 相机 = 图包络中心正上方 y=CAM_HEIGHT 直视下（basis 显式：屏幕上 = 世界 −Z 北），
@@ -21,9 +24,11 @@
 ##   - 环境/太阳 = m1a_sandbox.tscn 数值的代码复刻（背景/环境光/日光转角能量阴影）；
 ##   - 地形 = MapView（view 层，沙盒同路径）→ Builder → 每 chunk MeshInstance3D；
 ##   - 窗口 = 1280×720（实际渲染尺寸以读回为准，写入统计与文件名——设备 DPI 差异不破坏证据）。
-## 证据留档（卡 3 条）：docs/evidence/m1a/ 三张截图（terrain/highlight/path）+ 像素统计 txt，
+## 证据留档（卡 3 条）：docs/evidence/m1a/ 四张截图（terrain/highlight/path/blend）+ 像素统计 txt，
 ##   文件名带渲染器/尺寸标识（如 render_probe_terrain_forwardplus_1280x720.png）；
-##   统计注明 Forward+ 实测、其余渲染器（Compatibility/Mobile）未测。
+##   **渲染器标识一律取 RenderingServer.get_current_rendering_method() 运行时值**
+##   （S-1，2026-10-11：不得读工程配置/硬编码「Forward+ 实测」——CLI --rendering-method
+##   覆盖与驱动回退都会使配置值 ≠ 实际后端）；统计同时记配置值与运行时值。
 ## 判定容差：单通道 8 位差 > CHANNEL_TOL（14/255 ≈ 0.055）计为「相异/变化」——远小于
 ##   0.42 alpha 高亮混色（单通道 ~50/255）与不透明描线（~100+/255），大于静态场景逐帧噪声。
 extends SceneTree
@@ -36,7 +41,7 @@ const EVIDENCE_DIR := "res://docs/evidence/m1a"
 const WATCHDOG_SEC := 60.0
 
 func _init() -> void:
-	print("[渲染探针] init（deferred 启动，等待主循环；非 headless = Forward+ 真渲染）")
+	print("[渲染探针] init（deferred 启动，等待主循环；非 headless = 真渲染，后端以运行时为准——S-1）")
 	_boot.call_deferred()
 
 func _boot() -> void:
@@ -59,6 +64,7 @@ class Checker extends Node:
 	const TerrainMaterialLibraryClass := preload("res://scripts/core/data/terrain_material_library.gd")
 	const MapViewClass := preload("res://scripts/ui/map_view.gd")
 	const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
+	const TerrainStyleClass := preload("res://scripts/core/data/terrain_style.gd")
 
 	# ---- 规定相机（数值写死并进统计——「规定相机」的可复现口径）----
 	## 相机高度（世界单位；图上方直视下。60×40/size=1 图包络约 105×61，
@@ -75,6 +81,9 @@ class Checker extends Node:
 	const HIGHLIGHT_MIN_PX := 300
 	## 描线带（12 格直线、宽 0.18）像素下限
 	const PATH_MIN_PX := 80
+	## CHECK-4：BLEND 帧与 SLOTS 地形帧的差分像素下限（S-4，2026-10-11——
+	## 保守起步值；实测首报后按「余量 ≥3×」规则上调）
+	const BLEND_DIFF_MIN_PX := 200
 
 	# ---- 高亮/描线固定格（固定条件；两组互不相交 → 差分归因干净）----
 	const HIGHLIGHT_COL_ROW := Vector2i(30, 20)  # 图中部内点（60×40 界内且 6 邻全在）
@@ -91,6 +100,7 @@ class Checker extends Node:
 	const SETTLE_LAYER_FRAMES := 15
 
 	var _map: MapDataClass = null
+	var _view: MapViewClass = null
 	var _layer: HighlightLayerClass = null
 	var _cam: Camera3D = null
 
@@ -136,6 +146,7 @@ class Checker extends Node:
 		var view := MapViewClass.new()
 		view.name = "MapView"
 		add_child(view)
+		_view = view
 		if not view.build(_map, 10, 10, lib.materials, 1.0, 1.0):
 			return "地形构建失败（材质缺槽/参数非法）"
 		# 规定相机：图包络中心正上方直视下（屏幕上 = 世界 −Z 北；basis 显式免 look_at 依赖）
@@ -199,33 +210,59 @@ class Checker extends Node:
 			return
 		var path_r := _count_diff(img_path, img_hl)
 		var path_px: int = path_r["count"]
+		# ---- CHECK-4 BLEND 对照（S-4，2026-10-11：默认 BLEND style 同图重渲）----
+		_layer.clear()
+		_layer.clear_path()
+		var blend_style: Variant = TerrainStyleClass.load_default_blend()
+		if blend_style == null:
+			_fail("BLEND 默认 style 载入失败（%s）" % TerrainStyleClass.BLEND_DEFAULT_PATH)
+			return
+		if not _view.build_with_style(_map, blend_style, 10, 10, 1.0, 1.0):
+			_fail("BLEND 构建失败（problems_for 非空？——S-2 报缺后 inputs_for 拒绝是预期行为，默认库应可解析）")
+			return
+		await _frames(SETTLE_TERRAIN_FRAMES)
+		var img_blend: Image = await _capture()
+		if img_blend == null:
+			return
+		var blend_vis := _count_vs_color(img_blend, bg)
+		var blend_px: int = blend_vis["count"]
+		var sb_r := _count_diff(img_blend, img_terrain)
+		var style_diff_px: int = sb_r["count"]
 
 		# ---- 判定 ----
 		var ok1 := terrain_px > terrain_min
 		var ok2 := highlight_px > HIGHLIGHT_MIN_PX
 		var ok3 := path_px > PATH_MIN_PX
+		var ok4 := blend_px > terrain_min and style_diff_px > BLEND_DIFF_MIN_PX
 		var pct := 100.0 * float(terrain_px) / float(maxi(total, 1))
-		_print_check(ok1, "CHECK-1 地形顶面：俯视可见 px=%d/%d（%.1f%%），阈值=%d（%.0f%%）"
+		var blend_pct := 100.0 * float(blend_px) / float(maxi(total, 1))
+		_print_check(ok1, "CHECK-1 地形顶面（SLOTS）：俯视可见 px=%d/%d（%.1f%%），阈值=%d（%.0f%%）"
 			% [terrain_px, total, pct, terrain_min, TERRAIN_MIN_FRACTION * 100.0])
 		_print_check(ok2, "CHECK-2 高亮扇面（7 格）：差分可见 px=%d，阈值=%d，变化区 bbox=%s"
 			% [highlight_px, HIGHLIGHT_MIN_PX, str(hl_r["bbox"])])
 		_print_check(ok3, "CHECK-3 描线带（12 格直线）：差分可见 px=%d，阈值=%d，变化区 bbox=%s"
 			% [path_px, PATH_MIN_PX, str(path_r["bbox"])])
+		_print_check(ok4, "CHECK-4 BLEND 对照：可见 px=%d/%d（%.1f%%）过地形阈值，与 SLOTS 帧差分 px=%d，阈值=%d，bbox=%s"
+			% [blend_px, total, blend_pct, style_diff_px, BLEND_DIFF_MIN_PX, str(sb_r["bbox"])])
 
 		# ---- 留档（截图 + 统计 txt；写入失败按 FAIL——证据是本卡交付物）----
-		var saved := _save_evidence(img_terrain, img_hl, img_path, {
+		var saved := _save_evidence(img_terrain, img_hl, img_path, img_blend, {
 			"total": total, "terrain_px": terrain_px, "terrain_min": terrain_min,
 			"terrain_pct": pct, "highlight_px": highlight_px, "path_px": path_px,
-			"ok": [ok1, ok2, ok3], "bg": bg, "hl_bbox": hl_r["bbox"], "path_bbox": path_r["bbox"]})
+			"blend_px": blend_px, "blend_pct": blend_pct,
+			"style_diff_px": style_diff_px, "blend_min": BLEND_DIFF_MIN_PX,
+			"ok": [ok1, ok2, ok3, ok4], "bg": bg, "hl_bbox": hl_r["bbox"],
+			"path_bbox": path_r["bbox"], "sb_bbox": sb_r["bbox"]})
 		if saved == "":
 			_fail("证据文件写入失败（见上方输出）")
 			return
 		print("[渲染探针] 证据已留档：%s" % saved)
-		var all_ok := ok1 and ok2 and ok3
+		var all_ok := ok1 and ok2 and ok3 and ok4
+		var runtime_backend := RenderingServer.get_current_rendering_method()
 		if all_ok:
-			print("PROBE OK — 3/3 可见性检查通过（F-1 修复在 Forward+ 俯视下成立：默认 CULL_BACK 全可见）")
+			print("PROBE OK — 4/4 检查通过（F-1 修复在 %s 俯视下成立：默认 CULL_BACK 全可见；SLOTS/BLEND 双路线均有像素证据）" % runtime_backend)
 		else:
-			print("PROBE FAIL — 可见性回归：CULL_BACK 下俯视有图层像素不足阈值（F-1 修复存疑，须上报）")
+			print("PROBE FAIL — 可见性/材质对照回归（%s 下有检查未过阈值，须上报）" % runtime_backend)
 		get_tree().quit(0 if all_ok else 1)
 
 	# ---------------- 截图与像素统计 ----------------
@@ -319,10 +356,13 @@ class Checker extends Node:
 
 	# ---------------- 留档 ----------------
 
-	## 三张截图 + 统计 txt 落 docs/evidence/m1a/（文件名带渲染器/尺寸标识）；
-	## 返回统计文件 res:// 路径，失败返回 ""（原因已打印）。
-	func _save_evidence(img_terrain: Image, img_hl: Image, img_path: Image, r: Dictionary) -> String:
-		var renderer := String(ProjectSettings.get_setting_with_override(
+	## 四张截图 + 统计 txt 落 docs/evidence/m1a/（文件名带渲染器/尺寸标识）；
+		## 返回统计文件 res:// 路径，失败返回 ""（原因已打印）。
+		## 渲染器标识取运行时值（S-1，2026-10-11）：RenderingServer.get_current_rendering_method()
+		## ——工程配置值仅作对照行写入统计（CLI --rendering-method 覆盖/驱动回退会使两者不同）。
+	func _save_evidence(img_terrain: Image, img_hl: Image, img_path: Image, img_blend: Image, r: Dictionary) -> String:
+		var renderer := String(RenderingServer.get_current_rendering_method())
+		var cfg := String(ProjectSettings.get_setting_with_override(
 			"rendering/renderer/rendering_method"))
 		var tag := "%s_%dx%d" % [renderer.replace("_", ""), img_terrain.get_width(), img_terrain.get_height()]
 		var dir_abs := ProjectSettings.globalize_path(EVIDENCE_DIR)
@@ -331,7 +371,8 @@ class Checker extends Node:
 			print("[渲染探针] FAIL 证据目录创建失败：%s（%d）" % [EVIDENCE_DIR, mk])
 			return ""
 		var shots := [
-			["terrain", img_terrain], ["highlight", img_hl], ["path", img_path]]
+			["terrain", img_terrain], ["highlight", img_hl], ["path", img_path],
+			["blend", img_blend]]
 		var shot_paths: Array[String] = []
 		for s in shots:
 			var p := "%s/render_probe_%s_%s.png" % [EVIDENCE_DIR, s[0], tag]
@@ -345,19 +386,20 @@ class Checker extends Node:
 		if f == null:
 			print("[渲染探针] FAIL 统计文件打开失败：%s" % stats_path)
 			return ""
-		f.store_string(_stats_text(renderer, tag, shot_paths, r))
+		f.store_string(_stats_text(renderer, cfg, tag, shot_paths, r))
 		f.close()
 		return stats_path
 
 	## 统计文本（构建/设备/尺寸/像素统计——GATE-02 卡面要求的留档字段）
-	func _stats_text(renderer: String, tag: String, shot_paths: Array, r: Dictionary) -> String:
+	func _stats_text(renderer: String, cfg_renderer: String, tag: String, shot_paths: Array, r: Dictionary) -> String:
 		var ver: Dictionary = Engine.get_version_info()
 		var oks: Array = r["ok"]
 		var L: Array[String] = []
 		L.append("Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；方案「T0 与 T1 的第一批任务卡」）")
 		L.append("时间(UTC)：%s" % Time.get_datetime_string_from_system(true))
 		L.append("引擎：Godot %s" % String(ver.get("string", "?")))
-		L.append("渲染器：%s（Forward+ 本机实测；Compatibility / Mobile 未测）" % renderer)
+		L.append("渲染器（实际运行时）：%s（本机实测 = 此值；取自 RenderingServer.get_current_rendering_method()——S-1）" % renderer)
+		L.append("渲染器（工程配置值）：%s（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）" % cfg_renderer)
 		L.append("设备：adapter=%s vendor=%s；OS=%s %s；DisplayServer=%s" % [
 			RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(),
 			OS.get_name(), OS.get_version(), DisplayServer.get_name()])
@@ -383,13 +425,16 @@ class Checker extends Node:
 		L.append("CHECK-3 描线带（12 格直线，offset 行 %d 列 %d..%d）：差分可见 px=%d，阈值=%d，变化区 bbox=%s → %s" % [
 			PATH_ROW, PATH_COL_FROM, PATH_COL_TO, r["path_px"], PATH_MIN_PX, str(r["path_bbox"]),
 			"PASS" if oks[2] else "FAIL"])
+		L.append("CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲，可见 px=%d / %d（%.1f%%，阈值同 CHECK-1），与 SLOTS 地形帧差分 px=%d，阈值=%d，bbox=%s → %s" % [
+			r["blend_px"], r["total"], r["blend_pct"], r["style_diff_px"], r["blend_min"],
+			str(r["sb_bbox"]), "PASS" if oks[3] else "FAIL"])
 		L.append("")
 		L.append("F-1 语义：默认 CULL_BACK 下俯视三图层可见像素均超阈值 = 渲染索引俯视顺时针（Godot 正面）仍成立；")
 		L.append("若任一为 0/不足 = 可见性回归（F-1 修复存疑，须上报，不在本工具内修）。")
-		L.append("口径：Forward+ 实测（如上）；其余渲染器未测（Compatibility / Mobile）。")
+		L.append("口径：本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。")
 		L.append("截图（同目录）：%s" % "、".join(shot_paths))
 		L.append("标识：%s" % tag)
-		if oks[0] and oks[1] and oks[2]:
+		if oks[0] and oks[1] and oks[2] and oks[3]:
 			L.append("PROBE OK")
 		else:
 			L.append("PROBE FAIL")

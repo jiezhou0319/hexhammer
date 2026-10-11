@@ -11,7 +11,9 @@
 ```text
 TerrainStyle .tres（scripts/core/data/terrain_style.gd；T8 材质槽同款资源化先例）
   · mode ∈ {SLOTS, BLEND} —— 选 HexTerrainBuilder 双入口（build_map / build_map_blend）
-  · material_library: TerrainMaterialLibrary —— 两路线共同外观来源（换库即两风格同换观感）
+  · material_library: TerrainMaterialLibrary —— 两路线共同外观来源（换库即两风格同换观感
+      ——**仅纯色库成立**：BLEND 只取 albedo_color 颜色过渡，槽带 albedo_texture 时
+      problems_for 显式报缺、解析拒绝，不静默丢贴图；外审 S-2，2026-10-11；splat 属后续升级）
   · blend_material: Material —— BLEND 顶点色导管（.tres 烘焙官方工厂产物属性；
       SLOTS 忽略；BLEND 缺失 → 解析显式失败）
   └→ inputs_for(map)（纯解析：只对图内被用到的地形 id 预检/取值）

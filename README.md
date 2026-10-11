@@ -83,11 +83,11 @@ GitHub 镜像（jiezhou0319/hexhammer）。
 
 ## 环境与运行
 
-- **Godot 4.7.2（2026-10-07 起钉死；发布目标 4.7+，`project.godot` features=4.7——原"最低兼容 4.3"口径已废，02 ADR-9，2026-10-09 评审 G2 收口）**。本机位于 `C:\Users\zerat\godot_tmp\`
-  （4.6.3 同目录保留备回退；旧记录 `E:\Godot` 已失效）。项目无主场景，当前仅运行数值模拟器：
+- **Godot 4.7.2（2026-10-07 起钉死；发布目标 4.7+，`project.godot` features=4.7——原"最低兼容 4.3"口径已废，02 ADR-9，2026-10-09 评审 G2 收口）**。本机位于 `E:\Godot\`
+  （`Godot_v4.7.2-stable_win64_console.exe`，2026-10-11 恢复并复现 202 用例/0 失败门禁基线；4.6.2 同目录保留但门禁不可用——INT32 解析失败）。项目无主场景，当前仅运行数值模拟器：
 
 ```
-"C:\Users\zerat\godot_tmp\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
+"E:\Godot\Godot_v4.7.2-stable_win64_console.exe" --headless --path . --script res://tools/combat_sim.gd
 ```
 
 - 伤害计算台直接用浏览器打开 `tools/damage_calc.html`。

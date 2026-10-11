@@ -1,8 +1,9 @@
 Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；方案「T0 与 T1 的第一批任务卡」）
-时间(UTC)：2026-10-10T08:15:08
+时间(UTC)：2026-10-11T08:02:15
 引擎：Godot 4.7.2-stable (official)
-渲染器：forward_plus（Forward+ 本机实测；Compatibility / Mobile 未测）
-设备：adapter=NVIDIA GeForce RTX 2050 vendor=NVIDIA；OS=Windows 10.0.26200；DisplayServer=Windows
+渲染器（实际运行时）：forward_plus（本机实测 = 此值；取自 RenderingServer.get_current_rendering_method()——S-1）
+渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）
+设备：adapter=AMD Radeon RX 7700 XT vendor=AMD；OS=Windows 10.0.26200；DisplayServer=Windows
 图像尺寸：1280×720（窗口请求 1280×720，读回为准）
 图（沙盒同源 FIXED）：res://resources/maps/fixed/playable_60x40.json digest=cf67af4ff63efba878a6ba2d48a7226be62db084e6c979fc8e194a583ad1a771（60×40）
 相机（规定）：图包络中心正上方直视下 pos=(51.52851, 64.0, 29.25) fov=70 near=0.5 far=600（屏幕上=世界−Z 北；Transform basis x=(1,0,0) y=(0,0,-1) z=(0,1,0)）
@@ -13,10 +14,11 @@ Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；�
 CHECK-1 地形顶面：俯视可见 px=410725 / 921600（44.6%），阈值=138240（帧像素 15%）→ PASS
 CHECK-2 高亮扇面（7 格 = 中心+6 邻，offset (30, 20)）：差分可见 px=765，阈值=300，变化区 bbox=[P: (624, 347), S: (38, 37)] → PASS
 CHECK-3 描线带（12 格直线，offset 行 32 列 10..21）：差分可见 px=230，阈值=80，变化区 bbox=[P: (360, 512), S: (156, 9)] → PASS
+CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲，可见 px=410725 / 921600（44.6%，阈值同 CHECK-1），与 SLOTS 地形帧差分 px=410725，阈值=200，bbox=[P: (214, 115), S: (851, 489)] → PASS
 
 F-1 语义：默认 CULL_BACK 下俯视三图层可见像素均超阈值 = 渲染索引俯视顺时针（Godot 正面）仍成立；
 若任一为 0/不足 = 可见性回归（F-1 修复存疑，须上报，不在本工具内修）。
-口径：Forward+ 实测（如上）；其余渲染器未测（Compatibility / Mobile）。
-截图（同目录）：res://docs/evidence/m1a/render_probe_terrain_forwardplus_1280x720.png、res://docs/evidence/m1a/render_probe_highlight_forwardplus_1280x720.png、res://docs/evidence/m1a/render_probe_path_forwardplus_1280x720.png
+口径：本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。
+截图（同目录）：res://docs/evidence/m1a/render_probe_terrain_forwardplus_1280x720.png、res://docs/evidence/m1a/render_probe_highlight_forwardplus_1280x720.png、res://docs/evidence/m1a/render_probe_path_forwardplus_1280x720.png、res://docs/evidence/m1a/render_probe_blend_forwardplus_1280x720.png
 标识：forwardplus_1280x720
 PROBE OK

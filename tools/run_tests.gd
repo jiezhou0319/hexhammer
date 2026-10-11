@@ -1,8 +1,8 @@
 ## run_tests.gd — 零依赖测试门禁 v3（M1a-T1 建立；v2 按 Fable 审查 S-1/S-2/S-4 加固；
 ##   v3 按 runner 鲁棒性外审 N-1..N-4 加固，见 docs/retro/M1a.md 补记二）
 ## 用法（门禁同命令——先 --import 再跑）：
-##   "C:/Users/zerat/godot_tmp/Godot_v4.7.2-stable_win64_console.exe" --headless --path hexhammer --import
-##   "C:/Users/zerat/godot_tmp/Godot_v4.7.2-stable_win64_console.exe" --headless --path hexhammer --script res://tools/run_tests.gd
+##   "E:/Godot/Godot_v4.7.2-stable_win64_console.exe" --headless --path hexhammer --import
+##   "E:/Godot/Godot_v4.7.2-stable_win64_console.exe" --headless --path hexhammer --script res://tools/run_tests.gd
 ## v2 行为（继承）：逐文件子进程隔离（SCRIPT ERROR 从子进程输出检出，S-1）；
 ##   零断言/有参 test_*/空文件 = 失败（S-2）；NaN/无穷/负容差断言 = 失败（S-4）；
 ##   门禁变异自检（应拦尽拦、应放尽放）。
@@ -25,6 +25,11 @@
 ##     （原因标记缺失 / 用例数不符）一律判自检失败；
 ##   - 新增 crash / hang 故意故障样本 = N-2/N-3 的回归锚（crash 用 OS.kill 自杀
 ##     ——确定性秒死、无崩溃转储副作用；hang 吃 3s 短超时档，门禁只多等 3s）。
+## v3.1（2026-10-11，准备批 GATE-PORTABILITY，外审 S-3）：超时被杀的子进程**不再查
+##   退出码**（timed_out 直接记 -1）——Linux 下对已死进程调 get_process_exit_code
+##   引擎必吐「process does not exist」ERROR，与真 SCRIPT ERROR 混流污染日志。三态
+##   口径：正常输出转发 / 故意故障 = FAIL 行（变异自检预期，勿当事故）/ **非预期
+##   引擎 ERROR = 异常**（门禁日志应零 ERROR，出现即须排查）。
 ## 失败打印「文件:用例:原因」（子进程报告原样转发，格式与 v1/v2 一致）。
 extends SceneTree
 
@@ -148,7 +153,12 @@ func _run_child(exe: String, proj: String, script_path: String,
 	_drain(stderr_pipe, err_buf)
 	stdio.close()
 	stderr_pipe.close()
-	var exit_code := OS.get_process_exit_code(pid)
+	# S-3（2026-10-11）：被 kill 的进程不可再查退出码——Linux 下引擎必吐
+	# 「process does not exist or is not a child」ERROR 污染日志（与真 SCRIPT ERROR
+	# 混流）。timed_out 直接记 -1：判定链已把超时排在首位，退出码在该分支不参与。
+	var exit_code := -1
+	if not timed_out:
+		exit_code = OS.get_process_exit_code(pid)
 
 	var out_text := out_buf.get_string_from_utf8()
 	var err_text := err_buf.get_string_from_utf8()

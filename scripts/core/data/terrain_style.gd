@@ -14,7 +14,9 @@
 ##   · BLEND = 色板权重混合（build_map_blend 顶点 COLOR 路线，M1a+ BLEND-01/02
 ##     的过渡合同）；palette 从 material_library 提取（palette_from_materials 同源
 ##     口径：逐槽取 StandardMaterial3D.albedo_color）——与 fallback 共用同一库，
-##     换库即两风格同时换观感（BLEND-01 已落的数据路径，本类只把它收进 style）。
+##     换库即两风格同时换观感（**仅对纯色库成立**：BLEND 当前只做**颜色过渡**，
+##     槽带 albedo_texture 时贴图会被丢弃 → problems_for 显式报缺、inputs_for
+##     拒绝解析，不静默整图纯色化——外审 S-2，2026-10-11；splat 混合属后续升级）。
 ## - blend_material：BLEND 模式的顶点色 albedo 导管（官方工厂 =
 ##   HexTerrainBlend.make_blend_material，.tres 里烘焙为其产物属性；自定义 shader
 ##   读 COLOR 同样合法——builder 只认 Material，语义由调用方保证）。SLOTS 模式
@@ -121,6 +123,10 @@ func problems_for(map: MapDataClass) -> Array[String]:
 			out.append("地形 id %d 缺材质槽（或槽值非 Material）" % tid)
 		elif mode == Mode.BLEND and not (mat is StandardMaterial3D):
 			out.append("BLEND 模式：地形 id %d 非 StandardMaterial3D（取不到 albedo_color 色板）" % tid)
+		elif mode == Mode.BLEND and (mat as StandardMaterial3D).albedo_texture != null:
+			# 外审 S-2（2026-10-11）：BLEND 只取 albedo_color——带贴图的槽必须显式
+			# 报缺并拒绝，不得静默丢贴图把整类地形退化成纯色
+			out.append("BLEND 模式：地形 id %d 的材质带 albedo_texture——当前 BLEND 只做 albedo_color 颜色过渡，贴图会被丢弃（换纯色库或等 splat 升级）" % tid)
 	return out
 
 

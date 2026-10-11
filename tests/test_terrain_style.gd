@@ -162,6 +162,41 @@ func test_inputs_for_rejects_broken_styles() -> void:
 	if r5 is Dictionary:
 		expect_eq((r5["palette"] as Dictionary).size(), 2, "小图色板恰覆盖 {0,1}")
 
+# ================= 外审 S-2（2026-10-11）：BLEND + 贴图库显式报缺 =================
+
+func test_blend_texture_library_explicitly_rejected() -> void:
+	# BLEND 只取 albedo_color 颜色过渡——带 albedo_texture 的槽必须报缺并拒绝解析，
+	# 不得静默丢贴图把整类地形退化成纯色/纯白（外审 S-2；SLOTS 材质槽路线不受影响）
+	var tiny := MapDataClass.new(2, 1)
+	tiny.set_terrain(MapDataClass.Hex.axial_of(Vector2i(0, 0)), 0)
+	tiny.set_terrain(MapDataClass.Hex.axial_of(Vector2i(1, 0)), 1)
+	var textured := StandardMaterial3D.new()
+	textured.albedo_color = Color(0.9, 0.9, 0.9)
+	var placeholder := PlaceholderTexture2D.new()
+	placeholder.size = Vector2i(4, 4)
+	textured.albedo_texture = placeholder
+	var s := StyleClass.new()
+	s.mode = StyleClass.Mode.BLEND
+	s.material_library = Lib.new()
+	s.material_library.materials = {
+		0: textured,  # 图内用到且带贴图 → 须报缺
+		1: Lib.make_color_block(Color(0.5, 0.4, 0.3)),
+	}
+	s.blend_material = Blend.make_blend_material()
+	var probs: Array[String] = s.problems_for(tiny)
+	var found := false
+	for p in probs:
+		if String(p).contains("albedo_texture"):
+			found = true
+	expect(found, "BLEND+贴图槽在问题清单显式报缺（S-2；got %s）" % str(probs))
+	expect(s.inputs_for(tiny) == null, "BLEND+贴图库 → 解析拒绝（不静默丢贴图）")
+	# 对照：同一贴图库走 SLOTS 合法——材质槽路线直接用材质实例，贴图照常渲染
+	var s2 := StyleClass.new()
+	s2.mode = StyleClass.Mode.SLOTS
+	s2.material_library = s.material_library
+	var r2: Variant = s2.inputs_for(tiny)
+	expect(r2 is Dictionary, "SLOTS 用贴图库合法（贴图在材质实例上，不受 BLEND 色板口径影响）")
+
 # ================= Given 守卫：同 seed → 同图 =================
 
 func test_same_seed_generates_identical_map() -> void:

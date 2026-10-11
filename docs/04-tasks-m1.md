@@ -147,7 +147,7 @@ F-2 修复 `a7b7b85`）均已落。**T0 唯一剩余 = GATE-02 渲染证据**：
 
 | ID | 卡 | 验收（方案 Given/When/Then 摘要） | 完成登记（2026-10-10 收尾登记员追加） |
 |---|---|---|---|
-| GATE-02 | 固定图+相机渲染证据 | 旧固定图规定相机渲染，存构建/设备/像素统计与截图；Forward+ 未测明确标注 | **2026-10-10 完成**：`tools/render_probe.gd` 实跑 Forward+（地形 410725px / 高亮 765px / 描线 230px 全超阈值，PROBE OK exit=0，两次运行计数逐位一致）；证据 = `docs/evidence/m1a/render_probe_{terrain,highlight,path}_forwardplus_1280x720.png` + `render_probe_stats_forwardplus_1280x720.txt`（txt 已标注 Compatibility/Mobile 未测）；门禁 169 用例 / 0 失败 |
+| GATE-02 | 固定图+相机渲染证据 | 旧固定图规定相机渲染，存构建/设备/像素统计与截图；Forward+ 未测明确标注 | **2026-10-10 完成**：`tools/render_probe.gd` 实跑 Forward+（地形 410725px / 高亮 765px / 描线 230px 全超阈值，PROBE OK exit=0，两次运行计数逐位一致）；证据 = `docs/evidence/m1a/render_probe_{terrain,highlight,path}_forwardplus_1280x720.png` + `render_probe_stats_forwardplus_1280x720.txt`  terrain_style_slots_default.tres）；门禁 169 用例 / 0 失败；**2026-10-11 外审 S-1 勘误**：该轮实跑实为 `--rendering-method gl_compatibility`/llvmpipe，「Forward+ 实测」表述失真（探针标注读工程配置非运行时）——修复与证据重出 = 准备批 GATE-EVIDENCE |
 | BLEND-01 | 相邻两格颜色权重（过渡合同首证） | 草-泥边带：两端对应纯色、中点权重各 0.5、权重和为 1，格心保持纯色 | **2026-10-10 完成**：`tests/test_hex_terrain_blend.gd`（15 用例）；门禁 184 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
 | BLEND-02 | 三格交汇 + 跨 chunk 过渡 | 草-泥-岩共享角跨 chunk：三方权重正确、shared position 一致、无裂缝无重复角面 | **2026-10-10 完成**：`tests/test_hex_terrain_blend_corner.gd`（9 用例）；门禁 193 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
 | BLEND-03 | 纹理可替换不改世界事实 | 同图两套 style：逻辑摘要与可达性不变、材质效果不同、索引/face 映射不变 | **2026-10-10 完成**：`tests/test_terrain_style.gd`（9 用例）；门禁 202 用例 / 0 失败 + 三个 scene_check 全绿；详情见下方已交付证据段 |
@@ -212,17 +212,36 @@ F-2 修复 `a7b7b85`）均已落。**T0 唯一剩余 = GATE-02 渲染证据**：
 **数据合同冻结建议（T2/T3 开工前置，只登记不实现）**：穿格河流 1入1出
 （RiverReach/WaterBody/Road/Crossing 字段集）、NeighborLinkData 的 link_id 约定、
 WorldData 与 MapData 并存（不塞 `mods`）——见方案「核心设计与数据边界」节；
-**河流穿格 vs 格边为 ADR 级决策**，T3 前须回 02 立 ADR。
+~~**河流穿格 vs 格边为 ADR 级决策**，T3 前须回 02 立 ADR~~（已解：2026-10-10 02 ADR-14 = **格边河流**；草案 §5/§8 重议蓝本 = 执行方案 §2、已全部拍板）。
 
   **2026-10-10 完成（草案交付）**：`docs/M1a-terrain-data-contract-draft.md`——纯文档、
   零代码改动（WorldData + 七实体逐字段表与初版禁止项；兼容性总纲按现行实现静态实读
   对照、未做运行时实验；RiverReachData 1入1出结构钉死）。「草案非拍板」效力声明不变：
-  穿格 vs 格边仍为 ADR 级悬置决策，T3 前须回 02 立 ADR（现行最新 ADR-13）。
+  ~~穿格 vs 格边仍为 ADR 级悬置决策，T3 前须回 02 立 ADR（现行最新 ADR-13）~~
+  （已过时——02 ADR-14 已立格边 2026-10-10；草案 §5/§8 重议蓝本 = 执行方案 §2、
+  §2.6 全部拍板）。
 
   **2026-10-10 完成（T2–T5 执行方案交付）**：数据合同草案 §5/§8 **按 ADR-14 格边
   重议案** + T2–T5 十三卡逐卡执行案 + Azgaar 势力范围前瞻案（五份外部调研多源对照；
   非拍板文档，卡内须主创拍板项各卡自带、合同重议案待确认三项列其 §2.6）。全文见
   [M1a-terrain-T2-T5-execution-plan.md](M1a-terrain-T2-T5-execution-plan.md)。
+
+**主创拍板第二~五批登记指针（2026-10-11）**：T2–T5 执行方案的四批追加拍板（第二批
+④~⑧：河网路线/桥语义/格线归属/Azgaar 重构；第三批⑨~⑪：§2.6 关闭；第四批⑫：
+定位口径；第五批⑬~⑮：外审三件套处置）**登记权威 = 执行方案头部拍板登记**
+（[M1a-terrain-T2-T5-execution-plan.md](M1a-terrain-T2-T5-execution-plan.md)），
+04 不重复落字。
+
+**准备批 + LAND-S 登记（2026-10-11 拍板⑮新增；下一批范围 = 准备批四卡 + LAND-S，
+十四卡不同时启动）**：
+
+| ID | 卡 | 验收（执行方案 §0.5/§3 摘要） | 完成登记 |
+|---|---|---|---|
+| PLAN-ALIGN | 文档权威对齐（02/04/草案/提案/执行方案五方） | 每条生效数据规则只有一个权威版本；被替代口径全部划线标注 | **2026-10-11 完成**：02 ADR-14 排水前置废除注；04 三处「ADR 悬置」过时口径划线 + GATE-02 登记行 S-1 勘误注；草案头部排水映射废除注 + 转正蓝本指针；提案头部取代注 + 卡表行级差异注；README 环境行改 `E:\Godot` 4.7.2（恢复 + 门禁 202 用例/0 失败复现，exit 0——环境硬前置同批达标） |
+| GATE-EVIDENCE | 渲染证据修复（S-1/S-2/S-4） | 探针渲染器标注取运行时；SLOTS/BLEND 同图差分 >0；BLEND+贴图库报缺 | **2026-10-11 完成**：S-1 = render_probe.gd 标识改 `RenderingServer.get_current_rendering_method()`、统计双行（实际运行时/工程配置）、删「Forward+ 实测」硬编码；S-4 = 新增 CHECK-4（默认 BLEND style 同图重渲 + 与 SLOTS 帧差分，阈值 200 起步）；S-2 = terrain_style.gd problems_for 对 BLEND+albedo_texture 报缺、inputs_for 拒绝 + 单测 test_blend_texture_library_explicitly_rejected；**本机真 GPU 实测**（Vulkan 1.4.349 / AMD RX 7700 XT / Forward+）探针 4/4 全过 exit 0，证据重出 = docs/evidence/m1a/ 四图（terrain/highlight/path/**blend 新增**）+ 统计 txt（渲染器/设备/尺寸全留档） |
+| GATE-PORTABILITY | runner 收尾（S-3） | fixture_hang 零引擎 ERROR；故障注入全表仍全拦 | **2026-10-11 完成**：run_tests.gd v3.1——timed_out 分支不再查退出码（记 -1，根除 Linux 引擎 ERROR）、三态口径进头注；门禁 13 文件 / **203 用例** / 0 失败 exit 0（+1 = S-2 新测试），故障注入全表仍全拦（runtime 错误/零断言/NaN/有参/崩溃/死循环） |
+| GATE-ENTRY | 统一门禁入口（导入→单测→场景→探针） | 全链退出码正确聚合；无图形环境报「未验证」 | **2026-10-11 完成**：tools/gate_all.gd——单命令五步链 + 探针（`-- --with-probe` 或桌面环境触发，否则显式报「未验证」≠全绿）；**全链实测 6/6 PASS exit 0**（导入/单测 203/0/拾取/高亮/相机/真 GPU 探针 4/4）；图形失败计入总失败（不被单测绿覆盖） |
+| LAND-S | 七格测试场（T2-SPIKE 附卡） | 平/坡/阶地/真崖及混合角全覆盖目检 + 步数默认值拍板记录 | 待办 |
 
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
