@@ -1,0 +1,15 @@
+LAND-S 七格测试场 spike（T2-SPIKE 附卡；2026-10-11）
+引擎：Godot 4.7.2-stable (official)；渲染器（实际运行时）：forward_plus
+实验几何：terrace 水平均分 + Catlike 竖直剖面（v_step=1/ceil(steps/2)）；真崖 = 带 t=0.5 共享崖线同 XZ 墙顶/墙底 + 高低裙边（Δ≥3）
+固定图（tools/land_spike_fixtures.gd，LAND-S 测试锚 fixture）：七格 = 中心 e0 + 六邻 e=[1,2,3,2,1,0]（Δ 全档 0/1/2/3）；断面 = 两格 Δ2 / Δ3
+已知取舍：角落不补面（针孔）——混合角目检口径 = 三边带汇聚，角几何补面属 LAND-01/LAND-02；材质 UNSHADED+CULL_DISABLED（绕序容错）——均非合同实现
+待主创目检拍板（执行方案 §3 LAND-S 卡内拍板项：spike 后与 LAND-02 合并拍）：
+  ① 阶地步数默认（5 vs 3——对比 overview/section_d2 两档）；
+  ② cliff 纵横比取向 = 竖直夸张系数（×1.0 vs ×1.5——对比 section_d3_ar100/ar150；横轴连接带宽 ≈0.35·size 为合同常量，docs/12 §1「垂直夸张」定调参考）
+截图：
+res://docs/evidence/m1a/land_spike/land_spike_overview_steps5.png
+res://docs/evidence/m1a/land_spike/land_spike_section_d2_steps5.png
+res://docs/evidence/m1a/land_spike/land_spike_overview_steps3.png
+res://docs/evidence/m1a/land_spike/land_spike_section_d2_steps3.png
+res://docs/evidence/m1a/land_spike/land_spike_section_d3_ar100.png
+res://docs/evidence/m1a/land_spike/land_spike_section_d3_ar150.png
