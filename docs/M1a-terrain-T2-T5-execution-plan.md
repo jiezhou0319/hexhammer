@@ -25,6 +25,15 @@
 > 二进制置于固定路径并使 `godot` 可从命令行调用（具体路径/方式由环境维护者定，
 > 本方案不指定）；**达标判据** = 全量 `tools/run_tests.gd` 复现 202 用例 / 0 失败
 > （exit 0）。本文全部仓库行号引用为静态实读核对，未执行任何测试或探针。
+>
+> **主创拍板登记（2026-10-11，对本文三项）**：① **地理骨架不做抬升/下挖**——
+> Catlike frontier 候选**排除**，地理骨架唯一路线 = 现有 FastNoiseLite 双通道
+> （§1/WORLD-01 相应行已改）；② **格边河流玩法语义确认**：河流沿格子边 → 阻碍的
+> 是**格与格之间**的移动（挂边不挂格），由此产生**跨河防守 buff** 的设计空间，
+> 桥 = 跨河通行结构（CrossingData.traversable 认领）——ADR-14 的玩法动机落字，
+> 具体数值/机制沿 M3 决策门（RULE-01 过河/桥规则）；③ **崖壁暂保留真垂直**
+> （LAND-02 现设计维持），软化/风格化取向后续再研究（style 域）。
+> §2.6 四项**仍未拍板**，不得默认通过。
 
 ---
 
@@ -77,7 +86,7 @@ M1b-T1 开工决策**。
 | 桥 | Part 11（/part-11/）：渲染期派生、无独立数据字段、预制体承载 | — | — | — | **一等实体 CrossingData**（桥=跨河可达的唯一查询入口）；取三条放置规则（两岸都有路/急弯端点不设/方向所有权去重） | 本作桥是拓扑事实非装饰；格边口径下大幅简化（river_edge 两侧格即两岸、跨接即该 link 本身） |
 | 水位/岸线 | Part 8（/part-8/）：整数水位不自动传播 + 逐顶点干湿岸线判定 + 水下 0.6/岸上 0.8 角半径 | — | — | — | **声明+校验**（WaterBodyData.water_level + 校验器对账），把 Catlike 运行时约定升为数据合同 | 本作纪律更强：同湖水位一致、湖出口不高于溢流口均可 headless 锚定 |
 | 顶点扰动 | Part 4（/part-4/）：可平铺噪声纹理采样 ±4、边界顶点不扰动防裂缝 | — | — | — | **首版不扰动**（builder :10 头注「首版平整不扰动」）；grimdark 低模是否扰动属后续 style 决策 | 确定性纪律（同 seed 同图）优先；若后开，噪声纹理换确定性 position→offset 纯函数（FastNoiseLite），两条纪律（同位置恒同值/边界不扰动）通用 |
-| 陆地生成 | Part 23（/part-23/）：search-frontier 抬升/下挖 + 陆量预算 + Random.state 保存恢复 | mapgen4（redblobgames.com/maps/mapgen4/）：分层生成+人工约束+改后重算下游 | 线性管线「执行顺序即依赖图」——**可定位性是正面纪律、无阶段诊断产物是反面教训**（两面对 WORLD-04 各有取材，见该卡） | hex-map-wfc（felixturner.github.io/hex-map-wfc/article/）：900 状态/格、19 网格分治、4100 格 ~20s | **模板化阶段管线**：Catlike frontier 仅作地理骨架候选算法之一（与现双噪声路线并列，WORLD-01）；WFC 只作装饰层二级生成器 | WFC 全局约束弱（无「河必须从 A 到 B」表达）+ 成本高（~20s 一次生成，2026-10-11 复核原文实数；调研档另记 8-60s 与原文不符，弃用），作主生成器拖慢同 seed 迭代；Azgaar 线性序失败不产出阶段摘要、错误不指向对象——本作每阶段独立摘要即补此缺口 |
+| 陆地生成 | Part 23（/part-23/）：search-frontier 抬升/下挖 + 陆量预算 + Random.state 保存恢复 | mapgen4（redblobgames.com/maps/mapgen4/）：分层生成+人工约束+改后重算下游 | 线性管线「执行顺序即依赖图」——**可定位性是正面纪律、无阶段诊断产物是反面教训**（两面对 WORLD-04 各有取材，见该卡） | hex-map-wfc（felixturner.github.io/hex-map-wfc/article/）：900 状态/格、19 网格分治、4100 格 ~20s | **模板化阶段管线**：~~Catlike frontier 仅作地理骨架候选算法之一（与现双噪声路线并列，WORLD-01）~~ **2026-10-11 拍板：不做抬升/下挖，frontier 排除——地理骨架唯一路线 = 现双噪声**；WFC 只作装饰层二级生成器 | WFC 全局约束弱（无「河必须从 A 到 B」表达）+ 成本高（~20s 一次生成，2026-10-11 复核原文实数；调研档另记 8-60s 与原文不符，弃用），作主生成器拖慢同 seed 迭代；Azgaar 线性序失败不产出阶段摘要、错误不指向对象——本作每阶段独立摘要即补此缺口 |
 | chunk 纪律 | 原系列全量重建（重制版 chunk 化，仅目录级） | — | — | — | **chunk 划分无关性铁律**（全局 index_of 归属 + inner_vertex/bridge_xz 全局唯一参数，hex_terrain_builder.gd:15-21 头注 + hex_math.gd:184-196 bridge 头注） | 本作纪律更强且已代码化；Catlike Burst 并行对 60×40 规模非必需（拍板⑤） |
 | 崖壁 | 崖=两顶点直连陡面（无墙面结构） | — | — | — | **真垂直崖壁自研**（LAND-02）：墙顶线/墙底线=现成参数点，Catlike 只供阶地-崖角 boundary triangle 坍缩思路 | 本作要求超出（LAND-02 验收：真竖直墙 + 墙顶/墙底连接 + 点击归属）；现状 80° 陡面为过渡态（builder :45-47 头注自认） |
 | 材质混合 | Part 14：顶点色 TerraceLerp 混合 + 纹理权重三 UV | — | — | dual grid（boristhebrave.com/2023/05/31/quarter-tile-autotiling/）：错位半格 4-bit 掩码 16→6 变体 | **顶点 COLOR 纯权重 + palette 查表**（BLEND-01/02 已落地）；dual grid 只落 12 号文档 T0 贴图变体索引（§8.2） | Catlike 权重含地形索引走三 UV 是为防插值出不存在的地形；本作纯权重 + 查表已规避，无需三 UV |
@@ -113,7 +122,7 @@ ADR-14（02:208-227）已定拓扑：河 = 六边形**共享边的有序序列**
 | `bed_level` | 保留；恒 `< water_level` | 河床容纳校验下界 |
 | `water_body_id`（终点对账） | 保留；对账改边口径：终点边 ∈ 该水体 `inlet_links` | 与 §6 互为镜像（双向对账） |
 | （锚点派生：入边中点/出边中点/格心） | 沿边序列派生：每条边的锚 = 两格心连线与共享边的交点（唯一路径，HexMath 现算） | 不落盘 |
-| （禁令『渲染河道不得把河流格整格设为水体禁行』） | 格边语义重述：**两侧格保持陆地地形与自身 passable 语义**——河的通行影响走规则层（M3 门），渲染河床只下切连接带中段 | ADR-14「只定拓扑不定规则」；**与湖/海的双口径对照（有意设计、非疏漏）**：湖/海 = **格语义**水体（水体占格：terrain=TERRAIN_WATER + passable=false 结算面，map_generator.gd:105-113 现状，WATER-03 转正不改水格 passable——水位进 WaterBodyData、通行语义仍在格上）；河 = **边语义**水体（水在边上、格仍是陆地）。后果对齐：寻路（M1b-T4 通行性硬约束读 MapData.passable）天然把湖格当墙、对河不置一词——跨河走 CrossingData.traversable（T4）或 M3 规则；拾取上湖面命中归水格顶面（水面不进拾取层）、河面命中归河床两侧格（WATER-02 归属合同）——两套语义各自闭合，互不改写 |
+| （禁令『渲染河道不得把河流格整格设为水体禁行』） | 格边语义重述：**两侧格保持陆地地形与自身 passable 语义**——河的通行影响走规则层（M3 门；**2026-10-11 拍板：玩法语义 = 河阻碍的是格间移动，跨河防守 buff 为既定设计方向，桥 = 跨河通行结构**——具体数值沿 M3/RULE-01），渲染河床只下切连接带中段 | ADR-14「只定拓扑不定规则」；**与湖/海的双口径对照（有意设计、非疏漏）**：湖/海 = **格语义**水体（水体占格：terrain=TERRAIN_WATER + passable=false 结算面，map_generator.gd:105-113 现状，WATER-03 转正不改水格 passable——水位进 WaterBodyData、通行语义仍在格上）；河 = **边语义**水体（水在边上、格仍是陆地）。后果对齐：寻路（M1b-T4 通行性硬约束读 MapData.passable）天然把湖格当墙、对河不置一词——跨河走 CrossingData.traversable（T4）或 M3 规则；拾取上湖面命中归水格顶面（水面不进拾取层）、河面命中归河床两侧格（WATER-02 归属合同）——两套语义各自闭合，互不改写 |
 
 ### 2.3 §8 CrossingData 字段级重写
 
@@ -197,7 +206,7 @@ reach_id 引用）与 §5/§8 重议无关，阶地几何只动 classify_edge �
 |---|---|
 | **目标** | 同高程端点不移位；阶地-崖角不漏缝；关闭阶地可退回旧坡（提案 :274 验收原文；拍板③定 T2 Must=阶地） |
 | **现状** | slope = 单斜面两级三角（builder :369-378）；cliff 同几何仅坡度陡（:45-47 头注自认 80° 陡面非墙面结构）；Catlike corner 情形分派完全缺失；blend 合同钉死「mesh 侧不设中点顶点」（hex_terrain_blend.gd:13-16——当时是表现层切片约束）；TerrainStyle 只有材质级双 mode（terrain_style.gd:47-52）盖不住几何差异 |
-| **技法移植设计** | ① **TerraceLerp 移植**（Catlike Part 3 同构）：`static func terrace_lerp(a: Vector3, b: Vector3, step: int, steps: int) -> Vector3`——水平 `a.lerp(b, float(step) / float(steps))`、竖直 `lerpf(a.y, b.y, float((step + 1) / 2) * v_step)` 其中 `v_step := 1.0 / ceilf(steps / 2.0)`（竖直步进 = 1/(平台数+1)，即 Catlike 原式 verticalTerraceStepSize = 1/(terracesPerSlope+1)——5 步时 1/3；GDScript int 除法 (step+1)/2 向零取整 = 竖直仅奇数步动。5 步序列 0,1/3,1/3,2/3,2/3,1 = 2 平台+3 短坡；3 步候选 0,1/2,1/2,1 = 1 平台+2 短坡——两档均为对称阶地）；本作连接带宽 = (1−solid)·√3·size ≈ 0.35·size（solid 0.8，builder :84-85），Catlike 5 步在此宽度可读性须 spike 定（候选 3 步；步数 = profile 参数）。**步数与 Δ 档的绑定规则（设计建议，spike 验证）**：`terrace_steps` 定义为**每爬升一级**的步数——Δn 边带 = n 组阶地串联（组内用同一 terrace_lerp 公式爬 1 级，组间共享平台且平台恰落在高程整数层上，与 corner 分派的边界点坍缩对齐）——默认档（cliff_threshold=3）仅 Δ2 = 2 组；profile 调档 threshold=4 时 Δ3 = 3 组，LAND-01 矩阵扩 Δ4 用例同步覆盖多组情形；面数预言公式随之 = n × 每组环数 × 2 三角；② **边带细分发射**：v1..v3（= v1+bridge）之间按步插值成中间环（每环两点：`v1 + bridge*t` 水平 + floor-lerp 竖直），相邻环 = 四边形两级三角，沿 :363-378 发射模式扩；③ **真垂直崖壁**：cliff 边带 v1/v2 取高地侧 y、v3/v4 取低地侧 y 直壁四边形 + 墙顶线（=高地侧内边）/墙底线（=低地侧内边）与阶地的 **boundary triangle 坍缩**（Catlike TriangulateBoundaryTriangle 思路：坡侧阶地朝崖壁上的插值边界点坍缩成扇形）——均为现成参数点无新锚点；④ **corner 情形分派**：先按三格最低者旋转定向再分派（三格等高=现平三角 / 两低一高=阶地扇 / 含 cliff=坍缩扇），十余种情形沿 Catlike SSF/SCS/CCS 结构枚举；⑤ **blend 承接**：阶地细分顶点 COLOR 由同一 `edge_weights(t)`/`corner_weights(u,v)`（hex_terrain_blend.gd:39/:59）显式求值——权重函数不变、求值点变多，有限非负和 1 在每新顶点保持；**BLEND-01「不设中点顶点」条款限定回材质级表现切片**，几何级细分合法但须同步改 hex_terrain_blend.gd 头注与 tests/test_hex_terrain_blend.gd 面数锚（「翻案须同步改测试」纪律）；⑥ **退回开关**：terrace_enabled/terrace_steps/cliff_vertical 进几何 profile（§8.1）；关闭 = 与现基线 mesh 逐位一致；⑦ **UV 选型**：平台走 _uv_planar（:476-477）、短坡/崖壁走 _uv_side_edge（:482-483，T8 约定公式不改只多两档逐面选型） |
+| **技法移植设计** | ① **TerraceLerp 移植**（Catlike Part 3 同构）：`static func terrace_lerp(a: Vector3, b: Vector3, step: int, steps: int) -> Vector3`——水平 `a.lerp(b, float(step) / float(steps))`、竖直 `lerpf(a.y, b.y, float((step + 1) / 2) * v_step)` 其中 `v_step := 1.0 / ceilf(steps / 2.0)`（竖直步进 = 1/(平台数+1)，即 Catlike 原式 verticalTerraceStepSize = 1/(terracesPerSlope+1)——5 步时 1/3；GDScript int 除法 (step+1)/2 向零取整 = 竖直仅奇数步动。5 步序列 0,1/3,1/3,2/3,2/3,1 = 2 平台+3 短坡；3 步候选 0,1/2,1/2,1 = 1 平台+2 短坡——两档均为对称阶地）；本作连接带宽 = (1−solid)·√3·size ≈ 0.35·size（solid 0.8，builder :84-85），Catlike 5 步在此宽度可读性须 spike 定（候选 3 步；步数 = profile 参数）。**步数与 Δ 档的绑定规则（设计建议，spike 验证）**：`terrace_steps` 定义为**每爬升一级**的步数——Δn 边带 = n 组阶地串联（组内用同一 terrace_lerp 公式爬 1 级，组间共享平台且平台恰落在高程整数层上，与 corner 分派的边界点坍缩对齐）——默认档（cliff_threshold=3）仅 Δ2 = 2 组；profile 调档 threshold=4 时 Δ3 = 3 组，LAND-01 矩阵扩 Δ4 用例同步覆盖多组情形；面数预言公式随之 = n × 每组环数 × 2 三角；② **边带细分发射**：v1..v3（= v1+bridge）之间按步插值成中间环（每环两点：`v1 + bridge*t` 水平 + floor-lerp 竖直），相邻环 = 四边形两级三角，沿 :363-378 发射模式扩；③ **真垂直崖壁**：cliff 边带 v1/v2 取高地侧 y、v3/v4 取低地侧 y 直壁四边形 + 墙顶线（=高地侧内边）/墙底线（=低地侧内边）与阶地的 **boundary triangle 坍缩**（Catlike TriangulateBoundaryTriangle 思路：坡侧阶地朝崖壁上的插值边界点坍缩成扇形）——均为现成参数点无新锚点（**2026-10-11 拍板：崖壁暂保留真垂直，软化/风格化取向后续再研究——style 域**）；④ **corner 情形分派**：先按三格最低者旋转定向再分派（三格等高=现平三角 / 两低一高=阶地扇 / 含 cliff=坍缩扇），十余种情形沿 Catlike SSF/SCS/CCS 结构枚举；⑤ **blend 承接**：阶地细分顶点 COLOR 由同一 `edge_weights(t)`/`corner_weights(u,v)`（hex_terrain_blend.gd:39/:59）显式求值——权重函数不变、求值点变多，有限非负和 1 在每新顶点保持；**BLEND-01「不设中点顶点」条款限定回材质级表现切片**，几何级细分合法但须同步改 hex_terrain_blend.gd 头注与 tests/test_hex_terrain_blend.gd 面数锚（「翻案须同步改测试」纪律）；⑥ **退回开关**：terrace_enabled/terrace_steps/cliff_vertical 进几何 profile（§8.1）；关闭 = 与现基线 mesh 逐位一致；⑦ **UV 选型**：平台走 _uv_planar（:476-477）、短坡/崖壁走 _uv_side_edge（:482-483，T8 约定公式不改只多两档逐面选型） |
 | **数据合同影响** | 动 04（M1a-T4「首版单斜面」口径翻案 + M1a-T8 UV 约定补阶地/崖壁面型条目）不动 02；blend 合同扩展回改头注与面数锚；04 落「几何级 profile ≠ 材质级 style」不变量分档字（§8.1）；数据合同零改动 |
 | **测试锚** | 同高程端点不移位 = 平边几何与现基线逐位一致（回退档全 mesh 逐位对照 = 新基线锚）；阶地-崖角不漏缝 = LAND-01 矩阵图焊接流形 + 无非有限顶点 + 重复面为零；blend 阶地新顶点权重逐点 is_valid_weights/3 通过 + 端点 (1,0)/(0,1) 不变；UV 新面型锚沿 tests/test_hex_terrain_materials.gd 五个 test_uv_* 先例扩；换几何 profile 不改世界事实 = MapData.summary/digest/连通性跨档一致（mesh 允许变——不变量分档显式登记） |
 | **风险与回退** | 角情形分派完备性——LAND-01 矩阵兜底（漏一档即测试红）；面数×2.5 构建耗时——留档不设阈值；5 步不可读→spike 降 3 步；回退 = terrace_enabled=false 逐位回现基线（本卡验收明文「关闭阶地可退回旧坡」） |
@@ -313,7 +322,8 @@ routes-generator** 连通加成思路（ROAD-03，多源融合第一处 Azgaar �
 （https://www-cs-students.stanford.edu/~amitp/game-programming/polygon-map-generation/，
 下坡流/无局部极小）与 **x/1723**（https://www.redblobgames.com/x/1723-procedural-river-growing/
 河口反向生长）作排水轴；**Catlike Part 23**（https://catlikecoding.com/unity/tutorials/hex-map/part-23/
-search-frontier 抬升/下挖）仅作地理骨架候选算法；**Azgaar** 阶段化校验/seed 纪律
+search-frontier 抬升/下挖）~~仅作地理骨架候选算法~~ **已排除（2026-10-11 拍板：
+不做抬升/下挖，地理骨架唯一路线 = 现双噪声）**；**Azgaar** 阶段化校验/seed 纪律
 （generation-pipeline.ts 线性序无阶段诊断产物 = 反面教训——线性序本身的可定位性是
 正面纪律、WORLD-04 沿用；lock/ErasePipeline = 前瞻）；
 **WFC**（https://felixturner.github.io/hex-map-wfc/article/）作装饰层二级生成器
@@ -325,11 +335,11 @@ search-frontier 抬升/下挖）仅作地理骨架候选算法；**Azgaar** 阶�
 |---|---|
 | **目标** | 每阶段独立摘要、版本与错误；关闭一个尚未实现能力不产生伪字段（提案 :282 验收原文） |
 | **现状** | MapGenerator.generate 单遍直线代码：双噪声采样 → 归一化 → 量化高程+分类 → 连通检查（map_generator.gd:60-143），无阶段化骨架/阶段诊断/生成尝试-修复循环（失败只 ok=false）；无模板配置层（MapGenParams 仅噪声参数）；GENERATOR_VERSION=1 是复现锚（:31） |
-| **技法移植设计** | ① **阶段序列按拍板④去气候重排（九阶段）**：配置校验 → 地理骨架 → 地貌整形（量化）→ 排水骨架 → 流量水系 → 聚落资源 → 道路过河 → 可玩校验 → 表现派生（气候/生态阶段删除）；每阶段 = 独立纯函数 `stage(input, rng_channel) -> {output, diagnostics}`，WorldPipeline 编排器持可插拔阶段序列——MapGenerator 现单遍代码重构为第一阶段序列的退化特例（噪声地理骨架 + 量化 + 连通检查三阶段）；② **地理骨架双路线可选**：现有 FastNoiseLite 双通道（保留）/ Catlike frontier 抬升下挖（陆量预算驱动，模板可选，Random.state 保存恢复纪律照搬为具名 RNG 通道）；Red Blob「高程=到海岸距离 BFS + 无局部极小保证」作高程后处理约束（排水骨架输入保障）；③ **模板**：WorldTemplate Resource（.tres，TerrainStyle 资源化先例）——template_id/dimensions/地理/水系/基础设施/scenario/presentation 参数组 + locked/preferred 约束（提案 yaml 结构去气候后重定，openDecisions）；mapgen4「先要素、用户改、重算下游」留作 M3 编辑能力；④ **具名随机通道**：root seed + 具名偏移（MOISTURE_SEED_OFFSET 先例，map_generator.gd:35）扩 geography/hydrology/poi/roads/decoration（biome 通道删除）——「新增一棵树不消耗前面阶段 RNG」（提案随机性纪律） |
+| **技法移植设计** | ① **阶段序列按拍板④去气候重排（九阶段）**：配置校验 → 地理骨架 → 地貌整形（量化）→ 排水骨架 → 流量水系 → 聚落资源 → 道路过河 → 可玩校验 → 表现派生（气候/生态阶段删除）；每阶段 = 独立纯函数 `stage(input, rng_channel) -> {output, diagnostics}`，WorldPipeline 编排器持可插拔阶段序列——MapGenerator 现单遍代码重构为第一阶段序列的退化特例（噪声地理骨架 + 量化 + 连通检查三阶段）；② **地理骨架（2026-10-11 拍板：不做抬升/下挖，单路线）**：现有 FastNoiseLite 双通道；~~Catlike frontier 抬升下挖候选~~ 已排除；Red Blob「高程=到海岸距离 BFS + 无局部极小保证」作高程后处理约束（排水骨架输入保障）；③ **模板**：WorldTemplate Resource（.tres，TerrainStyle 资源化先例）——template_id/dimensions/地理/水系/基础设施/scenario/presentation 参数组 + locked/preferred 约束（提案 yaml 结构去气候后重定，openDecisions）；mapgen4「先要素、用户改、重算下游」留作 M3 编辑能力；④ **具名随机通道**：root seed + 具名偏移（MOISTURE_SEED_OFFSET 先例，map_generator.gd:35）扩 geography/hydrology/poi/roads/decoration（biome 通道删除）——「新增一棵树不消耗前面阶段 RNG」（提案随机性纪律） |
 | **数据合同影响** | GENERATOR_VERSION +1（管线变更，:31 复现锚纪律）；草案 §10 WorldMeta 转正（温度/生态字段移除或降可选——拍板④）；新增模板 Resource 层（生成器配置不进世界事实，草案 §1.2 边界维持）；无新 ADR |
 | **测试锚** | 每阶段独立摘要可 diff（阶段输出规范序摘要 + 阶段版本号）；关闭未实现能力不产伪字段：跳过阶段的 WorldData 对应集合为空（empty 集合合法锚）；同 seed 同模板同引擎构建 → world_digest 一致（跑 3 次）；配置冲突显式失败：冲突原因串全列不产半图；具名通道独立性：改 decoration 通道不影响 hydrology 输出摘要 |
 | **风险与回退** | 阶段间状态耦合（排水要连续高程、量化后要重验）——跨阶段数据结构设计是最大不确定性，建议 spike 先行；模板参数未重定即开工 → 返工（openDecisions：温带河谷模板剩余参数须 T5 前重定+批量校准）；回退 = 旧单遍管线以 GENERATOR_VERSION 隔离保留，模板可选 legacy 路线 |
-| **卡内拍板项** | 模板参数组重定（openDecisions 明列，须 T5 前拍）；地理骨架默认路线（双噪声 vs frontier，建议双噪声为默认、frontier 为模板可选） |
+| **卡内拍板项** | 模板参数组重定（openDecisions 明列，须 T5 前拍）；~~地理骨架默认路线（双噪声 vs frontier）~~ **已拍板（2026-10-11）：不做抬升/下挖，双噪声唯一路线** |
 
 ### WORLD-02 排水骨架（原「排水/湿度/生态生成」——湿度/生态已被拍板④剔除）
 
