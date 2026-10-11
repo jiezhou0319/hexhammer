@@ -30,7 +30,10 @@
 ##   两者另附可选 "grid_line"（T2 GRID-01 格线参数组——材质级、可关：
 ##   grid_line_enabled=false 时不附该键 = view 不建格线层，地形 mesh 与无格线
 ##   基线逐位一致；enabled=true 时 = {"material": 格线材质（HexGridLineBuilder.
-##   make_material(color, alpha)——参数级工厂，不落 .tres）, "width": float}）。
+##   make_material(color, alpha)——参数级工厂，不落 .tres）, "width": float}）与
+##   "water_material"（T3 WATER-02 ④ 水面层材质：style 值或官方工厂
+##   WaterGeometryBuilder.make_water_material()——view 传 world 且有河/水体时建
+##   水面第二 mesh，几何/拾取不随 style 变）。
 ##   非法（库缺失/缺槽/槽值类型不符/BLEND 缺导管/格线参数非法）→ null（无隐式
 ##   兜底，不静默换路线）。
 ## - 纯 Resource：零场景节点（ADR-2）；不写 MapData、不参与任何结算/查询/摘要
@@ -45,6 +48,7 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const TerrainMaterialLibraryClass := preload("res://scripts/core/data/terrain_material_library.gd")
 const HexTerrainBlendClass := preload("res://addons/hexhammer/hex_terrain_blend.gd")
 const HexGridLineBuilderClass := preload("res://addons/hexhammer/hex_grid_line_builder.gd")
+const WaterGeomClass := preload("res://addons/hexhammer/water_geometry_builder.gd")
 
 ## 色块默认 style（.tres）路径——SLOTS 模式 + 主线默认材质库
 const SLOTS_DEFAULT_PATH := "res://resources/terrain/styles/terrain_style_slots_default.tres"
@@ -74,6 +78,14 @@ enum Mode {
 @export var grid_line_alpha := 0.28
 ## 格线宽（世界单位，> 0；spike 参考件 0.012 目检档）
 @export var grid_line_width := HexGridLineBuilderClass.DEFAULT_WIDTH
+
+# ---- 水面层（T3 WATER-02 ④：材质级——水面 mesh/几何不随 style 变，变的是观感；
+#      水不进 blend 色板（palette 约定 alpha=1），岸线过渡走水材质自身参数）----
+## 水面材质（第二 mesh 层的渲染面）；null = 官方工厂
+## WaterGeometryBuilder.make_water_material()（半透明无光照——与 grid_line 的
+## 参数组不同：水面材质状态多（透明/深度/流动参数位），直接持 Material 实例；
+## .tres 缺省属性与本默认一致 = 代码/.tres 同源不漂移）
+@export var water_material: Material = null
 
 
 ## 载入 style .tres；路径不存在 / 类型不符 → null（显式失败，调用方判空）。
@@ -188,6 +200,11 @@ func inputs_for(map: MapDataClass) -> Variant:
 			"material": HexGridLineBuilderClass.make_material(grid_line_color, grid_line_alpha),
 			"width": grid_line_width,
 		}
+	# 水面层输入（T3 WATER-02 ④）：view 传 world 时才建水面第二 mesh；材质 =
+	# style 值或官方工厂（null 默认与 .tres 缺省同源，不设额外失败档——水材质
+	# 无「缺了就错」的合同面，区别于 BLEND 缺导管）
+	inputs["water_material"] = water_material \
+		if water_material != null else WaterGeomClass.make_water_material()
 	return inputs
 
 

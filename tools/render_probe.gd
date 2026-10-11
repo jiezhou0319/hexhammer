@@ -20,6 +20,11 @@
 ##   CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与
 ##     CHECK-4 帧（默认开格线）差分 > GRID_DIFF_MIN_PX——格线层真实可见的像素证据
 ##     （同 style 同材质，差分归因唯一 = 格线层；执行方案 §3 GRID-01 测试锚）。
+##   CHECK-W 水面差分（T3 WATER-02，2026-10-11：§8.3 的水面差分检查——编号 W
+##     避让已被 S-4 BLEND 占用的 CHECK-4）：固定图 + 世界伴生（.world.json，边河
+##     + 河口湖 + 东北湖）构建后，仅切换水面层可见性两次差分 > WATER_DIFF_MIN_PX
+##     ——同帧地形不变（含河床下切），差分归因唯一 = 水面第二 mesh；水面不进
+##     碰撞/拾取层（零碰撞体挂载）同时由本检查的结构面背书。
 ##   CHECK-T2 阶地/崖几何对照（T2 LAND-01 ④：矩阵图 = render_probe 新 CHECK 图）：
 ##     矩阵图（tools/land_matrix_fixtures.gd——Δ0..Δ3 × 方向 + 角等价类穷举的固定
 ##     小图）以 LandformProfile 默认档重建，与同图基线帧差分 > T2_DIFF_MIN_PX
@@ -73,6 +78,7 @@ class Checker extends Node:
 	const HighlightLayerClass := preload("res://scripts/ui/highlight_layer.gd")
 	const TerrainStyleClass := preload("res://scripts/core/data/terrain_style.gd")
 	const LandformProfileClass := preload("res://scripts/core/data/landform_profile.gd")
+	const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 	const MatrixFixtures := preload("res://tools/land_matrix_fixtures.gd")
 
 	# ---- 规定相机（数值写死并进统计——「规定相机」的可复现口径）----
@@ -98,6 +104,12 @@ class Checker extends Node:
 	const BLEND_DIFF_MIN_PX := 200
 	## CHECK-6：格线层差分像素下限（T2 GRID-01——起步保守值，实测首报后上调）
 	const GRID_DIFF_MIN_PX := 300
+	## CHECK-W：水面层差分像素下限（T3 WATER-02——2026-10-11 首报实测 9508px；
+	## 同日评审修复（角点接缝 + 条带/裙边绕序——修复前条带俯视背面被剔）后
+	## 10503px；同日二轮评审修复（湖面成员间带面 + 角点补面——修复前多格水体
+	## 成孤岛六边形）后 14610px——均见 docs/evidence/m1a/
+	## render_probe_stats_forwardplus_1280x720.txt CHECK-W 行；按「余量 ≥3×」定档 3000）
+	const WATER_DIFF_MIN_PX := 3000
 	## CHECK-T2：阶地/真崖几何差分像素下限（矩阵图 + 默认 LandformProfile vs 基线）
 	const T2_DIFF_MIN_PX := 500
 
@@ -262,6 +274,34 @@ class Checker extends Node:
 		var g_r := _count_diff(img_blend, img_grid_off)
 		var grid_diff_px: int = g_r["count"]
 
+		# ---- CHECK-W 水面差分（T3 WATER-02：固定图 + .world.json，水面层开/关
+		#      两次差分——同帧地形（含河床下切）不变，差分归因唯一 = 水面 mesh）----
+		var world: Variant = MapIOClass.read_world(MapIOClass.world_path_for(MapIOClass.FIXED_MAP_PATH))
+		if not (world is WorldDataClass):
+			_fail("世界伴生文件载入失败（%s——重跑 tools/make_fixed_maps.gd？）"
+				% MapIOClass.world_path_for(MapIOClass.FIXED_MAP_PATH))
+			return
+		if not _view.build(_map, 10, 10,
+				(TerrainMaterialLibraryClass.load_default() as TerrainMaterialLibraryClass).materials,
+				1.0, 1.0, 0.8, null, world):
+			_fail("含河地形构建失败（CHECK-W 前置——world 数据非法？）")
+			return
+		await _frames(SETTLE_TERRAIN_FRAMES)
+		var img_water_on: Image = await _capture()
+		if img_water_on == null:
+			return
+		for node in _view.water_nodes:
+			node.visible = false  # 只关水面层：地形/河床帧不变（差分归因唯一）
+		await _frames(SETTLE_LAYER_FRAMES)
+		var img_water_off: Image = await _capture()
+		if img_water_off == null:
+			return
+		var w_r := _count_diff(img_water_on, img_water_off)
+		var water_diff_px: int = w_r["count"]
+		var water_nodes_n := _view.water_nodes.size()
+		for node in _view.water_nodes:
+			node.visible = true
+
 		# ---- CHECK-T2 阶地/崖几何对照（T2 LAND-01 ④：矩阵图 + 默认 LandformProfile
 		#      vs 同图基线帧——相机移到矩阵图包络上空，完检后不再回移）----
 		var matrix_map: MapDataClass = MatrixFixtures.build_matrix(3)
@@ -300,6 +340,7 @@ class Checker extends Node:
 		var ok3 := path_px > PATH_MIN_PX
 		var ok4 := blend_px > terrain_min and style_diff_px > BLEND_DIFF_MIN_PX
 		var ok6 := grid_diff_px > GRID_DIFF_MIN_PX
+		var okW := water_diff_px > WATER_DIFF_MIN_PX and water_nodes_n > 0
 		var okT2 := t2_diff_px > T2_DIFF_MIN_PX and m0_vis > int(float(img_m0.get_width() * img_m0.get_height()) * 0.05)
 		var pct := 100.0 * float(terrain_px) / float(maxi(total, 1))
 		var blend_pct := 100.0 * float(blend_px) / float(maxi(total, 1))
@@ -313,6 +354,8 @@ class Checker extends Node:
 			% [blend_px, total, blend_pct, style_diff_px, BLEND_DIFF_MIN_PX, str(sb_r["bbox"])])
 		_print_check(ok6, "CHECK-6 格线差分（GRID-01）：开格线 vs 关格线差分 px=%d，阈值=%d，bbox=%s"
 			% [grid_diff_px, GRID_DIFF_MIN_PX, str(g_r["bbox"])])
+		_print_check(okW, "CHECK-W 水面差分（T3 WATER-02）：水面层开/关差分 px=%d，阈值=%d，水面节点=%d，bbox=%s"
+			% [water_diff_px, WATER_DIFF_MIN_PX, water_nodes_n, str(w_r["bbox"])])
 		_print_check(okT2, "CHECK-T2 阶地/崖几何（矩阵图 + LandformProfile）：profile vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）"
 			% [t2_diff_px, T2_DIFF_MIN_PX, str(t2_r["bbox"]), m0_vis])
 
@@ -323,18 +366,20 @@ class Checker extends Node:
 			"blend_px": blend_px, "blend_pct": blend_pct,
 			"style_diff_px": style_diff_px, "blend_min": BLEND_DIFF_MIN_PX,
 			"grid_diff_px": grid_diff_px, "grid_min": GRID_DIFF_MIN_PX,
+			"water_diff_px": water_diff_px, "water_min": WATER_DIFF_MIN_PX,
+			"water_nodes": water_nodes_n,
 			"t2_diff_px": t2_diff_px, "t2_min": T2_DIFF_MIN_PX, "t2_base_px": m0_vis,
-			"ok": [ok1, ok2, ok3, ok4, ok6, okT2], "bg": bg, "hl_bbox": hl_r["bbox"],
+			"ok": [ok1, ok2, ok3, ok4, ok6, okW, okT2], "bg": bg, "hl_bbox": hl_r["bbox"],
 			"path_bbox": path_r["bbox"], "sb_bbox": sb_r["bbox"],
-			"grid_bbox": g_r["bbox"], "t2_bbox": t2_r["bbox"]})
+			"grid_bbox": g_r["bbox"], "water_bbox": w_r["bbox"], "t2_bbox": t2_r["bbox"]})
 		if saved == "":
 			_fail("证据文件写入失败（见上方输出）")
 			return
 		print("[渲染探针] 证据已留档：%s" % saved)
-		var all_ok := ok1 and ok2 and ok3 and ok4 and ok6 and okT2
+		var all_ok := ok1 and ok2 and ok3 and ok4 and ok6 and okW and okT2
 		var runtime_backend := RenderingServer.get_current_rendering_method()
 		if all_ok:
-			print("PROBE OK — 6/6 检查通过（F-1 修复在 %s 俯视下成立：默认 CULL_BACK 全可见；SLOTS/BLEND/格线/阶地真崖几何均有像素证据）" % runtime_backend)
+			print("PROBE OK — 7/7 检查通过（F-1 修复在 %s 俯视下成立：默认 CULL_BACK 全可见；SLOTS/BLEND/格线/水面/阶地真崖几何均有像素证据）" % runtime_backend)
 		else:
 			print("PROBE FAIL — 可见性/材质对照回归（%s 下有检查未过阈值，须上报）" % runtime_backend)
 		get_tree().quit(0 if all_ok else 1)
@@ -504,16 +549,19 @@ class Checker extends Node:
 			str(r["sb_bbox"]), "PASS" if oks[3] else "FAIL"])
 		L.append("CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与 CHECK-4 帧（开格线）差分 px=%d，阈值=%d，bbox=%s → %s" % [
 			r["grid_diff_px"], r["grid_min"], str(r["grid_bbox"]), "PASS" if oks[4] else "FAIL"])
+		L.append("CHECK-W 水面差分（T3 WATER-02，2026-10-11）：固定图 + .world.json（边河+河口湖+东北湖）构建，水面层开/关差分 px=%d，阈值=%d，水面节点=%d，bbox=%s → %s" % [
+			r["water_diff_px"], r["water_min"], int(r["water_nodes"]), str(r["water_bbox"]),
+			"PASS" if oks[5] else "FAIL"])
 		L.append("CHECK-T2 阶地/崖几何（T2 LAND-01 ④ 矩阵图）：LandformProfile 默认档 vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）→ %s" % [
 			r["t2_diff_px"], r["t2_min"], str(r["t2_bbox"]), r["t2_base_px"],
-			"PASS" if oks[5] else "FAIL"])
+			"PASS" if oks[6] else "FAIL"])
 		L.append("")
 		L.append("F-1 语义：默认 CULL_BACK 下俯视三图层可见像素均超阈值 = 渲染索引俯视顺时针（Godot 正面）仍成立；")
 		L.append("若任一为 0/不足 = 可见性回归（F-1 修复存疑，须上报，不在本工具内修）。")
 		L.append("口径：本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。")
 		L.append("截图（同目录）：%s" % "、".join(shot_paths))
 		L.append("标识：%s" % tag)
-		if oks[0] and oks[1] and oks[2] and oks[3] and oks[4] and oks[5]:
+		if oks[0] and oks[1] and oks[2] and oks[3] and oks[4] and oks[5] and oks[6]:
 			L.append("PROBE OK")
 		else:
 			L.append("PROBE FAIL")

@@ -15,26 +15,37 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const TerrainStyleClass := preload("res://scripts/core/data/terrain_style.gd")
 const LandformProfileClass := preload("res://scripts/core/data/landform_profile.gd")
 const GridLineBuilder := preload("res://addons/hexhammer/hex_grid_line_builder.gd")
+const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
+const WaterBuilder := preload("res://addons/hexhammer/water_geometry_builder.gd")
 
 var chunk_nodes: Array[MeshInstance3D] = []
 ## 格线层节点（GRID-01：独立 mesh 层，每 chunk 一个 MeshInstance3D、零碰撞体——
 ## 不进拾取层；style 关格线时恒空）
 var grid_nodes: Array[MeshInstance3D] = []
+## 水面层节点（T3 WATER-02：水面第二 mesh，每 chunk 一个 MeshInstance3D、零碰撞
+## 体——不进拾取层（LAYER_TERRAIN 之外的纯表现层）；无河无水体时恒空）
+var water_nodes: Array[MeshInstance3D] = []
 var build_info: Dictionary = {}
 
 ## 按材质表构建（materials = 地形 id → Material 映射；.tres 载体 =
 ## TerrainMaterialLibrary.materials，主线默认表 resources/terrain/terrain_materials_default.tres
 ## ——M1a-T8 材质槽；elevation_step/solid_factor 透传 T4 高程几何参数；
 ## profile = LandformProfile 几何档（T2 起：null/全关 = 基线单斜面+80° 陡面，
-## 阶地/真崖档见 addons/hexhammer/hex_terrain_builder.gd 头注））。
+## 阶地/真崖档见 addons/hexhammer/hex_terrain_builder.gd 头注）；
+## world = WorldData（T3 起可选：有河 link 边带下切 + 水面第二 mesh；
+## water_material = 水面材质，null = 官方工厂））。
 ## 构建失败（材质表缺图内 id、表值非 Material、参数非法等）→ false。
 func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, materials := {},
 		size := 1.0, elevation_step := 1.0, solid_factor := 0.8,
-		profile: LandformProfileClass = null) -> bool:
+		profile: LandformProfileClass = null, world: WorldDataClass = null,
+		water_material: Material = null) -> bool:
 	clear()
 	var result: Variant = Builder.build_map(map, chunk_cols, chunk_rows, materials,
-		size, elevation_step, solid_factor, profile)
-	return _mount(result)
+		size, elevation_step, solid_factor, profile, world)
+	if not _mount(result):
+		return false
+	return _mount_water(map, world, chunk_cols, chunk_rows, water_material,
+		size, elevation_step, solid_factor)
 
 
 ## 按色板权重混合构建（M1a+ BLEND-01；palette = 地形 id → Color，blend_material =
@@ -45,11 +56,15 @@ func build(map: MapDataClass, chunk_cols := 10, chunk_rows := 10, materials := {
 ## 构建失败（色板缺图内 id、色值非法、参数非法等）→ false。
 func build_blend(map: MapDataClass, palette: Dictionary, chunk_cols := 10, chunk_rows := 10,
 		blend_material: Material = null, size := 1.0, elevation_step := 1.0,
-		solid_factor := 0.8, profile: LandformProfileClass = null) -> bool:
+		solid_factor := 0.8, profile: LandformProfileClass = null,
+		world: WorldDataClass = null, water_material: Material = null) -> bool:
 	clear()
 	var result: Variant = Builder.build_map_blend(map, palette, chunk_cols, chunk_rows,
-		blend_material, size, elevation_step, solid_factor, profile)
-	return _mount(result)
+		blend_material, size, elevation_step, solid_factor, profile, world)
+	if not _mount(result):
+		return false
+	return _mount_water(map, world, chunk_cols, chunk_rows, water_material,
+		size, elevation_step, solid_factor)
 
 
 ## 按 style 资源构建（M1a+ BLEND-03「纹理可替换，不改世界事实」的换装入口）：
@@ -61,7 +76,8 @@ func build_blend(map: MapDataClass, palette: Dictionary, chunk_cols := 10, chunk
 ## style 为空 / 对本图不可解析（缺库/缺槽/BLEND 缺导管/格线参数非法）→ false。
 func build_with_style(map: MapDataClass, style: TerrainStyleClass, chunk_cols := 10,
 		chunk_rows := 10, size := 1.0, elevation_step := 1.0,
-		solid_factor := 0.8, profile: LandformProfileClass = null) -> bool:
+		solid_factor := 0.8, profile: LandformProfileClass = null,
+		world: WorldDataClass = null) -> bool:
 	if style == null:
 		return false
 	var inputs: Variant = style.inputs_for(map)
@@ -71,10 +87,11 @@ func build_with_style(map: MapDataClass, style: TerrainStyleClass, chunk_cols :=
 	var ok := false
 	if d["mode"] == "blend":
 		ok = build_blend(map, d["palette"], chunk_cols, chunk_rows,
-			d["blend_material"], size, elevation_step, solid_factor, profile)
+			d["blend_material"], size, elevation_step, solid_factor, profile,
+			world, d["water_material"])
 	else:
 		ok = build(map, chunk_cols, chunk_rows, d["materials"], size,
-			elevation_step, solid_factor, profile)
+			elevation_step, solid_factor, profile, world, d["water_material"])
 	if not ok:
 		return false
 	# 格线层（GRID-01）：输入带 grid_line 键（style.grid_line_enabled）才建——
@@ -103,8 +120,36 @@ func _mount_grid(map: MapDataClass, chunk_cols: int, chunk_rows: int,
 	return true
 
 
+## 水面层挂载（T3 WATER-02）：每 chunk 一个 MeshInstance3D（同地形挂载面：顶点已
+## 是全局坐标、节点零偏移）；**零碰撞体、不进拾取层**（水面不截获地形拾取）。
+## world 为空或无河无水体 → 不建（合法态：无河世界 = 无水面层）；材质 = 调用方
+## 传入或官方工厂。
+func _mount_water(map: MapDataClass, world: WorldDataClass, chunk_cols: int,
+		chunk_rows: int, water_material: Material, size: float,
+		elevation_step: float, solid_factor: float) -> bool:
+	if world == null or (world.rivers.is_empty() and world.water_bodies.is_empty()):
+		return true  # 无河无水体：无水面层（「没有能力就没有数据」的渲染面）
+	var mat := water_material if water_material != null \
+		else WaterBuilder.make_water_material()
+	var result: Variant = WaterBuilder.build_map(map, world, chunk_cols, chunk_rows,
+		mat, size, elevation_step, solid_factor)
+	if not (result is Dictionary):
+		return false
+	for chunk_info in (result as Dictionary)["chunks"]:
+		var cd: Dictionary = chunk_info
+		var rect: Rect2i = cd["chunk"]
+		if (cd["mesh"] as ArrayMesh).get_surface_count() == 0:
+			continue  # 本 chunk 无水面几何（无河无水体成员）——不挂空节点
+		var node := MeshInstance3D.new()
+		node.name = "Water_c%d_r%d" % [rect.position.x, rect.position.y]
+		node.mesh = cd["mesh"] as ArrayMesh
+		add_child(node)
+		water_nodes.append(node)
+	return true
+
+
 ## 构建结果挂载（两 style 共用：每 chunk 一个 MeshInstance3D、节点置原点零偏移——
-## mesh 顶点已是地图全局坐标；非 Dictionary 构建结果 → false）。
+## mesh 顶点已是全局坐标；非 Dictionary 构建结果 → false）。
 func _mount(result: Variant) -> bool:
 	if not (result is Dictionary):
 		return false
@@ -127,4 +172,7 @@ func clear() -> void:
 	for node in grid_nodes:
 		node.queue_free()
 	grid_nodes.clear()
+	for node in water_nodes:
+		node.queue_free()
+	water_nodes.clear()
 	build_info = {}

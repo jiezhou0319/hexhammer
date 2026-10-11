@@ -1,12 +1,14 @@
-## world_data.gd — 世界事实层容器 + 邻接边索引（M1a T2 首物；执行方案
-##   docs/M1a-terrain-T2-T5-execution-plan.md §2.5 + 数据合同草案
-##   docs/M1a-terrain-data-contract-draft.md §3/§4/§11/§12.3）
+## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体（M1a T2 首物 → T3 水系解锁；
+##   执行方案 docs/M1a-terrain-T2-T5-execution-plan.md §2.5 + §2.2/§2.4（格边重议已拍，
+##   §2.6 全关）+ §4 WATER-01/03 + 数据合同草案 docs/M1a-terrain-data-contract-draft.md
+##   §3/§4/§5/§6/§11/§12）
 ## 职责：格子数据（MapData）旁边的**第四伴生文件 `<name>.world.json`** 载体——
-##   NeighborLinkData 邻接边表（link_id = (min,max) 格稳定 ID 对）+ 校验器 +
-##   序列化（固定键序）。河/路/桥/POI 集合属 T3/T4/T5 逐实体解锁，本版**恒空**
-##   （「关闭一个尚未实现能力不产生伪字段」的镜像：没有能力就没有数据——
-##   from_dict 对非空未解锁集合显式拒绝，不做半吊子解析）。
-## 合同（翻案须先改草案对应节与 tests/test_world_data.gd，不动架构）：
+##   NeighborLinkData 邻接边表（link_id = (min,max) 格稳定 ID 对）+ RiverReachData
+##   格边河段（§2.2 重写表：河 = 共享边有序序列，ADR-14）+ WaterBodyData 湖/海
+##   （格语义水体，WATER-03 转正）+ 校验器 + 序列化（固定键序）。路/桥/POI 集合属
+##   T4/T5 逐实体解锁，本版**恒空**（「关闭一个尚未实现能力不产生伪字段」的镜像：
+##   没有能力就没有数据——from_dict 对非空未解锁集合显式拒绝，不做半吊子解析）。
+## 合同（翻案须先改草案对应节与 tests/test_world_data.gd / test_water_*.gd，不动架构）：
 ## - 旧图零迁移（§2.2）：伴生文件缺失/为空 → empty()（无河无路无 POI 的合法态），
 ##   不报错、不重新随机生成——MapData 的 dict 与 SCHEMA_VERSION=1 零改动；
 ## - **Vector2i（link_id）不得直接交给 JSON.stringify**（引擎 4.7.2 实测坑：落成
@@ -15,7 +17,24 @@
 ##   长度 ≠ 2 / 非整数 / 负分量 → null（无隐式兜底）；
 ## - classify_edge 保持几何派生现算**不入表**（草案 §4 禁止项维持）；高差分档阈值
 ##   属构建参数/几何 profile（LandformProfile），不进 MapData 也不进本表；
-## - 主键自包含：link_id 即主键；集合唯一性/规范序（link_id 升序）由校验器查；
+## - 主键自包含：link_id / reach_id / water_body_id 即主键；集合唯一性/规范序
+##   （link_id、reach_id、water_body_id 升序；member_cells 行主序）由校验器查；
+## - 河段四条校验（WATER-01 ②）：无环（**角点级**——边不复用 ≠ 无环，两条不同边可
+##   经同一角点成环/自交，修订记录三之 4：稳定角点 ID + 已访问集合）、有终点（终点
+##   边 ∈ 声明水体 inlet_links，NO_RIVER_OUTLET）、water_levels 沿边序列单调不升
+##   （Catlike 禁上坡的数据化；水位口径 = **逐段 profile** 而非全河单 scalar，§2.2）、
+##   bed_level < 逐段 water_level；
+## - 水体校验（WATER-03）：同湖水位一致（body 单 water_level 字段结构性成立）+
+##   河口对账（reach 终点边水位 == 水体 water_level，接缝几何逐位一致的水面口径）+
+##   湖出口不高于溢流口（自本湖源出的 reach 首段水位 ≤ 本体 water_level）+
+##   terminal 语义（海恒 true；海 outlet 恒空——不适用出水口；过路湖 false 必须
+##   有 outlet）+ 河口边 = 岸边
+##   （恰一端为成员格——水面接缝的机器前提）；成员格 terrain 对账按调用方传入的
+##   water_terrain_id 显式启用（-1 = 跳过——水体地形 id 属内容层约定，核心数据层
+##   不硬编码，草案 §6「校验不是回写」）；
+## - **湖/河双口径（有意设计，§2.2 禁令行）**：湖/海 = 格语义水体（占格、terrain/
+##   passable 结算面在格上，本表只加 water_level/inlet/outlet 标高与拓扑）；河 = 边
+##   语义水体（水在边上、两侧格保持陆地地形与 passable——reach 永不回写 MapData）；
 ## - WorldData 零回写 MapData（含 mods——草案 §11 全局项；测试锚定 summary 不变）；
 ## - 纯数据类：RefCounted、零场景节点、不 preload 任何场景（ADR-2；删 scripts/ui/**
 ##   后 tests 全绿）。锚点绝对坐标不落盘（§2.3）：边锚 = 两格心连线与共享边交点，
@@ -37,7 +56,8 @@ const NO_LINK := Vector2i(-1, -1)
 
 ## 邻接边对象（草案 §4 + 执行方案 §2.4 重议后口径）：邻接边的**索引面**——回答
 ## 「这条边上有什么」。link 表只存 road_id / river_reach_id 引用（§2.4：初版不存
-## 任何流向字段，与 reach.edges 序零冗余）；不承载地形/高差/连接类型（禁止项）。
+## 任何流向字段，与 reach.edges 序零冗余——终态流向事实 = 序本身即上游→下游）；
+## 不承载地形/高差/连接类型（禁止项）。
 class NeighborLinkData:
 	extends RefCounted
 
@@ -49,17 +69,91 @@ class NeighborLinkData:
 	var road_id: int = ID_NONE
 
 	## 本边有河水时所属河段（RiverReachData 主键引用）；ID_NONE = 无河。
-	## T3 前恒 ID_NONE（§2.4：终态流向事实 = reach.edges 的序列顺序，link 层零冗余）
+	## 与 reach.edges 双向对账（§4：本 link 两端恰为该河段边序列中的边）
 	var river_reach_id: int = ID_NONE
+
+
+## 河段（草案 §5 格边重写表全量，执行方案 §2.2；ADR-14）：河 = 六边形**共享边的
+## 有序序列**（edges[0] = 源边、edges[last] = 终点边/河口），两端格互为河岸且
+## **保持陆地地形**（河的通行影响走规则层 M3，渲染只下切连接带中段）。
+## 『1入1出』的等价表达 = 边图上每条内部边恰有一前驱与一后继（链结构，拍板⑨：
+## 数据层零冗余，入/出边概念只存在于生成期）；汇流（多前驱）初版校验器拒绝、
+## 结构留口子第二版开。
+class RiverReachData:
+	extends RefCounted
+
+	## 主键（河段表 reach_id 升序为规范序）
+	var reach_id: int = ID_NONE
+
+	## 有序边序列：每项 = link_id=(min,max)（沿 M1a-T4 归属先例）；相邻边须共角点
+	## （序列连续）；全序列角点不复用（无环 = 角点级判定，修订记录三之 4）
+	var edges: Array[Vector2i] = []
+
+	## 流量等级（int ≥1）；等级→河宽/流速映射属表现参数不进数据（§2.2：
+	## 首版固定等级或不依赖汇流的分档，Strahler 随汇流第二版）
+	var flow_level: int = 1
+
+	## 逐段水面标高 profile（与 edges 逐项对齐；沿序列**单调不升**——Catlike 禁上坡
+	## 的数据化；§2.2：勿退化成单 scalar——逐段可变是本字段的验收口径）
+	var water_levels: Array[int] = []
+
+	## 河床离散标高（恒 < 逐段 water_level——河床容纳校验下界）；同纲 int 分层
+	var bed_level: int = 0
+
+	## 终点段汇入的水体（WaterBodyData 主键引用）：终点边 ∈ 该水体 inlet_links、
+	## 终点边水位 == 该水体 water_level（河口对账）；不可解析/非 terminal → 非法
+	var water_body_id: int = ID_NONE
+
+
+## 水体（草案 §6 转正，WATER-03）：湖/海 = **格语义**水体（成员格 terrain=水、
+## passable=false 结算面在 MapData 上，本实体只加水面标高/出入水口/终点声明）。
+## 岸线 = 水格与陆格共享边集合（member 与非 member 之间的 link——校验器同口径判定，
+## 渲染/国界两处复用）。
+class WaterBodyData:
+	extends RefCounted
+
+	## 水体类型（枚举值大写先例；序列化按 int 落盘）
+	enum Kind { SEA, LAKE }
+
+	## 主键（水体表 water_body_id 升序为规范序）
+	var water_body_id: int = ID_NONE
+
+	## Kind.SEA / Kind.LAKE（初版两值）
+	var kind: int = Kind.LAKE
+
+	## 水面离散标高；**同一水体成员水位恒一致**（单字段结构性成立）；与汇入 reach
+	## 的终点边水位对账（河口水面 y 逐位相等的数据面前提）
+	var water_level: int = 0
+
+	## 成员格 cell_id 列表，行主序规范序（= 升序，摘要可比较）；全图不重复、
+	## 不同水体不共享格
+	var member_cells: Array[int] = []
+
+	## 入水口（河水汇入本水体的边，边口径——§2.4 改写）：与全部河段终点对账
+	## （某 reach 终点 = 本体 ⇔ 其 water_body_id = 本 id）；每项须为本水体**岸边**
+	## （恰一端为成员格——河口接缝的几何前提）
+	var inlet_links: Array[Vector2i] = []
+
+	## 出水口（湖溢流口；海不适用恒空）：须为岸边；自本湖源出的河段首段水位
+	## 不得高于本水体 water_level（「湖出口不高于溢流口」）
+	var outlet_links: Array[Vector2i] = []
+
+	## 合法终点声明：河流是否允许以本水体为终点（海恒 true；湖 true = 终点湖、
+	## false = 过路湖必须有 outlet——校验器查）
+	var terminal := true
 
 
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
-## 以下五集合 + meta 的实体定义属 T3（河/水体）→ T4（路/桥）→ T5（POI）逐卡解锁
-## （草案 §12.4）；本版恒空数组——from_dict 对非空显式拒绝（不产伪字段也不假解析）。
-var rivers: Array = []
-var water_bodies: Array = []
+## 河段表（T3 WATER-01 解锁；reach_id 升序规范序）
+var rivers: Array[RiverReachData] = []
+
+## 水体表（T3 WATER-03 解锁；water_body_id 升序规范序）
+var water_bodies: Array[WaterBodyData] = []
+
+## 以下三集合 + meta 的实体定义属 T4（路/桥）→ T5（POI）逐卡解锁（草案 §12.4）；
+## 本版恒空数组——from_dict 对非空显式拒绝（不产伪字段也不假解析）。
 var roads: Array = []
 var crossings: Array = []
 var pois: Array = []
@@ -90,14 +184,74 @@ static func link_id_of(a: int, b: int) -> Vector2i:
 		return NO_LINK
 	return Vector2i(mini(a, b), maxi(a, b))
 
-# ---------------- 校验器（草案 §11 的 T2 面：link 表 + 全局项）----------------
+# ---------------- 主键查询（渲染/测试只读面）----------------
 
-## 校验入口：""=合法；原因串指向具体 link/约束（最小诊断输出）。T2 面 =
-##   ① 规范序（links 按 link_id 升序）；② link_id 唯一且规范（0≤x<y）；
-##   ③ 两端格界内且互为邻居（不存在的邻格不产生连接——M1a-T2 边界规则延伸）；
-##   ④ road_id / river_reach_id 引用可解析——T2 实体未解锁，非 ID_NONE 即不可解析。
+## reach_id → 河段（不存在 → null；线性查——T3 规模下单表 ≤ 数十条，不做索引）。
+func river_reach_by_id(reach_id: int) -> RiverReachData:
+	for r in rivers:
+		if r.reach_id == reach_id:
+			return r
+	return null
+
+
+## water_body_id → 水体（不存在 → null）。
+func water_body_by_id(body_id: int) -> WaterBodyData:
+	for b in water_bodies:
+		if b.water_body_id == body_id:
+			return b
+	return null
+
+
+## 有河边索引（link_id → {"reach": int, "water": int, "bed": int}）：地形河床下切与
+## 水面条带共用的唯一查询面（WaterGeometryBuilder / HexTerrainBuilder / 测试）。
+## 同一 link 双 reach 归属由 validate 拒绝（构造期无冲突）。
+func river_edge_index() -> Dictionary:
+	var out := {}
+	for r in rivers:
+		for k in r.edges.size():
+			out[r.edges[k]] = {"reach": r.reach_id,
+				"water": r.water_levels[k], "bed": r.bed_level}
+	return out
+
+
+## 水体成员索引（cell_id → WaterBodyData；不同水体共享格由 validate 拒绝）。
+func water_membership() -> Dictionary:
+	var out := {}
+	for b in water_bodies:
+		for cid in b.member_cells:
+			out[cid] = b
+	return out
+
+
+## 岸线（WATER-03 ②）：水体与陆地的共享边集合——成员格每个界内非成员邻居各出
+## 一条 link，升序规范序。岸线渲染（裙边）/校验器岸边口径/边界画法（§7 同构）
+## 三处复用同一几何事实；独立于 MapData.terrain（对账用 terrain、岸线用成员集——
+## 两个口径由 WATER_MEMBER_TERRAIN 校验绑定）。
+static func shore_links_of(map: MapDataClass, b: WaterBodyData) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for cid in b.member_cells:
+		var cell := _cell_of_id(map, cid)
+		for d in 6:
+			var nb := Hex.neighbor(cell, d)
+			if not map.has_cell(nb):
+				continue
+			var nb_id := map.index_of(nb)
+			if b.member_cells.has(nb_id):
+				continue
+			var lk := link_id_of(cid, nb_id)
+			if not out.has(lk):
+				out.append(lk)
+	out.sort()
+	return out
+
+# ---------------- 校验器（草案 §11：T3 面 = link 表 + 河段四条 + 水体 + 双向对账）----------------
+
+## 校验入口：""=合法；原因串指向具体 link/reach/body/约束（最小诊断输出）。
+## water_terrain_id ≥ 0 时启用成员格 terrain 对账（草案 §6「成员应 TERRAIN_WATER」
+## ——校验不是回写；水体地形 id 属内容层约定 3 号槽，核心层不硬编码，-1 = 跳过）。
 ## 零回写 MapData：本函数只读（结构性保证，测试锚定 summary 不变）。
-func validate(map: MapDataClass) -> String:
+func validate(map: MapDataClass, water_terrain_id := -1) -> String:
+	var river_claim := {}  # link 表声明：link_id → river_reach_id
 	var prev := NO_LINK
 	for i in links.size():
 		var lk := links[i]
@@ -118,17 +272,273 @@ func validate(map: MapDataClass) -> String:
 		if lk.road_id != ID_NONE:
 			return "links[%d] road_id=%d 引用不可解析（T4 前道路实体未解锁，恒 ID_NONE）" % [i, lk.road_id]
 		if lk.river_reach_id != ID_NONE:
-			return "links[%d] river_reach_id=%d 引用不可解析（T3 前河段实体未解锁，恒 ID_NONE）" % [i, lk.river_reach_id]
+			if lk.river_reach_id < 0:
+				return "links[%d] river_reach_id=%d 非法（负值）" % [i, lk.river_reach_id]
+			river_claim[lid] = lk.river_reach_id
+	var river_err := _validate_rivers(map)
+	if river_err != "":
+		return river_err
+	var body_err := _validate_water_bodies(map, water_terrain_id)
+	if body_err != "":
+		return body_err
+	return _validate_reconciliation(map, river_claim)
+
+
+## 河段四条 + 结构完整性（WATER-01 ②；角点级无环 = 修订记录三之 4）。
+## 返回 river_edge_owner（link_id → reach_id）供对账段复用（null = 已出错）。
+func _validate_rivers(map: MapDataClass) -> String:
+	var prev_id := ID_NONE
+	for ri in rivers.size():
+		var r := rivers[ri]
+		if r.reach_id < 0:
+			return "rivers[%d] reach_id=%d 非法（负主键）" % [ri, r.reach_id]
+		if prev_id != ID_NONE and r.reach_id <= prev_id:
+			return "rivers[%d] 破坏规范序（须按 reach_id 严格升序——含主键重复；got %d after %d）" \
+				% [ri, r.reach_id, prev_id]
+		prev_id = r.reach_id
+		if r.edges.is_empty():
+			return "rivers[%d]（reach %d）边序列为空（河段至少一条边）" % [ri, r.reach_id]
+		if r.water_levels.size() != r.edges.size():
+			return "rivers[%d]（reach %d）water_levels 长度 %d ≠ edges 长度 %d（逐段 profile 逐项对齐）" \
+				% [ri, r.reach_id, r.water_levels.size(), r.edges.size()]
+		if r.flow_level < 1:
+			return "rivers[%d]（reach %d）flow_level=%d 非法（≥1，§2.2）" % [ri, r.reach_id, r.flow_level]
+		# 边序列结构 + 角点级无环：物理角点用稳定 ID（三格表示取最小 index_of·6+顶点），
+		# 与生成路径无关——「边不复用 ≠ 无环」的补口（两条不同边可经同一角点绕回成环）。
+		# 链行走 = 双端延伸：边序列是**无向路径**，下一条边可接在链的任一端
+		#（贪心走/手写序列都不保证方向），两端各自生长；闭合成环或触访已用角点
+		# 即 RIVER_CYCLE，接不上两端即序列不连续。
+		var visited_corners := {}
+		var head_corner := -1
+		var tail_corner := -1
+		for k in r.edges.size():
+			var e := r.edges[k]
+			if e.x < 0 or e.x >= e.y:
+				return "rivers[%d]（reach %d）edges[%d]=%s 非规范（须 0≤x<y 的 link_id）" \
+					% [ri, r.reach_id, k, str(e)]
+			if e.y >= map.cell_count():
+				return "rivers[%d]（reach %d）edges[%d]=%s 指向界外格（图共 %d 格）" \
+					% [ri, r.reach_id, k, str(e), map.cell_count()]
+			var ca := _cell_of_id(map, e.x)
+			var cb := _cell_of_id(map, e.y)
+			var d := Hex.dir_between(ca, cb)
+			if not map.has_cell(ca) or not map.has_cell(cb) or d < 0:
+				return "rivers[%d]（reach %d）edges[%d]=%s 两端格不互为界内邻居（非法邻格）" \
+					% [ri, r.reach_id, k, str(e)]
+			var c1 := corner_id_of(map, ca, d)
+			var c2 := corner_id_of(map, ca, d + 1)
+			if head_corner < 0:
+				head_corner = c1
+				tail_corner = c2
+				visited_corners[c1] = true
+				visited_corners[c2] = true
+				continue
+			# 接尾端 / 接首端（无向路径两端生长）；接不上任一端 → 不连续
+			var fresh := -1
+			if c1 == tail_corner or c2 == tail_corner:
+				fresh = c2 if c1 == tail_corner else c1
+				tail_corner = fresh
+			elif c1 == head_corner or c2 == head_corner:
+				fresh = c2 if c1 == head_corner else c1
+				head_corner = fresh
+			else:
+				# 触访非端点的已用角点 = 自交（成环的变体）；完全无接触 = 断链
+				for c in [c1, c2]:
+					if visited_corners.has(c):
+						return "RIVER_CYCLE：rivers[%d]（reach %d）edges[%d] 触访链中角点 %d（角点级判定——边不复用 ≠ 无环）" \
+							% [ri, r.reach_id, k, c]
+				return "rivers[%d]（reach %d）edges[%d] 与既有链不共角点（序列不连续）" \
+					% [ri, r.reach_id, k]
+			if visited_corners.has(fresh):
+				return "RIVER_CYCLE：rivers[%d]（reach %d）角点 %d 二次到访（角点级判定——边不复用 ≠ 无环）" \
+					% [ri, r.reach_id, fresh]
+			visited_corners[fresh] = true
+		# 单调不升（逐段 profile）+ bed < water（逐段）
+		for k in r.water_levels.size():
+			if k > 0 and r.water_levels[k] > r.water_levels[k - 1]:
+				return "RIVER_LEVEL_RISE：rivers[%d]（reach %d）edges[%d] 水位 %d > 前段 %d（沿边序列单调不升）" \
+					% [ri, r.reach_id, k, r.water_levels[k], r.water_levels[k - 1]]
+			if r.bed_level >= r.water_levels[k]:
+				return "RIVER_BED：rivers[%d]（reach %d）bed_level=%d 须 < 逐段 water_level（edges[%d] 水位 %d）" \
+					% [ri, r.reach_id, r.bed_level, k, r.water_levels[k]]
 	return ""
+
+
+## 水体面（WATER-03）：主键/规范序/kind/terminal/成员/岸线边形状。
+func _validate_water_bodies(map: MapDataClass, water_terrain_id: int) -> String:
+	var prev_id := ID_NONE
+	var membership := {}
+	for bi in water_bodies.size():
+		var b := water_bodies[bi]
+		if b.water_body_id < 0:
+			return "water_bodies[%d] water_body_id=%d 非法（负主键）" % [bi, b.water_body_id]
+		if prev_id != ID_NONE and b.water_body_id <= prev_id:
+			return "water_bodies[%d] 破坏规范序（须按 water_body_id 严格升序——含主键重复）" % bi
+		prev_id = b.water_body_id
+		if b.kind != WaterBodyData.Kind.SEA and b.kind != WaterBodyData.Kind.LAKE:
+			return "water_bodies[%d]（body %d）kind=%d 非法（Kind.SEA/LAKE 两值）" \
+				% [bi, b.water_body_id, b.kind]
+		if b.kind == WaterBodyData.Kind.SEA and not b.terminal:
+			return "water_bodies[%d]（body %d）海 terminal 恒 true（草案 §6 原文）" % [bi, b.water_body_id]
+		if b.kind == WaterBodyData.Kind.SEA and not b.outlet_links.is_empty():
+			return "WATER_SEA_OUTLET：water_bodies[%d]（body %d）海 outlet_links 恒空（草案 §6 原文——海不适用出水口）" % [bi, b.water_body_id]
+		if not b.terminal and b.outlet_links.is_empty():
+			return "WATER_TERMINAL：water_bodies[%d]（body %d）过路湖（terminal=false）必须有 outlet" \
+				% [bi, b.water_body_id]
+		if b.member_cells.is_empty():
+			return "water_bodies[%d]（body %d）member_cells 为空（水体至少一格）" % [bi, b.water_body_id]
+		var prev_cell := ID_NONE
+		for ci in b.member_cells.size():
+			var cid := b.member_cells[ci]
+			if cid < 0 or cid >= map.cell_count():
+				return "water_bodies[%d]（body %d）member_cells[%d]=%d 指向界外格" \
+					% [bi, b.water_body_id, ci, cid]
+			if prev_cell != ID_NONE and cid <= prev_cell:
+				return "water_bodies[%d]（body %d）member_cells 破坏行主序规范序（含重复格 %d）" \
+					% [bi, b.water_body_id, cid]
+			prev_cell = cid
+			if membership.has(cid):
+				return "water_bodies[%d]（body %d）成员格 %d 与水体 %d 共享（不同水体不共享格）" \
+					% [bi, b.water_body_id, cid, (membership[cid] as WaterBodyData).water_body_id]
+			membership[cid] = b
+			if water_terrain_id >= 0 and map.terrain_at(_cell_of_id(map, cid)) != water_terrain_id:
+				return "WATER_MEMBER_TERRAIN：water_bodies[%d]（body %d）成员格 %d terrain=%d ≠ 水地形 %d（对账不是回写）" \
+					% [bi, b.water_body_id, cid, map.terrain_at(_cell_of_id(map, cid)), water_terrain_id]
+		for group in [["inlet_links", b.inlet_links], ["outlet_links", b.outlet_links]]:
+			var gname := String(group[0])
+			var arr: Array[Vector2i] = group[1]
+			var seen := {}
+			for li in arr.size():
+				var lk := arr[li]
+				var shape_err := _shore_link_check(map, b, lk)
+				if shape_err != "":
+					return "water_bodies[%d]（body %d）%s[%d] %s" % [bi, b.water_body_id, gname, li, shape_err]
+				if seen.has(lk):
+					return "water_bodies[%d]（body %d）%s 重复边 %s" % [bi, b.water_body_id, gname, str(lk)]
+				seen[lk] = true
+	return ""
+
+
+## 岸边（岸线）边形状检查：合法 link + 界内 + 邻居 + **恰一端为成员格**——
+## 岸线 = 水陆共享边集合（WATER-03 ②）；入/出水口与河口边共用本口径
+## （河口接缝几何：终点边一侧是水面边缘、一侧是陆地，两侧全水 = 内部边接不上缝）。
+func _shore_link_check(map: MapDataClass, b: WaterBodyData, lk: Vector2i) -> String:
+	if lk.x < 0 or lk.x >= lk.y:
+		return "%s 非规范（须 0≤x<y）" % str(lk)
+	if lk.y >= map.cell_count():
+		return "%s 指向界外格" % str(lk)
+	var ca := _cell_of_id(map, lk.x)
+	var cb := _cell_of_id(map, lk.y)
+	if Hex.dir_between(ca, cb) < 0:
+		return "%s 两端格不互为界内邻居" % str(lk)
+	var in_a := _body_has_member(b, lk.x)
+	var in_b := _body_has_member(b, lk.y)
+	if in_a == in_b:
+		return "%s 须为岸边（恰一端为成员格；got 成员=%s/%s）" % [str(lk), str(in_a), str(in_b)]
+	return ""
+
+
+func _body_has_member(b: WaterBodyData, cell_id: int) -> bool:
+	# member_cells 已验升序——二分不必要，线性足够（水体成员 ≤ 千级）
+	return b.member_cells.has(cell_id)
+
+
+## 对账段：河段↔水体（终点/水位/河口边）、水体↔河段（inlet 镜像）、湖出口水位、
+## link↔reach 双向。
+func _validate_reconciliation(map: MapDataClass, river_claim: Dictionary) -> String:
+	# ① 河段 → 水体（终点对账 + 河口水位/岸边口径）
+	var river_edge_owner := {}
+	for ri in rivers.size():
+		var r := rivers[ri]
+		for e in r.edges:
+			if river_edge_owner.has(e):
+				return "RIVER_EDGE_REUSE：边 %s 同时属于 reach %d 与 %d（每有河 link 恰一归属）" \
+					% [str(e), (river_edge_owner[e] as int), r.reach_id]
+			river_edge_owner[e] = r.reach_id
+		var b := water_body_by_id(r.water_body_id)
+		if b == null:
+			return "NO_RIVER_OUTLET：rivers[%d]（reach %d）water_body_id=%d 引用不可解析（v1 每河必汇入声明水体）" \
+				% [ri, r.reach_id, r.water_body_id]
+		if not b.terminal:
+			return "NO_RIVER_OUTLET：rivers[%d]（reach %d）终点水体 %d 非 terminal" % [ri, r.reach_id, b.water_body_id]
+		var term := r.edges[r.edges.size() - 1]
+		if not b.inlet_links.has(term):
+			return "NO_RIVER_OUTLET：rivers[%d]（reach %d）终点边 %s ∉ 水体 %d 的 inlet_links（双向对账）" \
+				% [ri, r.reach_id, str(term), b.water_body_id]
+		var term_level := r.water_levels[r.water_levels.size() - 1]
+		if term_level != b.water_level:
+			return "WATER_MOUTH_LEVEL：rivers[%d]（reach %d）终点边水位 %d ≠ 水体 %d 水面 %d（河口对账——接缝 y 逐位一致的数据面）" \
+				% [ri, r.reach_id, term_level, b.water_body_id, b.water_level]
+		var shore_err := _shore_link_check(map, b, term)
+		if shore_err != "":
+			return "rivers[%d]（reach %d）终点边（河口）%s" % [ri, r.reach_id, shore_err]
+	# ② 水体 → 河段（inlet 镜像：每条 inlet 必有 reach 终点对上且指向本水体）
+	for b in water_bodies:
+		for lk in b.inlet_links:
+			var matched := false
+			for r in rivers:
+				if r.water_body_id == b.water_body_id \
+						and r.edges[r.edges.size() - 1] == lk:
+					matched = true
+					break
+			if not matched:
+				return "WATER_INLET：水体 %d 的 inlet %s 无河段终点对账（双向对账的镜像侧）" \
+					% [b.water_body_id, str(lk)]
+	# ③ 湖出口不高于溢流口：自本湖源出的河段（首边 ∈ outlet_links）首段水位 ≤ 本体水位
+	for b in water_bodies:
+		for lk in b.outlet_links:
+			for r in rivers:
+				if r.edges[0] == lk:
+					if r.water_levels[0] > b.water_level:
+						return "WATER_OUTLET_LEVEL：水体 %d 出口 %s 源出的 reach %d 首段水位 %d > 本体 %d（湖出口不高于溢流口）" \
+							% [b.water_body_id, str(lk), r.reach_id, r.water_levels[0], b.water_level]
+	# ④ link ↔ reach 双向对账（草案 §4：link 表 river_reach_id 与 reach.edges 零冗余互证）
+	for e in river_edge_owner:
+		var owner: int = river_edge_owner[e]
+		var claimed: Variant = river_claim.get(e, ID_NONE)
+		if int(claimed) != owner:
+			return "LINK_RIVER_MISMATCH：reach %d 的边 %s 在 link 表缺失或 river_reach_id≠%d（got %s）——双向对账" \
+				% [owner, str(e), owner, str(claimed)]
+	for e in river_claim:
+		if not river_edge_owner.has(e):
+			return "LINK_RIVER_MISMATCH：link %s 声明有河（reach %d）但无任何 reach.edges 含此边" \
+				% [str(e), int(river_claim[e])]
+	return ""
+
+
+## 稳定角点 ID（修订记录三之 4）：物理角点 (cell, vertex) 的三个格表示——
+## (c,k) = (N_k(c), (k+4)%6) = (N_{k−1}(c), (k+2)%6)（顶点角 30°−60°·i 的三角推得）——
+## 取**界内**表示的最小 index_of·6+顶点。任一表示出发同值（与生成路径无关）；
+## 地图边界角点仅 2 格界内亦不退化（两角点顶点号必不同，不冲突）。
+static func corner_id_of(map: MapDataClass, cell: Vector2i, vertex: int) -> int:
+	var v := wrapi(vertex, 0, 6)
+	var best := -1
+	for rep in [
+		[cell, v],
+		[Hex.neighbor(cell, v), wrapi(v + 4, 0, 6)],
+		[Hex.neighbor(cell, v - 1), wrapi(v + 2, 0, 6)],
+	]:
+		var c: Vector2i = rep[0]
+		if not map.has_cell(c):
+			continue
+		var id := map.index_of(c) * 6 + int(rep[1])
+		if best < 0 or id < best:
+			best = id
+	return best
 
 # ---------------- 序列化（固定键序——摘要可比较；Vector2i 显式 [x,y] 转换层）----------------
 
 ## to_dict 形状（JSON 落盘经 MapIO.write_world）：
-##   {"schema_version": 1, "links": [{"link_id": [x, y], "road_id": int,
-##     "river_reach_id": int}, …]（序 = links 数组序，规范序下同主键升序）,
-##    "rivers": [], "water_bodies": [], "roads": [], "crossings": [], "pois": [],
-##    "meta": {§10 字段集}}——link_id **显式转 [x, y] 数组**（Vector2i 直写
-##   JSON.stringify 落成 "(3, 17)" 字符串不可还原，草案 §2.2 实测坑）。
+##   {"schema_version": 1,
+##    "links": [{"link_id": [x, y], "road_id": int, "river_reach_id": int}, …]，
+##    "rivers": [{"reach_id": int, "edges": [[x, y], …], "flow_level": int,
+##      "water_levels": [int, …], "bed_level": int, "water_body_id": int}, …]，
+##    "water_bodies": [{"water_body_id": int, "kind": int, "water_level": int,
+##      "member_cells": [int, …], "inlet_links": [[x, y], …],
+##      "outlet_links": [[x, y], …], "terminal": bool}, …]，
+##    "roads": [], "crossings": [], "pois": [], "meta": {§10 字段集}}
+##   全部 Vector2i 显式转 [x, y] 数组（引擎直写 JSON.stringify 落成 "(3, 17)" 字符串
+##   不可还原，草案 §2.2 实测坑）。
 func to_dict() -> Dictionary:
 	var out_links: Array = []
 	for lk in links:
@@ -137,20 +547,53 @@ func to_dict() -> Dictionary:
 			"road_id": lk.road_id,
 			"river_reach_id": lk.river_reach_id,
 		})
+	var out_rivers: Array = []
+	for r in rivers:
+		var edges: Array = []
+		for e in r.edges:
+			edges.append([e.x, e.y])
+		out_rivers.append({
+			"reach_id": r.reach_id,
+			"edges": edges,
+			"flow_level": r.flow_level,
+			"water_levels": r.water_levels.duplicate(),
+			"bed_level": r.bed_level,
+			"water_body_id": r.water_body_id,
+		})
+	var out_bodies: Array = []
+	for b in water_bodies:
+		var inlets: Array = []
+		for lk in b.inlet_links:
+			inlets.append([lk.x, lk.y])
+		var outlets: Array = []
+		for lk in b.outlet_links:
+			outlets.append([lk.x, lk.y])
+		out_bodies.append({
+			"water_body_id": b.water_body_id,
+			"kind": b.kind,
+			"water_level": b.water_level,
+			"member_cells": b.member_cells.duplicate(),
+			"inlet_links": inlets,
+			"outlet_links": outlets,
+			"terminal": b.terminal,
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
-		"rivers": [],
-		"water_bodies": [],
+		"rivers": out_rivers,
+		"water_bodies": out_bodies,
 		"roads": [],
 		"crossings": [],
 		"pois": [],
 		"meta": meta.duplicate(true),
 	}
 
-## 版本不符 / 字段缺失 / link_id 形状非法（长度≠2/非整数/负分量/x≥y）/ 引用非整数 /
-## 未解锁集合非空 / meta 非字典 → null（调用方显式判空，无隐式兜底）。
-## 兼容 JSON 数值形状（整数以 float 3.0 出现亦可还原——MapData._is_integral_number 同款）。
+
+## 版本不符 / 字段缺失 / 形状非法（link_id/edges/inlet 等长度≠2、非整数、负分量、
+## x≥y；water_levels 与 edges 长度不齐）/ 未解锁集合非空 / meta 非字典 → null
+## （调用方显式判空，无隐式兜底）。兼容 JSON 数值形状（整数以 float 3.0 出现亦可
+## 还原——MapData._is_integral_number 同款）。拓扑/对账语义由 validate 查（分层：
+## from_dict 管形状，validate 管世界事实一致性）。
 static func from_dict(data: Dictionary) -> WorldData:
 	if not data.has_all(["schema_version", "links", "rivers", "water_bodies",
 			"roads", "crossings", "pois", "meta"]):
@@ -159,11 +602,14 @@ static func from_dict(data: Dictionary) -> WorldData:
 		return null
 	if not (data["links"] is Array) or not (data["meta"] is Dictionary):
 		return null
-	for locked in ["rivers", "water_bodies", "roads", "crossings", "pois"]:
+	for locked in ["roads", "crossings", "pois"]:
 		if not (data[locked] is Array):
 			return null
 		if not (data[locked] as Array).is_empty():
-			return null  # 能力未解锁（T3/T4/T5 逐实体开）——不产伪字段也不假解析
+			return null  # 能力未解锁（T4/T5 逐实体开）——不产伪字段也不假解析
+	for needed in ["rivers", "water_bodies"]:
+		if not (data[needed] is Array):
+			return null
 	var out := empty()
 	for i in (data["links"] as Array).size():
 		var entry: Variant = (data["links"] as Array)[i]
@@ -186,6 +632,12 @@ static func from_dict(data: Dictionary) -> WorldData:
 		lk.road_id = road_id
 		lk.river_reach_id = reach_id
 		out.links.append(lk)
+	var rivers_err := _rivers_from_dict(data["rivers"], out)
+	if rivers_err:
+		return null
+	var bodies_err := _bodies_from_dict(data["water_bodies"], out)
+	if bodies_err:
+		return null
 	var m := (data["meta"] as Dictionary)
 	for k in ["schema_version", "seed", "generator_version", "rules_version",
 			"attempt_count", "repair_count"]:
@@ -212,6 +664,88 @@ static func from_dict(data: Dictionary) -> WorldData:
 	}
 	out.meta = meta
 	return out
+
+
+## rivers 数组 → RiverReachData（形状校验：edges/water_levels 逐项 [x,y]/int、
+## 长度对齐、主键非负、flow_level ≥1、bed/water_body_id 整数）。
+static func _rivers_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["reach_id", "edges", "flow_level", "water_levels",
+				"bed_level", "water_body_id"]):
+			return true
+		for k in ["reach_id", "flow_level", "bed_level", "water_body_id"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["reach_id"]) < 0 or int(d["flow_level"]) < 1 \
+				or int(d["water_body_id"]) < ID_NONE:
+			return true
+		if not (d["edges"] is Array) or not (d["water_levels"] is Array):
+			return true
+		if (d["edges"] as Array).size() == 0 \
+				or (d["edges"] as Array).size() != (d["water_levels"] as Array).size():
+			return true
+		var r := RiverReachData.new()
+		r.reach_id = int(d["reach_id"])
+		r.flow_level = int(d["flow_level"])
+		r.bed_level = int(d["bed_level"])
+		r.water_body_id = int(d["water_body_id"])
+		for ev in (d["edges"] as Array):
+			var e: Variant = _link_id_from(ev)
+			if e == null:
+				return true
+			r.edges.append(e)
+		for wv in (d["water_levels"] as Array):
+			if not _is_int(wv):
+				return true
+			r.water_levels.append(int(wv))
+		out.rivers.append(r)
+	return false
+
+
+## water_bodies 数组 → WaterBodyData（形状校验同纪律）。
+static func _bodies_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["water_body_id", "kind", "water_level", "member_cells",
+				"inlet_links", "outlet_links", "terminal"]):
+			return true
+		for k in ["water_body_id", "kind", "water_level"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["water_body_id"]) < 0:
+			return true
+		if not (d["member_cells"] is Array) or not (d["inlet_links"] is Array) \
+				or not (d["outlet_links"] is Array) or not (d["terminal"] is bool):
+			return true
+		var b := WaterBodyData.new()
+		b.water_body_id = int(d["water_body_id"])
+		b.kind = int(d["kind"])
+		b.water_level = int(d["water_level"])
+		b.terminal = bool(d["terminal"])
+		for cv in (d["member_cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			b.member_cells.append(int(cv))
+		for key in ["inlet_links", "outlet_links"]:
+			for lv in (d[key] as Array):
+				var lk: Variant = _link_id_from(lv)
+				if lk == null:
+					return true
+				if key == "inlet_links":
+					b.inlet_links.append(lk)
+				else:
+					b.outlet_links.append(lk)
+		out.water_bodies.append(b)
+	return false
 
 # ---------------- 内部 ----------------
 

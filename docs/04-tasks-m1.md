@@ -277,6 +277,48 @@ make_fixed_maps 扩展）；③ LAND-S 步数默认（5 vs 3）与 cliff 纵横�
 23:19-23:27、像素中性已实证；终跑 gate_all 含探针 23:42:54 重出证据，晚于全部
 修复文件 mtime，现档与终代码同刻）。
 
+**T3 水系批登记（2026-10-11 完成 + 2026-10-12 评审修复；WATER-01/02/03 三卡——
+数据面（河段/水体/校验器/序列化）+ 几何面（河床下切/水面第二 mesh/岸线裙边）+
+固定图数据化）**：
+
+| ID | 卡 | 验收（执行方案 §4 摘要） | 完成登记 |
+|---|---|---|---|
+| WATER-01 | 格边河段数据面 | 边序列连续（共角点）、角点级无环、单调不升、床<水位、有终点；Vector2i [x,y] 落盘；缺 .world.json → empty() | **2026-10-11 完成**：`WorldData` RiverReachData（edges/water_levels 逐段 profile/bed_level/flow_level/water_body_id）+ 校验器四条（RIVER_CYCLE 角点级 = corner_id_of 稳定角点 ID + 双端延伸链行走、RIVER_LEVEL_RISE、RIVER_BED、NO_RIVER_OUTLET 终点∈inlet 对账）；fixture 生成器 `tools/river_fixtures.gd`（around_cell_chain 弯样/角点环拒绝样 + greedy_chain 确定性贪心走廊——几何共角点判定与校验器 ID 判定两路互证）；测试 = `tests/test_water_rivers.gd`（弯/走廊/源/终点/上坡/环/断链/非法邻格拒绝 + 序列化往返） |
+| WATER-02 | 河床/水面/河岸三层几何 | 跨 chunk 三层锚点一致；不露洞、不重复水面；水层不截获拾取；河床沿整条边全长（修订记录三之 1） | **2026-10-11 完成 + 2026-10-12 评审修复**：河床 = `hex_terrain_builder.gd` `_emit_river_band`（有河 link 边带整段下切「岸坡→床→岸坡」剖面，kind="riverbed"，6 面/边；河畔角走 `_emit_corner_fill` 下切侧折线）；水面 = `addons/hexhammer/water_geometry_builder.gd` 独立第二 mesh（条带 u∈[bank,1−bank] 恒宽 + **角点楔形 water_corner（评审 high 修复：同一 reach 共角点边对恰一楔、凸包扇形剖分、端段与条带同 `_strip_quad` 同参派生逐位一致、归属=角点三格最小 ID 格）** + 水面扇 + 悬崖岸裙边）；水面 y=(level−0.5)×step 半档错位；**评审修复连带两缺陷**：终点边成员侧延展沿边镜像配对（配反=扭四边形域内孔/重复）+ 条带/裙带 raw 绕序统一俯视逆时针（修复前俯视背面被 CULL_BACK 剔——水面实际不可见，探针 9508→10503px 实证增量）；拾取 = 水面零碰撞体不进 LAYER_TERRAIN、riverbed 归属两侧最近格心+ID 决胜（`hex_picking.gd`）；场景挂载 `map_view.gd _mount_water`（view 层零碰撞体）；测试 = `tests/test_water_geometry.gd`（河床整边全长/边带优先于分类/焊接流形/跨 chunk 三划分逐位一致/**角点楔形逐位焊接 + 全链中心线·角点对角线·终点延展域采样恰一 patch（不露洞不重复）+ raw 绕序锚**/blend 兼容/拾取合同） |
+| WATER-03 | 湖/海/岸线/河口 | 同湖水位一致；源流到声明出口；河口无悬空水面；terminal 语义 | **2026-10-11 完成 + 2026-10-12 补 SEA outlet 校验 + 同日二轮补连续水面**：WaterBodyData（SEA/LAKE、member_cells、inlet/outlet 边口径、terminal）+ 校验器（WATER_MOUTH_LEVEL 河口水位对账/WATER_TERMINAL 过路湖须 outlet/**WATER_SEA_OUTLET 海 outlet 恒空（2026-10-12 补——草案 §6 约束进校验器）**/WATER_OUTLET_LEVEL 湖出口不高于溢流口/WATER_MEMBER_TERRAIN 成员地形对账显式启用）；**连续水面（二轮 high 修复）= 同体成员边整段带面 water_band + 角点补面泛化**（见下方二轮修复段）；岸线 = shore_links_of（水陆共享边集合，裙边/校验两处复用）；河口接缝 = 终点条带延至成员格内边、与水面扇边缘同参数逐位一致（两侧成员镜像各锚）；悬崖岸裙边（水面向陆侧延至带中段=崖壁脚）；固定图 = `make_fixed_maps.gd` 正弦河改产 WorldData.rivers 贪心链 + 河口湖/东北湖水体 + `playable_60x40.world.json` 第四伴生；测试 = `tests/test_water_bodies.gd`（岸线 oracle/水位结构/出口水位/terminal 家族/SEA outlet 拒绝/序列化往返）+ test_water_geometry.gd 湖面连续锚 |
+
+**T3 批门禁与证据（本会话实跑，2026-10-12 两轮修复后终态）**：`--import` exit 0；
+run_tests = **20 文件 / 285 用例 / 0 失败** exit 0（T2 后 17/242 → T3 批 +3 文件
++39 用例 → 一轮评审修复 +3 用例 → 二轮评审修复 +1 用例，只增不减；三新件均沿
+tests/test_case.gd 基类、oracle 独立拼装——跨河参数/接缝顶点由测试内独立
+lerp/inner_vertex 重推）；picking_scene_check **10 用例/0 失败** exit 0（新增 H0：
+水面第二 mesh 挂载进场景零碰撞体——「射线穿水」引擎级证据含水面层本体，一轮
+medium 修复；H 河床归属 |Δh|=4 高岸不截胡）；render_probe **7/7 PASS** exit 0
+（真 GPU forward_plus：CHECK-W 水面差分 14610px>3000——两轮修复后重出：9508
+（首报）→ 10503（角点接缝 + 绕序）→ 14610（湖面带面 + 角点补面），证据 =
+`docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt` + 四帧图同刻更新）。
+
+**T3 二轮评审修复（2026-10-12 同日）**：high = 湖/海水面成员间断裂——`_emit_skirts`
+水-水内边 skip 的「两扇已在内边相接」为假前提（两内六边形实隔整条连接带 ≈
+0.35·size，多格水体成孤岛六边形，评审探针 2×2 湖 5/5 成员对中点 0 覆盖、固定图
+东北湖 206/206）→ 修复 = **同体成员边整段带面**（water_band，u∈[0,1] 两端 =
+成员格内边、沿边镜像配对、归属 = link 两端较小格、与两侧水面扇 inner_vertex
+同三元组逐位一致）+ **角点补面泛化**（water_corner 从「reach 共角点边对楔形」
+推广为「角点 ≥2 条边有水面即补」：水权收集（条带段/带段/裙段，世界级现算）
+→ 到达段端点成环保留共线点 → 质心扇形——不吞点防 T 型结、条带×条带 = 河转角、
+带×带 = 湖内角、带×裙 = 湖岸角同一规则覆盖；异体水-水边两侧半带裙边相接留作
+病理态显式行为）；修复后评审同口径探针 5/5 + 2/2（三成员角质心）恰一 patch；
+新测试锚 `test_lake_surface_continuous_across_members`（带面存在/归属/四角与
+两侧扇 == 共享/成员对中点+带中线+三成员角质心恰一 patch）。low = 仓库根
+`nul`/`out/` 垃圾**已删**（out/ 内为 2026-10-11 外审歧义清单——结论已随 PLAN-ALIGN
+并档，沿「外审件过路即弃」先例；工作树未跟踪项只剩 T3 交付件）。
+**遗留 low（评审登记）**：异体水-水邻接（两不同水位水体贴边——v1 无 fixture
+覆盖的病理态）两侧各出半带裙边至带中段相接、角点补面环退化跳过，行径无测试锚
+（头注 `addons/hexhammer/water_geometry_builder.gd:38-39` 自认；`_emit_corner_fill`
+退化分支 :381-388 ring<3/面积 ~0 跳过；`tests/test_water_geometry.gd` 无异体
+水体用例）——属 v1 已知留白而非缺陷，异体水-水图首次进 fixture 时须补恰一
+patch/裙边相接锚再动。
+
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
 间等）全为候选目标，T0 基线实测前不构成承诺。

@@ -5,10 +5,13 @@
 ##     落成 "(3, 17)" 字符串不可还原——测试断言落盘 JSON 文本不含该形状且往返无损）；
 ##   - 旧图零迁移：缺 .world.json → empty() 合法（无河无路无 POI 的合法态）；
 ##   - NeighborLinkData：link_id=(min,max) 规范化、两端互为界内邻居校验、
-##     主键唯一/规范序、引用可解析（T2 实体未解锁 → 非 ID_NONE 即非法）；
+##     主键唯一/规范序、引用可解析（road_id 恒 ID_NONE=T4 未解锁；river_reach_id
+##     T3 起解锁、须双向对账——河/水体实体面见 tests/test_water_rivers.gd /
+##     test_water_bodies.gd）；
 ##   - 零回写 MapData（草案 §11 全局项：validate/to_dict 前后 summary/digest/mods
 ##     逐字节不变）；
-##   - 未解锁集合（rivers/…）恒空且 from_dict 拒绝非空（不产伪字段也不假解析）。
+##   - 未解锁集合（roads/crossings/pois）恒空且 from_dict 拒绝非空（不产伪字段
+##     也不假解析）。
 ## oracle 原则：期望邻接关系由 MapData/HexMath 原语独立推导（index_of / dir_between /
 ##   axial_of），不复制 WorldData 内部比较器；JSON 往返走真实文件（user:// 临时件）。
 extends "res://tests/test_case.gd"
@@ -129,11 +132,14 @@ func test_validate_rejects_unresolved_references() -> void:
 	lk.road_id = 7
 	w.links.append(lk)
 	var msg := w.validate(map)
-	expect(msg != "", "T2 道路实体未解锁：road_id≠ID_NONE 非法（引用不可解析）")
+	expect(msg != "", "T4 道路实体未解锁：road_id≠ID_NONE 非法（引用不可解析）")
 	expect(String(msg).contains("road_id"), "错误串指向具体字段（最小诊断输出）")
+	# T3 起河段解锁：river_reach_id 非 ID_NONE 时须指向存在的 reach（双向对账）
 	lk.road_id = WorldDataClass.ID_NONE
 	lk.river_reach_id = 3
-	expect(w.validate(map) != "", "T3 河段实体未解锁：river_reach_id≠ID_NONE 非法")
+	var msg2 := w.validate(map)
+	expect(msg2 != "", "river_reach_id 指向不存在的 reach：非法（T3 解锁 ≠ 放行）")
+	expect(String(msg2).contains("LINK_RIVER_MISMATCH"), "错误码指向 link↔reach 对账")
 
 # ================= 序列化：Vector2i 显式 [x,y] 转换层 + JSON 往返 =================
 
@@ -200,10 +206,13 @@ func test_from_dict_rejects_bad_shapes() -> void:
 
 func test_from_dict_rejects_unlocked_collections_and_bad_meta() -> void:
 	var good := WorldDataClass.empty().to_dict()
-	var rivers := good.duplicate(true)
-	rivers["rivers"] = [{"anything": 1}]
-	expect(WorldDataClass.from_dict(rivers) == null,
-		"rivers 非空 → null（T3 前未解锁——不产伪字段也不假解析）")
+	# roads/crossings/pois 仍未解锁（T4/T5 逐实体开——rivers/water_bodies 已随
+	# T3 解锁，见 tests/test_water_rivers.gd 的往返锚）
+	for locked in ["roads", "crossings", "pois"]:
+		var d := good.duplicate(true)
+		d[locked] = [{"anything": 1}]
+		expect(WorldDataClass.from_dict(d) == null,
+			"%s 非空 → null（未解锁——不产伪字段也不假解析）" % locked)
 	var meta_bad := good.duplicate(true)
 	(meta_bad["meta"] as Dictionary)["seed"] = "seven"
 	expect(WorldDataClass.from_dict(meta_bad) == null, "meta.seed 非整数 → null")

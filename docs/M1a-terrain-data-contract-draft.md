@@ -1,28 +1,24 @@
 # M1a+ 地形世界数据合同（草案）
 
-> **效力：草案（2026-10-10 起草）——非拍板。** 本文件不构成对 04 §M1a+/03 已定范围
-> 的改写，不是实现指令，也未动任何代码（纯文档任务）。字段集依据
+> **效力：§4 河流行 / §5 / §6 已按 ADR-14 转正（2026-10-11 T3 WATER-01/03 落地，
+> 重写蓝本 = [执行方案](M1a-terrain-T2-T5-execution-plan.md) §2.2/§2.4 格边重议稿
+> ——其 §2.6 已全部拍板；04 §M1a+ 登记随交付批次补录）。其余各节仍为草案
+> （2026-10-10 起草，非拍板）**：不构成对 04 §M1a+/03 已定范围的改写；§7/§8/§9
+> 待 T4/T5 逐卡转正。字段集依据
 > [M1a-terrain-world-proposal.md](M1a-terrain-world-proposal.md)「核心设计与数据边界」
-> 节（**未拍板提案**）起草，登记来源 = [04-tasks-m1.md](04-tasks-m1.md) §M1a+
+> 节起草，登记来源 = [04-tasks-m1.md](04-tasks-m1.md) §M1a+
 > 「数据合同冻结建议（T2/T3 开工前置，只登记不实现）」。
 >
-> **河流拓扑（穿格 vs 格边）是 ADR 级决策**：本草案全文默认**穿格**口径，仅因方案
-> 如此建议（Catlike 同款；方案「河流坐标约定必须先选定」节）。主创改判格边河流 →
-> §5 RiverReachData 与 §8 CrossingData 的字段集**整体重议**（格边河须另补稳定
-> 顶点/角图与排水映射），且同一地图不得混用两种河流语义。
-> 任何一项进代码前须过方案文末「需要主创确认的决策」清单；**河流拓扑项阻塞 T3，
-> T3 开工前须回 [02-architecture.md](02-architecture.md) 立 ADR**（现行最新为
-> ADR-13，新 ADR 编号届时顺延）。决策清单六项：河流拓扑（阻 T3）/ 视觉风格
->（阻 T2 深化）/ 首个世界模板（阻 T5）/ 地形玩法（阻 T6，非 T1）/ 目标硬件与
-> 渲染器（阻性能验收）/ 排期取舍（阻扩范围）。
+> **河流拓扑（穿格 vs 格边）是 ADR 级决策**：主创已定**格边河流**
+> （[02](02-architecture.md) **ADR-14**）——§5 RiverReachData 与 §6 WaterBodyData
+> 的出入水口字段已按格边口径转正（本文件 2026-10-11 重写）；§8 CrossingData
+> 仍为穿格口径**作废待重议**（T4 转正时按执行方案 §2.3 重写），同一地图不得
+> 混用两种河流语义。决策清单余项：视觉风格深化 / 首个世界模板（阻 T5）/
+> 地形玩法（阻 T6，非 T1）/ 目标硬件与渲染器（阻性能验收）/ 排期取舍。
 >
-> **2026-10-10 拍板落字**：主创已定**格边河流**（[02](02-architecture.md)
-> **ADR-14**）——本草案 §5 RiverReachData 与 §8 CrossingData 的穿格口径
-> **整体作废待重议**（T3 转正时按格边重写：河段=共享边有序序列、桥=跨格边河流
-> 的两侧陆路连接，~~并补稳定边/角图与排水映射两前置~~——**2026-10-11 拍板④修正**：
-> 排水映射前置废除（T3 手工河免排水表、自动河网 = T5 河口反向生长），仅稳定边/角图
-> 保留；重写蓝本 = [执行方案](M1a-terrain-T2-T5-execution-plan.md) §2 重议稿，
-> 其 §2.6 已全部拍板、转正可启动）；同日拍板世界模板
+> **2026-10-11 拍板修正**：排水映射前置废除（T3 手工河免排水表、自动河网 =
+> T5 河口反向生长），稳定边/角图以 MapData 稳定 ID + WorldData.corner_id_of
+> 落地（角点 ID = 物理角点三格表示取最小 index_of·6+顶点）；世界模板
 > "不造气候、只有地形"——WorldFields 的温度/生态区及生态相关字段转正时
 > **移除或降为可选**。
 
@@ -126,7 +122,7 @@ const ID_NONE := -1
 const NO_LINK := Vector2i(-1, -1)  # x=min(cell_id), y=max(cell_id)；负分量=哨兵
 
 var links: Array[NeighborLinkData]        # 邻接边对象表（link_id 升序为规范序）
-var rivers: Array[RiverReachData]         # 河段表（cell_id 升序为规范序）
+var rivers: Array[RiverReachData]         # 河段表（reach_id 升序为规范序；§5 转正版）
 var water_bodies: Array[WaterBodyData]    # 水体表（water_body_id 升序）
 var roads: Array[RoadData]                # 道路表（road_id 升序）
 var crossings: Array[CrossingData]        # 过河设施表（crossing_id 升序）
@@ -149,72 +145,74 @@ static func empty() -> WorldData                 # 旧图口径：全空集合 +
   （`WaterGeometryBuilder`/`RoadGeometryBuilder` 等，方案「渲染、拾取与更新方案」）
   只读它。
 
-## 4. NeighborLinkData（首次需要 T2/T3）
+## 4. NeighborLinkData（首次需要 T2/T3；**河流行已按 ADR-14 转正，2026-10-11**）
 
-方案定义：相邻格之间的稳定 link_id=`(min(cell_id),max(cell_id))`；道路为无向，
-river flow 另存 from/to。职责 = 邻接边的**索引面**：回答"这条边上有什么"。
+方案定义：相邻格之间的稳定 link_id=`(min(cell_id),max(cell_id))`；道路为无向。
+职责 = 邻接边的**索引面**：回答"这条边上有什么"。
 
 | 字段 | 类型 | 约束与语义 | 初版口径 |
 |---|---|---|---|
 | `link_id` | `Vector2i` | `x = min(a,b)`、`y = max(a,b)`（a/b = 两端 `cell_id`）；恒 `0 ≤ x < y`；两端格须互为界内邻居（`MapData.neighbors_existing` 校验）——不存在的邻格不产生连接（M1a-T2 边界规则延伸到边表） | 即主键；与集合 key 一致 |
 | `road_id` | `int` | 本边被哪条道路占用（无向）；`ID_NONE` = 无路；须与 `RoadData.cells` 对账：本 link 两端恰为该道路序列中相邻两格 | 初版可全 `ID_NONE`（T4 才有路） |
-| `river_from` | `int` | 本边有河水时 = 流出格 `cell_id`；无河 = `ID_NONE`；有河时须为 link 两端之一，且 `river_from != river_to` | 与 `RiverReachData.outgoing` 双向对账 |
-| `river_to` | `int` | 同上，流入格 `cell_id`；无河时与 `river_from` 同为 `ID_NONE` | 与 `RiverReachData.incoming` 双向对账 |
+| `river_reach_id` | `int` | 本边有河水时所属河段（`RiverReachData` 主键引用）；`ID_NONE` = 无河；**与 `reach.edges` 双向对账**（本 link ∈ 该河段边序列、且序内每条边都有对应 link 条目）——§2.4：**不存任何流向字段**（终态流向事实 = `reach.edges` 的序列顺序，link 层零冗余；生成期流向属 WORLD-02 中间产物不落盘） | T3 起随河解锁 |
 
 **初版禁止项**：
 - 不承载地形/高差/连接类型——`classify_edge`（builder）属几何派生，现算不入表；
-- 同一 link 的河水只有一个方向（`from`/`to` 单向对，不存在双向河道）；
-- **"同一 link 上有河和路"不得推导出"需要桥"**（方案原文：那可能是顺河方向的
-  重叠而非横切河道；桥判定见 §8）。
+- 同一 link 的河水只有一个方向（不存在双向河道——方向由 reach.edges 序表达）；
+- **"同一 link 上有河和路"⇒ 必须被 CrossingData 认领（=桥），否则非法**（§2.3
+  认领语义反转，拍板⑤——T4 转正时落校验器）。
 
-## 5. RiverReachData（首次需要 T3；**穿格口径——ADR 未立，见文档头**）
+## 5. RiverReachData（**已按 ADR-14 转正**，2026-10-11 T3 WATER-01 落地；
+##   代码 = scripts/core/data/world_data.gd，测试锚 = tests/test_water_rivers.gd）
 
-方案定义：incoming 列表、最多一个 outgoing、流量等级、河床/水面锚点、所属水系；
-预留汇流而不提前开放。穿格约定下**一段 reach = 一格内的河段**（河水从本格穿过
-共享边流入邻格），主键 = `cell_id`（一格最多一段河）。
+ADR-14 拓扑：河 = 六边形**共享边的有序序列**，两侧格互为河岸、保持陆地地形
+（河的通行影响走规则层 M3——渲染河床只下切连接带中段）。『1入1出』的等价表达
+= 边图上每条内部边恰有一前驱与一后继（链结构，拍板⑨：数据层零冗余）；汇流
+（多前驱）初版校验器拒绝、结构留口子第二版开。
 
 | 字段 | 类型 | 约束与语义 | 初版口径 |
 |---|---|---|---|
-| `cell_id` | `int` | reach 所在格 = 主键；全图唯一（同格第二段河非法）；格子保持**陆地地形**（见禁止项） | 手工主河/支流均如此锚定 |
-| `incoming` | `Array[Vector2i]` | 入边 link_id 列表（河水从这些边流入本格）；每项须合法 link 且 `river_to == cell_id` | **初版长度 ≤ 1**（WATER-01"1 入 1 出"）；列表形态为汇流（2 入 1 出）预留，第二版才开放 |
-| `outgoing` | `Vector2i` | 出边 link_id（河水流出本格）；`NO_LINK` = 本段是终点（汇入水体，见 `water_body_id`）；有值时须 `river_from == cell_id` | 恒 ≤ 1（无字段可塞第二个——分叉/三角洲**结构上**做不了） |
-| `flow_level` | `int` | 流量等级（主河/支流分级）；`≥ 1`；等级→河宽/流速映射属表现参数，不进数据 | 手工图按模板指定 |
-| `water_level` | `int` | 水面离散标高（与 `MapData` 高程同纲）；沿河单调不上升（量化后重验，方案「水系的可执行合同」）；共享连接两端 reach 的水面锚点标高必须一致 | 湖/海邻接段须与水体 `water_level` 一致 |
-| `bed_level` | `int` | 河床离散标高；恒 `< water_level`（河床容纳校验的下界） | 几何河床形状由全局参数派生，只存标高 |
-| `river_system_id` | `int` | 所属水系（同一条河的干/支流同值）；编号口径 = 生成器/模板职责，数据只保证引用存在 | 手工图可为单值 |
-| `water_body_id` | `int` | **终点段汇入的水体**（`WaterBodyData` 主键引用）：`outgoing == NO_LINK`（终点段）时必须有值，所指水体须存在且 `terminal == true`，且 `outgoing` 边的 `river_to` 端格须 ∈ 该水体 `member_cells`（河水确从本段汇入）；非终点段（`outgoing != NO_LINK`）必须为 `ID_NONE`——结构互斥，两个方向都非法 | 与 `WaterBodyData.inlet_links` 双向对账（§6） |
+| `reach_id` | `int` | 主键；全容器唯一、升序规范序 | — |
+| `edges` | `Array[Vector2i]` | **有序边序列**（每项 = link_id=(min,max)）：`edges[0]` = 源边、`edges[last]` = 终点边（河口）；每项两端互为界内邻居；相邻边须共角点（序列连续）；全序列**角点不复用**（无环 = 角点级判定：稳定角点 ID + 已访问集合——边不复用 ≠ 无环，两条不同边可经同一角点成环/自交） | 手工河 = 手写边序列；自动河网（T5 河口反向生长）直接落本字段 |
+| `flow_level` | `int` | 流量等级；`≥ 1`；等级→河宽/流速映射属表现参数不进数据（首版恒宽几何，flow_level 兑现走水面材质参数层） | 首版固定等级或不依赖汇流的分档；Strahler 随汇流第二版 |
+| `water_levels` | `Array[int]` | **逐段水面标高 profile**（与 edges 逐项对齐）；沿序列**单调不升**（Catlike 禁上坡的数据化——水位口径 = 逐段 profile 而非全河单 scalar） | 手工赋值 + 校验器断言兜底 |
+| `bed_level` | `int` | 河床离散标高；恒 `<` 逐段 `water_levels[k]`（河床容纳校验下界）；同 MapData 高程 int 分层同纲 | 几何河床形状由全局参数派生，只存标高 |
+| `water_body_id` | `int` | **终点段汇入的水体**（`WaterBodyData` 主键引用）：所指水体须存在且 `terminal == true`、终点边 ∈ 该水体 `inlet_links`（双向对账）、终点边水位 == 该水体 `water_level`（河口对账）、终点边为该水体**岸边**（恰一端成员——接缝几何前提） | v1 每河必汇入声明水体（无出图界终点；汇流第二版开） |
 
-- **河床/水面锚点**（方案字段原文）的落法：锚点**位置**（入边中点、出边中点、
-  格心）由 `cell_id` + link 方向经 HexMath 全局参数**唯一路径派生**，不落盘坐标
-  （§2.3）；数据承载的是锚点的**标高合同**（`water_level`/`bed_level` 两字段）
-  ——同一共享边两侧 chunk 各自派生位置必然逐位一致（builder 接缝先例）。
-- 终点语义由结构表达：`outgoing == NO_LINK` 的 reach 是终点段，其归着水体由
-  `water_body_id` 显式引用（校验器查所指水体 `terminal == true`，且汇入边
-  `river_to` 端 ∈ 该水体 `member_cells`，见字段表）——
-  方案"海/湖出口由数据声明，不要求全部入海"。
+- 锚点派生纪律维持（§2.3）：每条边的锚 = 两格心连线与共享边的交点，由
+  HexMath 全局参数唯一路径现算，**不落盘坐标**；数据承载的是标高合同；
+- 同格可有多条河的边经过（河在边上不占格——与穿格版"一格最多一段河"作废）；
+- 每条物理边至多属一个河段（`RIVER_EDGE_REUSE` 拒绝——水面/河床"恰一归属"）。
 
 **初版禁止项**：
-- `incoming.size() > 1` 非法（汇流预留不开）；任何形式的出流分叉非法；
-- **渲染河道不得把河流格整格设为水体禁行**——reach 不回写 `MapData` 的
-  `passable`/`terrain`/`mods`；穿河可达性由 `TraversalPolicy` + `CrossingData`
-  回答（M3 拍板前"视觉模式"）；
-- 河流与道路交叉只允许通过专门 crossing 解决（§8）；初版禁止道路纵向覆盖河槽
-  （重合格必须有 crossing 认领，见 §7 禁止项）；
-- 水深/流速/河宽/瀑布形态 = 表现参数，不是本实体的字段。
+- 汇流（多前驱边）非法（第二版开）；跨 reach 边复用非法；
+- **两侧格保持陆地地形与自身 passable 语义**——reach 不回写 `MapData` 的
+  `passable`/`terrain`/`mods`（跨河可达性由 `TraversalPolicy` + `CrossingData`
+  回答，M3 拍板前"视觉模式"；**湖/河双口径有意设计**：湖/海 = 格语义水体
+  [terrain=水 + passable=false 结算面在格上]，河 = 边语义水体 [水在边上]——
+  寻路天然把湖格当墙、对河不置一词，两套语义各自闭合互不改写）；
+- 河流与道路交叉只允许通过专门 crossing 解决（§8，T4）；水深/流速/河宽 =
+  表现参数，不是本实体的字段。
 
-## 6. WaterBodyData（首次需要 T3）
+## 6. WaterBodyData（**已转正**，2026-10-11 T3 WATER-03 落地；代码同上，
+##   测试锚 = tests/test_water_bodies.gd / test_water_geometry.gd）
 
-方案定义：海/湖类型、水面标高、成员格、入/出水口、合法终点声明。
+湖/海 = **格语义**水体（成员格 terrain=水、passable=false 结算面在 MapData 上，
+本实体只加水面标高/出入水口/终点声明）。
 
 | 字段 | 类型 | 约束与语义 | 初版口径 |
 |---|---|---|---|
-| `water_body_id` | `int` | 主键；全容器唯一 | — |
-| `kind` | `int`（枚举 `Kind`） | `Kind.SEA` / `Kind.LAKE` | 初版两值 |
-| `water_level` | `int` | 水面离散标高；**同一水体成员水位恒一致**（方案拓扑护栏"同一湖体水位一致"） | 与邻接 reach 的 `water_level` 对账 |
-| `member_cells` | `Array[int]` | 成员格 `cell_id` 列表，行主序规范序（摘要可比较）；全图不重复、不同水体不共享格 | 与 `MapData` 对账：成员格 `terrain` 应为水（TERRAIN_WATER 口径）——这是**校验**不是回写（生成器建立对应，校验器拒绝对不上的图） |
-| `inlet_links` | `Array[Vector2i]` | 入水口（河水汇入本水体的边）；与全部 `RiverReachData` 终点对账（某 reach 终点 = 本体 ⇔ 其 `water_body_id` = 本 id） | 对账不上的图非法 |
-| `outlet_links` | `Array[Vector2i]` | 出水口（湖溢流口/海不适用恒空）；出口水位不得高于本水体 `water_level`（方案"湖出口不高于允许的溢流口"） | 数量上限初版不设（方案未定），校验只查单调 |
-| `terminal` | `bool` | 合法终点声明：河流是否允许以本水体为终点（海恒 true；湖 true = 终点湖、false = 过路湖必须有出口） | 手工图显式声明 |
+| `water_body_id` | `int` | 主键；全容器唯一、升序规范序 | — |
+| `kind` | `int`（枚举 `Kind`） | `Kind.SEA` / `Kind.LAKE`；海恒 `terminal=true` | 初版两值 |
+| `water_level` | `int` | 水面离散标高；**同一水体成员水位恒一致**（单字段结构性成立）；与汇入 reach 的终点边水位对账（河口水面 y 相等 = 同公式同 level） | 水面 y = (water_level − 0.5)×elevation_step 半档错位（渲染口径，WaterGeometryBuilder） |
+| `member_cells` | `Array[int]` | 成员格 `cell_id` 列表，升序（= 行主序）规范序；全图不重复、不同水体不共享格 | 与 `MapData` 对账：成员格 `terrain` 应为水——**校验不是回写**（`validate(map, water_terrain_id)` 显式启用；水体地形 id 属内容层约定，核心数据层不硬编码） |
+| `inlet_links` | `Array[Vector2i]` | 入水口（河水汇入本水体的边，**边口径**）；与全部 reach 终点双向对账（某 reach 终点 = 本体 ⇔ 其 `water_body_id` = 本 id 且终点边在此表）；每项须为本水体**岸边**（恰一端成员） | 声明必有河（无河对账的 inlet 非法）；湖无河汇入 = 合法（表空） |
+| `outlet_links` | `Array[Vector2i]` | 出水口（湖溢流口；海不适用恒空）；每项须为岸边；**自本湖源出的 reach（edges[0] ∈ 本表）首段水位 ≤ 本体 `water_level`**（湖出口不高于溢流口） | 数量上限初版不设，校验只查水位 |
+| `terminal` | `bool` | 合法终点声明：河流是否允许以本水体为终点（海恒 true；湖 true = 终点湖、false = 过路湖必须有 outlet） | 手工图显式声明 |
+
+**岸线**（WATER-03 ②）= 水体与陆地的共享边集合（`WorldData.shore_links_of`：
+成员格每个界内非成员邻居各一 link）——岸线渲染（水面裙边）/校验器岸边口径/
+边界画法（§7 同构）三处复用同一几何事实。
 
 **初版禁止项**：不做动态水位/潮汐/季节（非目标"不做真实流体"）；成员格语义
 变化（如湖填成陆地）= 编辑操作走 WorldData 重建，不提供增量字段。
@@ -329,9 +327,18 @@ M2 决定。
   WorldData 零回写 MapData（含 `mods`）。
 - **link 表**：两端互为界内邻居（不存在邻格不产生连接）；`river_from/to`
   与 reach 表双向对账；`road_id` 与道路序列对账。
-- **河流**：无环（`RIVER_CYCLE`）、有终点且终点水体 `terminal=true`
-  （`NO_RIVER_OUTLET`）；沿河 `water_level` 单调不升；`bed_level < water_level`；
-  同格唯一 reach；`incoming ≤ 1`。
+- **河流（§5 转正版）**：无环（`RIVER_CYCLE`，**角点级**判定——边不复用 ≠
+  无环）、序列连续（相邻边共角点）/边合法（两端互为界内邻居）、有终点
+  （终点边 ∈ 声明水体 `inlet_links` 且水体 `terminal=true`，
+  `NO_RIVER_OUTLET`）；`water_levels` 沿边序列单调不升（`RIVER_LEVEL_RISE`）；
+  `bed_level <` 逐段水位（`RIVER_BED`）；每物理边至多一归属
+  （`RIVER_EDGE_REUSE`）；河口水位 == 水体水面（`WATER_MOUTH_LEVEL`）；
+  link 表 `river_reach_id` 与 `reach.edges` 双向对账（`LINK_RIVER_MISMATCH`）。
+- **水体（§6 转正版）**：主键/规范序；海恒 terminal、过路湖必有 outlet
+  （`WATER_TERMINAL`）；成员格 terrain 对账（`WATER_MEMBER_TERRAIN`，
+  `water_terrain_id` 显式启用）；不同水体不共享格；inlet/outlet 须为岸边
+  （恰一端成员）；inlet 双向对账（`WATER_INLET`）；自本湖源出的河段首段
+  水位 ≤ 本体（`WATER_OUTLET_LEVEL`——湖出口不高于溢流口）。
 - **道路**：序列相邻合法；必需聚落全连通（`ROAD_NETWORK_DISCONNECTED`）；
   与河重合格必须有 crossing 认领；footprint 冲突检查。
 - **桥**：两岸/桥端锚点合法（`BRIDGE_ENDPOINT_INVALID`）；横切判定（§8 机器
@@ -342,16 +349,20 @@ M2 决定。
 
 ## 12. 转正检查清单（本草案 → 可开工合同）
 
-1. 主创过方案文末「需要主创确认的决策」清单，**河流拓扑项拍板**并在 02 立 ADR
-   （穿格 → 本草案 §5/§8 原样转正；格边 → 两节重议，其余实体基本不动）；
-2. ADR 立后：本文件头部效力块改「已按 ADR-NN 转正」+ 04 §M1a+ 登记证据；
+1. ~~主创过方案文末「需要主创确认的决策」清单，**河流拓扑项拍板**并在 02 立 ADR~~
+   **已完成**：ADR-14 格边河流（02:207-227）；
+2. ~~ADR 立后：本文件头部效力块改「已按 ADR-NN 转正」+ 04 §M1a+ 登记证据~~
+   **§4 河流行/§5/§6 已转正（2026-10-11，本文件重写）**；04 登记随 T3 交付批次补录；
 3. T2 开工时：`WorldData` 容器 + `NeighborLinkData` + 校验器 + 单测落地
    （`addons/hexhammer` 或 `scripts/core/data` 纯逻辑层、`tests/test_*.gd`
    headless 锚——沿用全仓先例；**序列化往返与 Vector2i 显式转换层
    （§2.2）必须进测试锚**，防止直写 stringify 落成 `"(x, y)"` 字符串），
-   旧图/固定图零迁移跑通门禁；
-4. T3 起逐实体解锁：reach/water_body（T3）→ road/crossing（T4）→ poi（T5）；
-   每解锁一个实体，其"初版禁止项"表同步进校验器与测试锚。
+   旧图/固定图零迁移跑通门禁 —— **已完成（T2，scripts/core/data/world_data.gd +
+   tests/test_world_data.gd）**；
+4. T3 起逐实体解锁：~~reach/water_body（T3）~~ **已完成（2026-10-11：边序列河 +
+   逐段水位 profile + 河口对账 + 岸线，tests/test_water_rivers.gd /
+   test_water_bodies.gd / test_water_geometry.gd）** → road/crossing（T4）→
+   poi（T5）；每解锁一个实体，其"初版禁止项"表同步进校验器与测试锚。
 
 ---
 

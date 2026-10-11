@@ -15,11 +15,16 @@
 ##     比较器）较小者决胜；
 ##   · cliff（|Δh|≥cliff_threshold，默认 3——含 cliff_wall 真垂直墙面）：
 ##     归**高地侧**（并列最高取 ID 较小者）。
+##   · **riverbed（kind="riverbed"，T3 WATER-02 ③）**：有河 link 的下切边带
+##     （岸坡+河床整段）——候选 = **两侧两格**，最近格心 + ID 决胜（无高程档
+##     参与：点击水/河床后的逻辑结果由河床归属合同决定——提案原文的可执行
+##     表达；水面第二 mesh 不进碰撞/拾取层，射线穿水命中即本类面）。
 ##   分类由 classify_edge(delta, cliff_threshold) 现算——阈值参数与 LandformProfile
 ##   同档。管线接线（T2 评审修复 2026-10-11）：chunk_pick_data / resolve_hit /
 ##   resolve_face 全链透传 cliff_threshold（此前只在 pick_edge_band/pick_corner
 ##   签名层成立，面表 edge_type=terrace 而拾取按默认档归高侧——语义脱钩）；
-##   resolve_face 不加归属分支：edge/corner 口径直接泛化，函数签名只多默认参数。
+##   resolve_face 不加归属分支：edge/corner 口径直接泛化，函数签名只多默认参数
+##   （riverbed 为新 kind 路由、非 edge 细分——候选集不同：无高程档）。
 ##   生产入口（map_picker.setup）从 build_map echo 的 profile 取阈值传入——
 ##   「拾取归属随分类切换」（LAND-01 ①）在全链路成立。
 ## - 角落（kind="corner"，三格候选）：同一分类口径泛化——三格高程 max−min ≥
@@ -136,6 +141,11 @@ static func resolve_face(local_pos: Vector3, face: Dictionary,
 		"edge":
 			return pick_edge_band(local_pos, face["cell"], int(face["dir"]), map, size,
 				cliff_threshold)
+		"riverbed":
+			# T3 WATER-02 ③：下切边带（岸坡+河床）候选 = 两侧两格，最近格心 + ID
+			# 决胜——无高程档（不归高地侧：河床低不代表归高岸，两侧均等候选）
+			return pick_by_nearest_center(local_pos,
+				edge_cells(face["cell"], int(face["dir"])), map, size)
 		"corner":
 			return pick_corner(local_pos, face["cell"], int(face["dir"]), map, size,
 				cliff_threshold)

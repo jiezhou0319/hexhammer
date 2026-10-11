@@ -72,8 +72,8 @@ func test_single_cell_top_fan_anchor() -> void:
 	var chunk: Dictionary = rd["chunks"][0]
 	expect_eq((chunk["surfaces"] as Array).size(), 1, "同地形单 surface")
 	var s: Dictionary = chunk["surfaces"][0]
-	expect_eq(s["face_counts"], {"top": 6, "edge": 0, "corner": 0},
-		"1×1 无邻居：只有顶面 6 面，无边带无角落（T2 界外无连接）")
+	expect_eq(s["face_counts"], {"top": 6, "edge": 0, "corner": 0, "riverbed": 0},
+		"1×1 无邻居：只有顶面 6 面，无边带无角落（T2 界外无连接；T3 起计 riverbed=0）")
 	var mesh: ArrayMesh = chunk["mesh"]
 	expect_eq(mesh.get_surface_count(), 1, "ArrayMesh surface 数 = 1")
 	var arrays: Array = mesh.surface_get_arrays(0)
@@ -135,8 +135,8 @@ func test_two_cells_flat_bridge_owned_by_smaller_id() -> void:
 	var r := _build_ok(m)
 	var faces := _collect_faces(r)
 	var s: Dictionary = r["chunks"][0]["surfaces"][0]
-	expect_eq(s["face_counts"], {"top": 12, "edge": 2, "corner": 0},
-		"2×1：顶面 2×6；内部边 1 条 → 边带 2 面；无三格角 → 无角落面")
+	expect_eq(s["face_counts"], {"top": 12, "edge": 2, "corner": 0, "riverbed": 0},
+		"2×1：顶面 2×6；内部边 1 条 → 边带 2 面；无三格角 → 无角落面（riverbed=0——T3 计数键）")
 	var d_ab := Hex.dir_between(a, b)
 	expect_eq(d_ab, 0, "a→b 为方向 0（东）")
 	var edge_faces: Array[Dictionary] = []

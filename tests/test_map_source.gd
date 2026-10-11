@@ -19,7 +19,7 @@ const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
 const MapIO := preload("res://scripts/content/map_io.gd")
 
 ## 固定图 digest 锚（tools/make_fixed_maps.gd 落盘时打印；改地貌须同步更新本锚）
-const FIXED_DIGEST := "cf67af4ff63efba878a6ba2d48a7226be62db084e6c979fc8e194a583ad1a771"
+const FIXED_DIGEST := "c5839c0a93c0ee7c7332d3318055b9bee2be6b103a46f81ee9861bf6eed63d7f"
 ## 默认参数（seed=7）低频成片的实证下限：扫描实测最大水块 38（iid 逐格随机 ≈ 2~5）
 const MIN_LARGEST_WATER_BLOB := 20
 

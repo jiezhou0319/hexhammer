@@ -22,6 +22,13 @@
 ##   G. 崖壁归属（T2 LAND-03）：|Δh|=3 + profile（真垂直墙）：直下射线归高地侧 +
 ##      命中面 edge_type=cliff_wall + **水平射线正中竖直墙**（墙顶/墙底同 XZ 的
 ##      竖直面——直下射线打不到的面，专项命中）。
+##   H. 河床归属（T3 WATER-02 ③：新面型真实 raycast 用例）：3×3 图单边河
+##      （|Δh|=4 悬崖高岸 × 河）：t=0.45/0.5 命中 kind=riverbed 且归**最近格心**
+##      （平局 ID 决胜）——高侧不截胡（riverbed 无高程档，区别于 cliff 规则）；
+##      水面第二 mesh **挂载进场景**（沿 map_view._mount_water 同构：MeshInstance3D、
+##      零碰撞体）后射线「穿水」直落河床——水层不截获地形拾取的引擎级证据含
+##      水面层本体（将来挂载侧误给水面加 LAYER_TERRAIN 碰撞体 → 射线先中水面、
+##      face 表查无此碰撞体 → 本检查变红）。
 ## 场景切换纪律：每阶段「释旧+建新」后隔 ≥2 个物理帧再查（同帧切换旧碰撞体
 ##   尚在空间中且 XZ 与新场景重叠，必串扰）。
 ## 退出码：全部通过 0，任一失败 1。
@@ -46,6 +53,8 @@ class Checker extends Node:
 	const Builder := preload("res://addons/hexhammer/hex_terrain_builder.gd")
 	const Picking := preload("res://addons/hexhammer/hex_picking.gd")
 	const ProfileClass := preload("res://scripts/core/data/landform_profile.gd")
+	const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
+	const WaterB := preload("res://addons/hexhammer/water_geometry_builder.gd")
 
 	const SIZE := 1.0
 	const SOLID := 0.8
@@ -59,6 +68,7 @@ class Checker extends Node:
 	var map: MapDataClass = null
 	var map_root: Node3D = null
 	var tables := {}  # body instance_id → face 表
+	var water_nodes: Array[MeshInstance3D] = []  # 水面 mesh（H 场景——零碰撞体）
 
 	const WATCHDOG_FRAMES := 600  # 卡死保险：超帧强制失败退出
 
@@ -93,11 +103,14 @@ class Checker extends Node:
 			4:
 				_run_check_e()
 				_stage_build_pair(2, ProfileClass.make_default())  # F：阶地档（T2）
-			5:
+			5:  # F 查完 → 换 G 场景
 				_run_check_f()
 				_stage_build_pair(3, ProfileClass.make_default())  # G：真垂直崖档（T2）
-			6:
+			6:  # G 查完 → 换 H 场景（T3 河床）
 				_run_check_g()
+				_stage_build_river()
+			7:
+				_run_check_h()
 				_finish()
 
 	# ---------------- 场景阶段 ----------------
@@ -107,6 +120,7 @@ class Checker extends Node:
 			map_root.queue_free()  # 本帧末出树；隔帧后物理空间不再含旧碰撞体
 			map_root = null
 		tables.clear()
+		water_nodes.clear()  # 水面节点随 map_root 释放（本检查只存引用）
 
 	func _attach_bodies(build: Dictionary) -> void:
 		map_root = Node3D.new()
@@ -375,3 +389,122 @@ class Checker extends Node:
 		set_physics_process(false)
 		print("[拾取小场景校验] === %d 通过 / %d 失败 ===" % [pass_count, fail_count])
 		get_tree().quit(1 if fail_count > 0 else 0)
+
+	# ---------------- T3 河床真实 raycast（WATER-02 ③ 扩用例）----------------
+
+	## H 场景：3×3 图单边河——a=(1,1) 与东邻 b 之间的 link 为河；b 抬 4
+	## （悬崖高岸 × 河：河床归属不归高侧）；a 侧为河口湖成员（终点边 = 该边，
+	## 单边链源=终点；成员格结算面 = 高程 0 + 不可通行，terrain 保持 0 号槽
+	## ——材质表只认 0，水色渲染属水面第二 mesh，与地形槽无关）。
+	func _stage_build_river() -> void:
+		_teardown()
+		map = MapDataClass.new(3, 3)
+		for cell in map.cells():
+			map.set_elevation(cell, 1)
+		var a := Hex.axial_of(Vector2i(1, 1))
+		var b := Hex.neighbor(a, 0)
+		map.set_elevation(b, 4)
+		var world := WorldDataClass.empty()
+		var term := WorldDataClass.link_id_of(map.index_of(a), map.index_of(b))
+		var members: Array[int] = [term.x]
+		var mcell := Hex.axial_of(Vector2i(term.x % map.width, term.x / map.width))
+		for d in 6:
+			var nb := Hex.neighbor(mcell, d)
+			if map.has_cell(nb) and map.index_of(nb) != term.y and not members.has(map.index_of(nb)):
+				members.append(map.index_of(nb))
+		for cid in members:
+			var c := Hex.axial_of(Vector2i(cid % map.width, cid / map.width))
+			map.set_elevation(c, 0)
+			map.set_passable(c, false)
+		members.sort()
+		var reach := WorldDataClass.RiverReachData.new()
+		reach.reach_id = 0
+		reach.edges = [term]
+		reach.water_levels = [1]
+		reach.bed_level = 0
+		reach.water_body_id = 0
+		world.rivers.append(reach)
+		var body := WorldDataClass.WaterBodyData.new()
+		body.water_body_id = 0
+		body.water_level = 1
+		body.member_cells = members
+		body.inlet_links = [term]
+		body.terminal = true
+		world.water_bodies.append(body)
+		var lk := WorldDataClass.NeighborLinkData.new()
+		lk.link_id = term
+		lk.river_reach_id = 0
+		world.links.append(lk)
+		var verr := world.validate(map)  # terrain 对账跳过（-1 口径：成员保持 0 号槽）
+		if verr != "":
+			_hard_fail("H 场景世界非法：%s" % verr)
+			return
+		var r: Variant = Builder.build_map(map, 10, 10, _mats(), SIZE, 1.0, SOLID,
+			null, world)
+		if not (r is Dictionary):
+			_hard_fail("H 场景构建失败（河床下切）")
+			return
+		_attach_bodies(r as Dictionary)
+		# 水面第二 mesh 挂载（map_view._mount_water 同构：全局坐标顶点、节点零偏移、
+		# **零碰撞体**）——「射线穿水」的引擎级证据必须含水面层本体在场景中
+		var wb: Variant = WaterB.build_map(map, world, 10, 10,
+			WaterB.make_water_material(), SIZE, 1.0, SOLID)
+		if not (wb is Dictionary):
+			_hard_fail("H 场景水面构建失败")
+			return
+		for chunk_info in (wb as Dictionary)["chunks"]:
+			var cd: Dictionary = chunk_info
+			if (cd["mesh"] as ArrayMesh).get_surface_count() == 0:
+				continue
+			var wnode := MeshInstance3D.new()
+			wnode.name = "Water_c%d_r%d" % [(cd["chunk"] as Rect2i).position.x,
+				(cd["chunk"] as Rect2i).position.y]
+			wnode.mesh = cd["mesh"]
+			map_root.add_child(wnode)
+			water_nodes.append(wnode)
+		phase = 7
+		settle = SETTLE_FRAMES
+
+	func _run_check_h() -> void:
+		# 射线穿水（水面已挂载、零碰撞体）直落河床：t=0.45/0.5/0.55 命中 kind=riverbed；
+		# 归属 = 最近格心 + ID 决胜——b 为悬崖高岸（Δ4）也不截胡（无高程档）。
+		# 前置 H0：水面节点非空——将来挂载侧若给水面加 LAYER_TERRAIN 碰撞体，
+		# 射线先中水面 → tables 查无该 collider → 面表越界/miss → 本检查红
+		_check(water_nodes.size() > 0,
+			"H0. 水面第二 mesh 已挂载（零碰撞体——穿水证据含水面层本体）")
+		var a := Hex.axial_of(Vector2i(1, 1))
+		var b := Hex.neighbor(a, 0)
+		var ca := Hex.axial_to_world(a, SIZE)
+		var cb := Hex.axial_to_world(b, SIZE)
+		var ok := true
+		for t in [0.45, 0.5, 0.55]:
+			var tt: float = t
+			var x := ca.x + (cb.x - ca.x) * tt
+			var z := ca.z + (cb.z - ca.z) * tt
+			var res: Variant = _pick_down(x, z)
+			if res["miss"]:
+				ok = false
+				print("[拾取小场景校验] FAIL H：t=%s 未命中（河床面缺口？）" % str(tt))
+				continue
+			var hit: Dictionary = res["hit"]
+			var table: Array = tables.get(hit["collider_id"], [])
+			var fi := int(hit["face_index"])
+			if fi < 0 or fi >= table.size():
+				ok = false
+				continue
+			var face: Dictionary = table[fi]
+			if String(face["kind"]) != Builder.FACE_RIVERBED:
+				ok = false
+				print("[拾取小场景校验] FAIL H：t=%s 命中面非 riverbed（got %s）" % [str(tt), str(face)])
+			var want: Vector2i
+			if tt < 0.5:
+				want = a
+			elif tt > 0.5:
+				want = b
+			else:
+				want = a if map.index_of(a) < map.index_of(b) else b  # 平局 ID 决胜
+			if res["cell"] != want:
+				ok = false
+				print("[拾取小场景校验] FAIL H：t=%s got=%s want=%s（最近格心；高侧 Δ4 不截胡）"
+					% [str(tt), str(res["cell"]), str(want)])
+		_check(ok, "H. 河床归属（|Δh|=4 高岸 × 河：最近格心 + ID 决胜 / kind=riverbed / 射线穿水）")

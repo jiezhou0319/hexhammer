@@ -42,7 +42,10 @@ const LIFT_TIER_STEP := 0.01
 ##   tier 2 = 格线层 GRID-01（0.04；T2 登记——格线贴两侧较高侧格面，须高于任何
 ##             高亮档防与扇面共面；关格线即无本档消费者）
 ##   半档   = 描线带额外抬升 DEFAULT_PATH_LIFT_EXTRA（0.015 → 0.035，永不落整档）
-##   tier 3+ 预留：ROAD-01 路面 / WATER-02 水面（同批登记时续表）
+##   tier 3+ 预留：ROAD-01 路面；**WATER-02 水面不取地表 lift 档**（2026-10-11
+##             T3 登记：水面 y = (water_level − 0.5)×elevation_step 半档错位，
+##             自成面系、与地形顶面恒差半档高程步——WaterGeometryBuilder，取档
+##             先查此表的登记先例）
 const TIER_GRID_LINE := 2
 ## 描线带相对本层扇面的额外抬升 = **1.5 档**（半档：0.015 不是 LIFT_TIER_STEP 的
 ## 整数倍 → 任何层的描线 lift 永不落在任何整档扇面 lift 上，带×扇全组合不共面；
