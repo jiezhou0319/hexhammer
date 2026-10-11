@@ -375,6 +375,54 @@ validate 返回空串——footprint 冲突校验属 T5 WORLD-03，计划未在 
 注释口头引用 HexPicking.LAYER_TERRAIN=1），与 picking_scene_check 的
 `1 << (LAYER_TERRAIN − 1)` 同一事实两处字面重复，层号变更时 view 侧静默漂移。
 
+**T5-A 世界管线与河网生成批登记（2026-10-12 完成；WORLD-01/02 两卡——世界管线
+九阶段化（模板/具名通道/阶段诊断/行为不变双锚）+ 河口反向生长河网生成；批号
+T5-A = WORLD-01/02 先行，WORLD-03/04/05 属后续批）**：
+
+| ID | 卡 | 验收（执行方案 §6 摘要） | 完成登记 |
+|---|---|---|---|
+| WORLD-01 | 模板和阶段化生成 | 每阶段独立摘要、版本与错误；关闭一个尚未实现能力不产生伪字段（提案 :282 验收原文） | **2026-10-12 完成**：① `scripts/content/world_pipeline.gd` 九阶段固定序（config→geography→quantize→hydrology→settlement→allegiance→roads→playability→presentation，STAGES 合同序测试锚定），每阶段独立纯函数 `stage(state, rng_channel)->{ok,error,diagnostics}`、跨阶段数据经显式 GenState；逐阶段诊断含 stage/version/summary（可 diff——Azgaar「无阶段诊断产物」反面教训的补丁），未解锁段（settlement=WORLD-03/allegiance=WORLD-03/roads=WORLD-05）skipped+reason——「关闭一个尚未实现能力不产生伪字段」；② MapGenerator 重构为门面：generate(params)=WorldPipeline.generate_legacy，meta 键集与 v1 逐键一致；**行为不变双锚** = 重构前实录 7 张基线 digest（seed 7/8/42/777/20261012 simplex + 777 cellular + 植被变体，会话内探针重构后逐一复现）+ 永久锚 `tests/test_world_pipeline.gd` 单遍 oracle（04 M1a-T9 细化四步直读，含 0.60/0.70 阈值）逐格对照两 seed；③ WorldTemplate Resource（`scripts/core/data/world_template.gd` + `resources/world/templates/` default/legacy 两 .tres，TerrainStyle 资源化先例；代码默认 make_default/make_legacy 与 .tres 同源有测试锚）：geography/dimensions 数值经 apply_to_params(seed) 投影为 MapGenParams（运行时唯一参数载体，无双事实源）；scenario/infrastructure 开关置 true 由 config 阶段具名拒绝（冲突串全列不产半图，Kind.FERRY「枚举存在 ≠ 能力开放」同款）；locked/preferred 约束名 v1 只承载不消费（消费随 WORLD-04 修复循环）；④ 具名随机通道五路 geography/hydrology/poi/roads/decoration（root+写死质数偏移 101/211/307/401/503，与植被场偏移 1013 错开）；hydrology 通道是 v1 唯一离散随机消耗点（河口挑选）；「改 decoration 不影响 hydrology 摘要」测试锚（含反向确证 override 机制生效）；⑤ 湿度通道改名「植被/地表掩码」（修订记录三之 7）：MOISTURE_*→VEGETATION_*、moisture_frequency→vegetation_frequency（序列化键 + CLI mfreq→vfreq 同步）、seed 偏移值 1013 原样继承（输出不漂移）；林/泥分类在用有测试锚（sea=0.4/vfreq=0.4 实测林 324/泥 112 格，只锚 >0+确定性不锚绝对数）；⑥ 海岸距离 BFS/无局部极小不进管线（修订记录三之 5），高程唯一来源 = 双噪声+量化（头注显式落字）；⑦ GENERATOR_VERSION 1→2（真源驻 WorldPipeline、MapGenerator 再导出保持历史引用面）；WorldData 新增 `world_digest(map)`（SHA-256，只覆盖世界事实不含 meta，to_dict 固定键序保证确定性）；测试 = `tests/test_world_pipeline.gd` **13 用例**（九阶段序/通道独立 seed/阶段诊断可 diff/同 seed 3 次 world_digest/跳过阶段空集合/decoration 通道独立/配置冲突全列/非法模板参数/版本=2 落 meta/模板 .tres 同源/植被掩码通道在用/单遍 oracle 行为不变/世界 meta 字段与 digest 敏感面） |
+| WORLD-02 | 河网生成（河口反向生长；拍板④⑥重定义——原「排水/湿度/生态生成」） | 无环、合法出口、量化后二次验证（提案 :283 验收原文保留）；河网整体形状「水往海流」逻辑自洽（拍板④主创原话要义） | **2026-10-12 完成**：`scripts/content/river_network_generator.gd` 河口反向生长（x/1723 思路格边化，首版 = 彼此不汇合简单链——汇流随拍板⑨第二版开）算法三件：① 水体声明：水格六邻连通分量 → WaterBodyData，贴图界=SEA/内陆=LAKE，成员水位不齐 = WATER_BODY_LEVEL 具名失败（不静默重塑整图高程）；② 河口选择：岸边候选 + 岸侧格最小六边形环距间距约束（Azgaar burgs 间距同族）+ 角点全局预留查重，rng 挑序 = 生成器唯一随机源（hydrology 通道）；③ 反向生长：**已用边+已访问角点跨链全局永不再入候选**（无环须角点级——边不复用 ≠ 不复用角点，修订记录三之 4；角点预留跨链 → 河间不汇合不交叉）；候选偏好低高程（量化高程直接驱动）**且同时验证**出口/河床深度/水位/两岸容纳——双岸陆地且 min(岸高)−1≥当前水位 → 新水位 = min(岸高)−1（上溯不减 = 构造单调，禁上坡双保险：WATER-01 校验器仍断言），河口边 = 水体 water_level；停止三态具名 no_candidate/budget/map_edge 入 stats；**只读合同**：不写 MapData 任何字段（生成前后 summary 逐字节一致——测试锚）；flow_level 固定取模板值（不依赖汇流，修订记录三之 5）；产出直接落 reach.edges（growth 序反转为源→终点合同序）；量化后二次验证 = hydrology 阶段全量 WorldData.validate（post_quantum_valid 诊断）。测试 = `tests/test_river_network_generator.gd` **14 用例**（全量 validate/角点级无环独立复核+跨链不交叉+几何互证/同 seed 确定性/源汇可枚举+河口对账/水位单调低于双岸+bed/双岸陆地/flow_level 固定自配置/预算停止/抵图界停止 4×1 确定样本/无候选停止 3×3 孤岛确定样本/只读不改图/河口间距/SEA-LAKE 声明/水位不齐具名失败/cfg 缺键具名失败） |
+
+**T5-A 批门禁与证据（本会话实跑）**：`--import` exit 0；run_tests = **26 文件 /
+341 用例 / 0 失败** exit 0（基线实况 24 文件/314 用例/0 失败——T4 批登记即 314，
+任务描述中「13 文件/203 用例」为陈旧数据；本批 +2 文件 +27 用例只增不减，均沿
+tests/test_case.gd 基类、oracle 独立拼装；锚更新 test_map_source.gd 1 处参数键名
+moisture_frequency→vegetation_frequency）；输出中 2 处 SCRIPT ERROR 为 runner
+变异自检 fixture_runtime_error.gd 的预期拦截转发（非本批回归）；gate_all 全链
+**5/5 PASS** exit 0（干净导入/单测+故障自检/拾取 **11 用例/0 失败**/高亮/相机三
+scene_check）+ 渲染探针真渲染实跑 **8/8 CHECK PASS** exit 0（实际渲染器
+forward_plus 运行时取值，S-1 口径；证据 =
+`docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt`——像素统计逐位
+一致、仅时间戳行更新）。本批无新渲染面/面型，方案未为本批定义新探针 CHECK
+（§8.3 的 CHECK-4/5 属 T3/T4 已存在、WORLD-04 才要求银行样图过探针），故
+scene_check/探针以实跑取证而非硬造新 CHECK。**关键取舍（首版档）**：① 生长
+偏好参数（高程权重/长度预算/河间距）为卡内拍板项「spike 后定」，本版默认
+river_count=3/max_edges=24/spacing=6 为首版实现档（模板可调）；默认 seed=7 的河
+偏短（4-10 边、全部 no_candidate 停止——被角点预留与双岸验证困住）属参数口味非
+合同缺陷；② 默认参数下生成河水位 profile 恒 0（沿岸高程全 1 → min(岸高)−1=0）
+——水位口径 = 逐段 profile 字段与单调合同均已满足，「逐段可变」在河爬上更高
+双岸时自然出现；③ first_pass_valid 在连通性失败 seed 上为 false——断路图是合法
+产物（v1 同口径），重试/修复循环属 WORLD-04；④ 旧 .meta.json 内 params 键
+moisture_frequency 与新 to_dict 键不再互读（GENERATOR_VERSION+1 显式登记该
+改名；grep 证实仓库内无任何 from_dict 消费旧键的路径）。**评审结论**：WORLD-01/
+02 独立复核**通过**——门禁自跑 341/0、删 scripts/ui 后复跑仍 341/0、卡表测试锚
+全部真实存在，反例探针（v1 单遍等价 ×5 组参数、河网角点度 ≤2 且无跨链共享 ×8
+seed、水系开关同 map digest、岛图具名停止且不改图、同 seed 三跑/模板同源/三通道
+override 独立）全部 0 失败，仅 2 处 low 级注释/口径噪声（见下）。
+
+**遗留 low（评审登记，两处）**：① 门面头注段数口径不准——
+`scripts/content/map_generator.gd:6-7`「噪声地理骨架 + 量化 + 可玩校验三段实做，
+其余六段按模板跳过」：legacy 路径实际**实跑 4 段**（config/geography/quantize/
+playability）、**跳过 5 段**（hydrology/settlement/allegiance/roads/presentation）
+，config 段并不跳过；`world_pipeline.gd:13-15` 同句同病（沿袭卡表「三阶段」说
+法）——实况见 world_pipeline.gd:72-82 STAGES 九段 + _run_stage(:203-226) 四实做/
+五跳过，test_stage_diagnostics_shape_and_diffable 断言 skipped_count==4（非 5 非
+6）；② `docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt:2` 本批夹带
+一处与 T5-A 无关的证据文件时间戳重写（git diff 全文唯一差异 = 时间戳行
+2026-10-11T20:39:57 → 22:06:19，1 insertion 1 deletion；评审时记 21:45:02，终跑
+gate_all 探针重出后再移）——批次边界噪声，像素统计逐位一致无实质影响。
+
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
 间等）全为候选目标，T0 基线实测前不构成承诺。

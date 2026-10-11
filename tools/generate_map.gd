@@ -10,7 +10,8 @@
 ##                         perlin / value_cubic / value
 ##   freq=<float>          高度场频率（越低越平缓连绵）
 ##   octaves=<int>         高度场 FBM 倍频数
-##   mfreq=<float>         湿度场频率
+##   vfreq=<float>         植被/地表掩码场频率（T5 WORLD-01 改名：~~mfreq/湿度场~~
+##                         ——生态语义删除、用途不变，执行方案修订记录三之 7）
 ##   sea=<float>           海面阈值 [0,1)——水占比主旋钮
 ##   levels=<int>          陆地高程档数
 ##   count=<int>           连续生成张数（默认 1）
@@ -93,7 +94,7 @@ func _parse_args(args: PackedStringArray) -> Dictionary:
 	}
 	var int_keys := {"width": "width", "height": "height", "octaves": "fractal_octaves",
 		"levels": "elevation_levels"}
-	var float_keys := {"freq": "frequency", "mfreq": "moisture_frequency", "sea": "sea_level"}
+	var float_keys := {"freq": "frequency", "vfreq": "vegetation_frequency", "sea": "sea_level"}
 	for arg in args:
 		var kv := arg.split("=", true, 1)
 		if kv.size() != 2:
@@ -153,5 +154,5 @@ func _usage(reason: String) -> void:
 	print("[生成器] !!! ", reason)
 	print("用法：godot --headless --path hexhammer --script res://tools/generate_map.gd -- "
 		+ "seed=42 count=5 width=60 height=40 noise=simplex freq=0.05 octaves=3 "
-		+ "sea=0.25 levels=4 mfreq=0.12 out=<dir> failed_dir=<dir> save=true")
+		+ "sea=0.25 levels=4 vfreq=0.12 out=<dir> failed_dir=<dir> save=true")
 	quit(1)

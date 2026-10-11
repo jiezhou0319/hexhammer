@@ -1,12 +1,20 @@
 ## map_gen_params.gd — 随机地图生成参数（M1a-T9；docs/04-tasks-m1.md M1a-T9 +
-##   docs/02-architecture.md §4「scripts/content/ ← 战役/名单/地图等上层内容系统」+
-##   M1a 实现调研「相机、高亮和随机地图」）
-## 职责：MapGenerator 的纯参数载体——「参数化尺寸/类型/高程分布」的落字：
+##   docs/02-architecture.md §4「scripts/content/ ← 战役/名单/地图等上层内容系统」
+##   + M1a 实现调研「相机、高亮和随机地图」；T5 WORLD-01 随管线化更新口径）
+## 职责：MapGenerator / WorldPipeline 的纯参数载体——「参数化尺寸/类型/高程
+##   分布」的落字：
 ##   - 尺寸：width/height（列×行，odd-r 矩形口径与 MapData 一致）；
 ##   - 类型：noise_type（高度场噪声类型；FastNoiseLite 枚举值）——不同噪声类型
 ##     直接改变地貌形态（simplex 连绵 / cellular 块状胞腔 / value 阶梯感…）；
 ##   - 高程分布：elevation_levels（陆地高程档数）+ sea_level（归一化高度海面阈值，
-##     控制水体占比）+ frequency（噪声频率，越低越平缓连绵）。
+##     控制水体占比）+ frequency（噪声频率，越低越平缓连绵）；
+##   - 植被/地表掩码：vegetation_frequency（第二噪声通道频率——T5 WORLD-01
+##     改名：~~湿度场~~ 湿度/生态不做（拍板⑥），但按字面删通道会抽掉现有林/泥
+##     地表分类，故改名「植被/地表掩码」保留、生态语义删除、用途不变，执行方案
+##     修订记录三之 7；GENERATOR_VERSION +1 显式登记该改名）。
+## 模板关系（WORLD-01）：authored 模板默认值驻 WorldTemplate（.tres），经
+##   apply_to_params 投影为本类实例——本类是**运行时唯一参数载体**，不另有
+##   模板层事实源。
 ## 复现口径（04 M1a-T9 细化）：同 seed + 同参数 → 同图，**限定在固定生成器版本
 ##   （MapGenerator.GENERATOR_VERSION）与同一引擎构建下**——FastNoiseLite 输出
 ##   随引擎版本可能变化，不承诺跨引擎版本永不漂移（meta 中存引擎版本号备查）。
@@ -34,7 +42,7 @@ const MIN_FREQUENCY := 0.0001
 const MAX_FREQUENCY := 10.0
 
 ## 浮点参数字段（from_dict 类型感知赋值用；其余均为整数字段）
-const FLOAT_FIELDS := ["frequency", "sea_level", "moisture_frequency"]
+const FLOAT_FIELDS := ["frequency", "sea_level", "vegetation_frequency"]
 
 ## 默认 seed=7：默认参数下连通性检查通过的单分量图（默认值即「能玩」，
 ## 扫描实证见 tests/test_map_source.gd 的 default 主题用例；换默认须重扫）
@@ -46,7 +54,8 @@ var frequency := 0.05                # 高度场频率（世界单位；低频 �
 var fractal_octaves := 3             # 高度场 FBM 倍频数（越大细节越多、越碎）
 var sea_level := 0.25                # 归一化高度海面阈值：n < sea_level → 水（值域 [0,1)）
 var elevation_levels := 4            # 陆地高程档数（陆地层 = 1..levels，水体恒 0）
-var moisture_frequency := 0.12       # 湿度场频率（植被动静脉，独立第二噪声通道）
+var vegetation_frequency := 0.12     # 植被/地表掩码场频率（植被动动脉，独立第二
+                                     # 噪声通道——修订记录三之 7 改名保留）
 
 
 ## 参数校验：合法返回 ""，非法返回原因串（调用方显式处理，无隐式兜底）。
@@ -66,8 +75,8 @@ func validate() -> String:
 		return "sea_level ∈ [0,1) 越界：%s" % str(sea_level)
 	if elevation_levels < MIN_ELEVATION_LEVELS or elevation_levels > MAX_ELEVATION_LEVELS:
 		return "elevation_levels ∈ [%d,%d] 越界：%d" % [MIN_ELEVATION_LEVELS, MAX_ELEVATION_LEVELS, elevation_levels]
-	if moisture_frequency < MIN_FREQUENCY or moisture_frequency > MAX_FREQUENCY:
-		return "moisture_frequency ∈ (%s,%s] 越界：%s" % [str(MIN_FREQUENCY), str(MAX_FREQUENCY), str(moisture_frequency)]
+	if vegetation_frequency < MIN_FREQUENCY or vegetation_frequency > MAX_FREQUENCY:
+		return "vegetation_frequency ∈ (%s,%s] 越界：%s" % [str(MIN_FREQUENCY), str(MAX_FREQUENCY), str(vegetation_frequency)]
 	return ""
 
 
@@ -82,7 +91,7 @@ func to_dict() -> Dictionary:
 		"fractal_octaves": fractal_octaves,
 		"sea_level": sea_level,
 		"elevation_levels": elevation_levels,
-		"moisture_frequency": moisture_frequency,
+		"vegetation_frequency": vegetation_frequency,
 	}
 
 

@@ -390,6 +390,20 @@ static func shore_links_of(map: MapDataClass, b: WaterBodyData) -> Array[Vector2
 	out.sort()
 	return out
 
+# ---------------- 世界事实摘要（T5 WORLD-01 同 seed 复现验收的载体）----------------
+
+## 世界事实摘要 = SHA-256 hex：覆盖 MapData 格子表 + 本表全部事实集合（links/
+## rivers/water_bodies/roads/crossings/pois），**刻意不含 meta**——meta 落本摘要
+## （自引无意义），也刻意不含生成耗时类诊断（草案 §10 禁止项：摘要只锚世界事实）。
+## 确定性前提：to_dict 固定键序 + MapData.summary 固定遍历序 → 同世界（不论写入
+## 顺序）逐字节一致、任一事实变更即变（与 MapData.digest 同纪律，T5 WORLD-01
+## 测试锚「同 seed 同模板跑 3 次 world_digest 一致」的落点）。
+func world_digest(map: MapDataClass) -> String:
+	var facts := to_dict()
+	facts.erase("meta")
+	var payload := "world|v%d|%s|%s" % [SCHEMA_VERSION, map.summary(), JSON.stringify(facts)]
+	return payload.sha256_text()
+
 # ---------------- 校验器（草案 §11：T3 面 = link 表 + 河段四条 + 水体 + 双向对账）----------------
 
 ## 校验入口：""=合法；原因串指向具体 link/reach/body/road/crossing/约束（最小诊断

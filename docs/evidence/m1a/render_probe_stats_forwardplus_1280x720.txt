@@ -1,5 +1,5 @@
 Hexhammer M1a+ GATE-02 渲染探针 · 像素统计（04 §M1a+ 第一批卡；方案「T0 与 T1 的第一批任务卡」）
-时间(UTC)：2026-10-11T20:39:57
+时间(UTC)：2026-10-11T22:06:19
 引擎：Godot 4.7.2-stable (official)
 渲染器（实际运行时）：forward_plus（本机实测 = 此值；取自 RenderingServer.get_current_rendering_method()——S-1）
 渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）

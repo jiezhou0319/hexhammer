@@ -232,7 +232,7 @@ func test_random_params_validation_rejected() -> void:
 		{"sea_level": 1.0}, {"sea_level": -0.1},
 		{"elevation_levels": 0}, {"elevation_levels": 999},
 		{"frequency": 0.0}, {"fractal_octaves": 0},
-		{"moisture_frequency": -1.0}, {"noise_type": 42},
+		{"vegetation_frequency": -1.0}, {"noise_type": 42},
 	]
 	for patch in cases:
 		var p := MapGenParamsClass.new()

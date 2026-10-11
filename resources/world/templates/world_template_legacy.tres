@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="WorldTemplate" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/world_template.gd" id="1_tpl"]
+
+[resource]
+script = ExtResource("1_tpl")
+template_id = "legacy_single_pass"
+width = 60
+height = 40
+noise_type = 0
+frequency = 0.05
+fractal_octaves = 3
+sea_level = 0.25
+elevation_levels = 4
+vegetation_frequency = 0.12
+hydrology_enabled = false
+river_count = 3
+river_max_edges = 24
+min_mouth_spacing = 6
+river_flow_level = 1
+settlement_enabled = false
+allegiance_enabled = false
+roads_enabled = false
