@@ -10,7 +10,10 @@
 ##     test_water_bodies.gd / test_roads.gd / test_bridges.gd）；
 ##   - 零回写 MapData（草案 §11 全局项：validate/to_dict 前后 summary/digest/mods
 ##     逐字节不变）；
-##   - 未解锁集合（pois）恒空且 from_dict 拒绝非空（不产伪字段也不假解析）。
+##   - POI/势力归属（T5 WORLD-03 解锁，拍板⑧）：POIData 形状随 kind 钉死
+##     （SPAWN_ZONE 七格 = 中心+六邻；聚落/资源单格）、states 主城对账、
+##     cell_owners 值域/水格恒中立、国界跳变边派生（border_links_of）——
+##     往返/旧图零迁移/拒绝锚同前四件纪律（行为面见 tests/test_world_settlement.gd）。
 ## oracle 原则：期望邻接关系由 MapData/HexMath 原语独立推导（index_of / dir_between /
 ##   axial_of），不复制 WorldData 内部比较器；JSON 往返走真实文件（user:// 临时件）。
 extends "res://tests/test_case.gd"
@@ -205,12 +208,19 @@ func test_from_dict_rejects_bad_shapes() -> void:
 
 func test_from_dict_rejects_unlocked_collections_and_bad_meta() -> void:
 	var good := WorldDataClass.empty().to_dict()
-	# POI 仍未解锁（T5 逐实体开——roads/crossings 已随 T4 解锁，见
-	# tests/test_roads.gd / test_bridges.gd 的往返锚）；路/桥条目形状非法同样拒
+	# POI 已随 T5 WORLD-03 解锁：非空**合法形状**可解析（拍板⑧ 归属进数据）；
+	# 条目缺字段仍拒（形状层拒绝，无隐式兜底）
 	var d := good.duplicate(true)
 	d["pois"] = [{"anything": 1}]
 	expect(WorldDataClass.from_dict(d) == null,
-		"pois 非空 → null（未解锁——不产伪字段也不假解析）")
+		"pois 条目缺字段 → null（形状层拒绝，不产伪字段也不假解析）")
+	var bad_states := good.duplicate(true)
+	bad_states["states"] = [{"any": 1}]
+	expect(WorldDataClass.from_dict(bad_states) == null, "states 条目缺字段 → null")
+	var bad_owners := good.duplicate(true)
+	bad_owners["cell_owners"] = [-2]
+	expect(WorldDataClass.from_dict(bad_owners) == null,
+		"cell_owners 值 < -1 → null（值域 {-1} ∪ state_id）")
 	for bad in [["roads", [{"any": 1}]], ["crossings", [{"any": 1}]]]:
 		var dd := good.duplicate(true)
 		dd[bad[0]] = bad[1]
@@ -222,6 +232,170 @@ func test_from_dict_rejects_unlocked_collections_and_bad_meta() -> void:
 	var meta_missing := good.duplicate(true)
 	(meta_missing["meta"] as Dictionary).erase("attempt_count")
 	expect(WorldDataClass.from_dict(meta_missing) == null, "meta 缺 §10 字段 → null")
+
+# ================= POI / 势力归属（T5 WORLD-03 解锁，拍板⑧）=================
+
+## 5×4 全陆图 + POI/state/owner 合法最小世界（锚 = (2,1)：六邻全界内）
+func _settlement_world() -> Array:
+	var map := MapDataClass.new(5, 4)
+	for cell in map.cells():
+		map.set_elevation(cell, 1)
+	var world := WorldDataClass.empty()
+	var anchor := map.index_of(Hex.axial_of(Vector2i(2, 1)))
+	var settlement := WorldDataClass.POIData.new()
+	settlement.poi_id = 0
+	settlement.kind = WorldDataClass.POIData.Kind.SETTLEMENT
+	settlement.cell_id = anchor
+	settlement.footprint_cells = [anchor]
+	settlement.role = "player_capital"
+	world.pois.append(settlement)
+	var zone := WorldDataClass.POIData.new()
+	zone.poi_id = 1
+	zone.kind = WorldDataClass.POIData.Kind.SPAWN_ZONE
+	zone.cell_id = anchor
+	zone.footprint_cells = [anchor]
+	for d in 6:
+		zone.footprint_cells.append(map.index_of(Hex.neighbor(Hex.axial_of(Vector2i(2, 1)), d)))
+	zone.footprint_cells.sort()
+	zone.role = "spawn_zone"
+	world.pois.append(zone)
+	var state := WorldDataClass.StateData.new()
+	state.state_id = 0
+	state.capital_poi_id = 0
+	state.expansionism = 5
+	world.states.append(state)
+	world.cell_owners = []
+	for i in map.cell_count():
+		world.cell_owners.append(0)
+	return [map, world]
+
+
+func test_settlement_roundtrip_and_old_world_compat() -> void:
+	var pair := _settlement_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	expect_eq(world.validate(map), "", "最小势力世界合法")
+	# to_dict 键序扩展：pois/states/cell_owners 在册
+	var facts := world.to_dict()
+	expect((facts["pois"] as Array).size() == 2, "pois 序列化非空（解锁）")
+	expect((facts["states"] as Array).size() == 1, "states 序列化")
+	expect_eq((facts["cell_owners"] as Array).size(), map.cell_count(), "cell_owners 全长")
+	# JSON 往返（真实文件——Vector2i 之类本测试无新增，键序面沿既有锚）
+	var path := "user://t5_world_data_poi.world.json"
+	expect_eq(MapIO.write_world(world, path), OK, "落盘")
+	var back := MapIO.read_world(path)
+	expect(back != null, "读回")
+	if back != null:
+		expect_eq(back.to_dict(), facts, "POI/势力序列化往返逐字节一致")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	# 旧图零迁移：T4 时代形状（无 states/cell_owners 键）仍可解析 = 合法空
+	var old_shape := WorldDataClass.empty().to_dict()
+	old_shape.erase("states")
+	old_shape.erase("cell_owners")
+	var parsed: Variant = WorldDataClass.from_dict(old_shape)
+	expect(parsed is WorldDataClass, "缺 states/cell_owners 键 = 旧图合法空（零迁移）")
+
+func test_poi_shape_rules_rejected() -> void:
+	# SPAWN_ZONE 形状钉死：非「中心+六邻」七格 → POI_SHAPE（逐子样独立重建
+	# fixture——世界对象可变，跨子样共享会串味）
+	var pair1 := _settlement_world()
+	var w1: WorldDataClass = pair1[1]
+	w1.pois[1].footprint_cells = [w1.pois[1].cell_id]  # 单格出生区
+	expect(w1.validate(pair1[0]).contains("POI_SHAPE"),
+		"SPAWN_ZONE 单格 → POI_SHAPE（拍板⑩ 中心+六邻恰 7 格）")
+	var pair2 := _settlement_world()
+	var w2: WorldDataClass = pair2[1]
+	w2.pois[1].footprint_cells.remove_at(3)  # 六邻缺一（或恰删锚定格——升序位不定）
+	var verdict2 := w2.validate(pair2[0])
+	expect(verdict2 != "" and (verdict2.contains("POI_SHAPE") or verdict2.contains("锚定格")),
+		"六邻缺一 → 形状拒绝（POI_SHAPE 或缺锚定格，按删位分流）：got %s" % verdict2)
+	var pair3 := _settlement_world()
+	var w3: WorldDataClass = pair3[1]
+	w3.pois[0].footprint_cells = w3.pois[1].footprint_cells.duplicate()
+	expect(w3.validate(pair3[0]).contains("POI_SHAPE"),
+		"聚落多格 footprint → POI_SHAPE（§9 初版值域）")
+	var pair4 := _settlement_world()
+	(pair4[1] as WorldDataClass).pois[0].role = ""
+	expect((pair4[1] as WorldDataClass).validate(pair4[0]).contains("role"),
+		"role 空 → 拒（占位载体须非空）")
+	var pair5 := _settlement_world()
+	var w5: WorldDataClass = pair5[1]
+	var fp: Array[int] = w5.pois[1].footprint_cells.duplicate()
+	fp.erase(w5.pois[1].cell_id)
+	w5.pois[1].footprint_cells = fp
+	expect(w5.validate(pair5[0]).contains("锚定格"), "footprint 缺锚定格 → 拒（§9）")
+
+func test_state_and_owner_invariants_rejected() -> void:
+	# 主城对账：capital_poi_id 指向 SPAWN_ZONE → STATE_CAPITAL
+	var p1 := _settlement_world()
+	(p1[1] as WorldDataClass).states[0].capital_poi_id = 1
+	expect((p1[1] as WorldDataClass).validate(p1[0]).contains("STATE_CAPITAL"),
+		"主城指向非 SETTLEMENT → 拒")
+	# expansionism < 1 → 拒
+	var p2 := _settlement_world()
+	(p2[1] as WorldDataClass).states[0].expansionism = 0
+	expect((p2[1] as WorldDataClass).validate(p2[0]).contains("expansionism"),
+		"expansionism 0 → 拒（分母无效）")
+	# owner 引用不存在的 state → OWNER_REF
+	var p3 := _settlement_world()
+	(p3[1] as WorldDataClass).cell_owners[0] = 7
+	expect((p3[1] as WorldDataClass).validate(p3[0]).contains("OWNER_REF"),
+		"owner 指向不存在 state → 拒")
+	# 水格恒 -1：把格 0 压成水（elevation 0）但 owner 仍 0 → OWNER_WATER
+	var p4 := _settlement_world()
+	(p4[0] as MapDataClass).set_elevation(Hex.axial_of(Vector2i(0, 0)), 0)
+	expect((p4[1] as WorldDataClass).validate(p4[0]).contains("OWNER_WATER"),
+		"水格 owner ≠ -1 → 拒（水格传播成本不归属）")
+	# 空 states + 非 -1 owner → OWNER_NO_STATE；空 states + 全 -1 → 合法（回退态）
+	var p5 := _settlement_world()
+	(p5[1] as WorldDataClass).states = []
+	expect((p5[1] as WorldDataClass).validate(p5[0]).contains("OWNER_NO_STATE"),
+		"states 空而 owner 非 -1 → 拒（回退态口径）")
+	var p6 := _settlement_world()
+	var w6: WorldDataClass = p6[1]
+	w6.states = []
+	for i in w6.cell_owners.size():
+		w6.cell_owners[i] = WorldDataClass.ID_NONE
+	expect_eq(w6.validate(p6[0]), "", "states 空且 owner 全 -1 → 合法（POI/归属空集合合法态）")
+
+func test_border_links_derived_from_owner_jumps() -> void:
+	# 5×4 图：0..2 行属 state 0、3 行属 state 1 → 跳变边恰在行 2|3 交界；
+	# 独立 oracle：全图邻接对两侧 owner 互异集合
+	var map := MapDataClass.new(5, 4)
+	for cell in map.cells():
+		map.set_elevation(cell, 1)
+	var world := WorldDataClass.empty()
+	var s0 := WorldDataClass.StateData.new()
+	s0.state_id = 0
+	s0.capital_poi_id = 0
+	world.states.append(s0)
+	var s1 := WorldDataClass.StateData.new()
+	s1.state_id = 1
+	s1.capital_poi_id = 0
+	world.states.append(s1)
+	world.cell_owners = []
+	for i in map.cell_count():
+		world.cell_owners.append(0 if i < 15 else 1)
+	# 主城对账需要 SETTLEMENT poi——本测面只派生国界，validate 面由前测覆盖
+	var borders := WorldDataClass.border_links_of(map, world)
+	expect(borders.size() > 0, "行 2|3 交界存在跳变边")
+	var oracle: Array[Vector2i] = []
+	for cell in map.cells():
+		var a := map.index_of(cell)
+		for d in 6:
+			var nb := Hex.neighbor(cell, d)
+			if not map.has_cell(nb):
+				continue
+			var b := map.index_of(nb)
+			if b < a:
+				continue
+			if world.cell_owners[a] != world.cell_owners[b]:
+				oracle.append(WorldDataClass.link_id_of(a, b))
+	oracle.sort()
+	expect_eq(str(borders), str(oracle), "国界 = 独立 oracle 跳变边集合（派生不落盘）")
+	# 有河 link 天然河界：国界边与河边无冲突（集合可交——河界只是跳变边的子型）
+	expect_eq(WorldDataClass.border_links_of(map, WorldDataClass.empty()).size(), 0,
+		"空归属 → 空国界（归属层关）")
 
 # ================= 旧图零迁移 + 零回写 =================
 

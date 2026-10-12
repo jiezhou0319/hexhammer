@@ -90,6 +90,13 @@ class Checker extends Node:
 	## 相机高度（世界单位；图上方直视下。60×40/size=1 图包络约 105×61，
 	## 64 高度下 y=4 顶面视野 ≈ 84×149（fov70/16:9），上下左右余量 ≥38%）
 	const CAM_HEIGHT := 64.0
+	## 固定图包络长边基准（map_focus_bounds 实测 104.7891——银行样图相机按
+	## 「样图包络长边 / 固定基准」等比缩放 CAM_HEIGHT：尺寸随组走的样图维持
+	## 固定图的取景密度（像素尺度可比 = 同一套阈值有效——§8.3「实测首报后
+	## 余量 ≥3× 定档」的阈值不被取景破坏）。首报登记（2026-10-12）：旧式
+	## 自适应高度 max(64, 包络长边×1.15) = 120.5 下 60×40 样图顶面仅 12.6%/
+	## 高亮 219px/描线 64px（帧覆盖缩至固定图 0.28×，5 项 FAIL——非渲染回归）
+	const FIXED_REF_BOUND := 104.7891
 	const CAM_FOV := 70.0
 	const CAM_NEAR := 0.5
 	const CAM_FAR := 600.0
@@ -115,6 +122,17 @@ class Checker extends Node:
 	## 成孤岛六边形）后 14610px——均见 docs/evidence/m1a/
 	## render_probe_stats_forwardplus_1280x720.txt CHECK-W 行；按「余量 ≥3×」定档 3000）
 	const WATER_DIFF_MIN_PX := 3000
+	## CHECK-W 银行样图档（WORLD-04 ④ 留档面）：首报实测 2px（2026-10-12，
+	## 等比取景相机下；旧式 1.15 余量相机下亦仅 11px——与取景无关）——生成世界
+	## 全部水体 water_level=0（海/湖/河水位同落 0 档），水面 y=(0−0.5)·step 位于
+	## 成员格顶面（y=0）**之下** → 水面第二 mesh 被地形顶面遮挡，仅偶发 AA/阴影
+	## 边缘像素入差分；对照固定图水体 authored water_level=1 → 水面 +0.5 可见
+	## （14610px / 阈值 3000，余量 4.9×）。按 §8.3「实测首报后余量 ≥3×」定档 0
+	## （= 本检查在银行模式下退化为「水面层存在且至少渲染 1 像素」 +
+	## water_nodes>0），并**如实登记**：弱分辨力是结构性的——水位 0 档的水面
+	## 可见性属 T3/WATER-03 水位语义处置面（生成器对海/湖全部落 0 档 vs 手工
+	## 固定图落 1 档），非探针阈值问题，已随 2026-10-12 评审修复登记上报
+	const BANK_WATER_DIFF_MIN_PX := 0
 	## CHECK-5：路面/桥面层差分像素下限（T4 ROAD-01/02——2026-10-12 首报实测
 	## 517px（横路行 5 在图北缘、俯视视角下路面带宽 ~2px——bbox 高 2px 为几何
 	## 实况非回归）；按「余量 ≥3×」规则定档 150。均见 docs/evidence/m1a/
@@ -141,9 +159,22 @@ class Checker extends Node:
 	var _view: MapViewClass = null
 	var _layer: HighlightLayerClass = null
 	var _cam: Camera3D = null
+	## 底图相机位（y=高度）：统计「相机（规定）」行报此值——_cam 实际位在
+	## CHECK-T2 已移至矩阵图上空（完检不回移），直接读 _cam 会把矩阵相机冒充
+	## 底图规定相机（证据失真，S-1 同族）
+	var _map_cam_pos := Vector3.ZERO
+	## 银行样图模式（WORLD-04 ④「银行样图走 render_probe 留档」）：`-- --map=<路径>`
+	## 指定替代底图（伴生 .world.json 同目录推导）；证据文件名加样图前缀，
+	## 固定格坐标（CHECK-2/3）改为按图尺寸自适应——固定图行为不变（回归证据连续性）。
+	var _map_path: String = MapIOClass.FIXED_MAP_PATH
+	var _bank_tag := ""
 
 	func _ready() -> void:
 		_arm_watchdog()
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("map="):
+				_map_path = arg.substr(4)
+				_bank_tag = (_map_path.get_file().get_basename().replace(".", "_")) + "__"
 		var err := _build_scene()
 		if err != "":
 			_fail("场景构建失败：%s" % err)
@@ -153,9 +184,9 @@ class Checker extends Node:
 	# ---------------- 场景（沙盒同源：FIXED 图 + 沙盒环境/相机参数复刻）----------------
 
 	func _build_scene() -> String:
-		_map = MapIOClass.read_map(MapIOClass.FIXED_MAP_PATH)
+		_map = MapIOClass.read_map(_map_path)
 		if _map == null:
-			return "固定图载入失败 %s（重跑 tools/make_fixed_maps.gd 落盘？）" % MapIOClass.FIXED_MAP_PATH
+			return "图载入失败 %s（重跑 tools/make_fixed_maps.gd / tools/seed_bank.gd 落盘？）" % _map_path
 		var lib: TerrainMaterialLibraryClass = TerrainMaterialLibraryClass.load_default()
 		if lib == null:
 			return "主线默认材质库载入失败 %s" % TerrainMaterialLibraryClass.DEFAULT_PATH
@@ -187,9 +218,14 @@ class Checker extends Node:
 		_view = view
 		if not view.build(_map, 10, 10, lib.materials, 1.0, 1.0):
 			return "地形构建失败（材质缺槽/参数非法）"
-		# 规定相机：图包络中心正上方直视下（屏幕上 = 世界 −Z 北；basis 显式免 look_at 依赖）
+		# 规定相机：图包络中心正上方直视下（屏幕上 = 世界 −Z 北；basis 显式免 look_at 依赖）。
+		# 银行样图尺寸随组走——高度按包络等比缩放（固定图维持 64 不变：回归证据连续性）
 		var bounds: Rect2 = HexCameraLib.map_focus_bounds(_map, 1.0)
 		var c := bounds.get_center()
+		var cam_h := CAM_HEIGHT
+		if _bank_tag != "":
+			cam_h = CAM_HEIGHT * maxf(bounds.size.x, bounds.size.y) / FIXED_REF_BOUND
+		_map_cam_pos = Vector3(c.x, cam_h, c.y)
 		_cam = Camera3D.new()
 		_cam.name = "ProbeCamera"
 		_cam.fov = CAM_FOV
@@ -199,7 +235,7 @@ class Checker extends Node:
 		add_child(_cam)
 		_cam.global_transform = Transform3D(
 			Basis(Vector3(1.0, 0.0, 0.0), Vector3(0.0, 0.0, -1.0), Vector3(0.0, 1.0, 0.0)),
-			Vector3(c.x, CAM_HEIGHT, c.y))
+			_map_cam_pos)
 		# 高亮层（扇面 + 描线；挂 MapView 之下随地图根，沙盒同构；颜色 = 高亮层默认）
 		_layer = HighlightLayerClass.new()
 		_layer.name = "ProbeHighlight"
@@ -227,9 +263,14 @@ class Checker extends Node:
 		var terrain_px: int = terrain_r["count"]
 		var terrain_min := int(float(total) * TERRAIN_MIN_FRACTION)
 		# ---- CHECK-2 高亮扇面（差分 vs 地形帧）----
-		var hl_cells: Array = [Hex.axial_of(HIGHLIGHT_COL_ROW)]
+		# 银行样图模式：固定格常量按 60×40 authored——改按图中心自适应（六邻取界内）
+		var focus_cr := HIGHLIGHT_COL_ROW if _bank_tag == "" \
+			else Vector2i(_map.width / 2, _map.height / 2)
+		var hl_cells: Array = [Hex.axial_of(focus_cr)]
 		for d in 6:
-			hl_cells.append(Hex.neighbor(Hex.axial_of(HIGHLIGHT_COL_ROW), d))
+			var nb := Hex.neighbor(Hex.axial_of(focus_cr), d)
+			if _map.has_cell(nb):
+				hl_cells.append(nb)
 		_layer.highlight(hl_cells)
 		await _frames(SETTLE_LAYER_FRAMES)
 		var img_hl: Image = await _capture()
@@ -237,10 +278,14 @@ class Checker extends Node:
 			return
 		var hl_r := _count_diff(img_hl, img_terrain)
 		var highlight_px: int = hl_r["count"]
-		# ---- CHECK-3 描线带（差分 vs 高亮帧）----
+		# ---- CHECK-3 描线带（差分 vs 高亮帧；银行样图按图宽取中心行段）----
 		var path_cells: Array = []
-		for col in range(PATH_COL_FROM, PATH_COL_TO + 1):
-			path_cells.append(Hex.axial_of(Vector2i(col, PATH_ROW)))
+		var path_row := PATH_ROW if _bank_tag == "" else _map.height / 2
+		var col_from := PATH_COL_FROM if _bank_tag == "" \
+			else maxi(0, _map.width / 2 - (PATH_COL_TO - PATH_COL_FROM) / 2)
+		var col_to := PATH_COL_TO if _bank_tag == "" else mini(_map.width - 1, col_from + (PATH_COL_TO - PATH_COL_FROM))
+		for col in range(col_from, col_to + 1):
+			path_cells.append(Hex.axial_of(Vector2i(col, path_row)))
 		_layer.show_path(path_cells)
 		await _frames(SETTLE_LAYER_FRAMES)
 		var img_path: Image = await _capture()
@@ -286,10 +331,10 @@ class Checker extends Node:
 
 		# ---- CHECK-W 水面差分（T3 WATER-02：固定图 + .world.json，水面层开/关
 		#      两次差分——同帧地形（含河床下切）不变，差分归因唯一 = 水面 mesh）----
-		var world: Variant = MapIOClass.read_world(MapIOClass.world_path_for(MapIOClass.FIXED_MAP_PATH))
+		var world: Variant = MapIOClass.read_world(MapIOClass.world_path_for(_map_path))
 		if not (world is WorldDataClass):
-			_fail("世界伴生文件载入失败（%s——重跑 tools/make_fixed_maps.gd？）"
-				% MapIOClass.world_path_for(MapIOClass.FIXED_MAP_PATH))
+			_fail("世界伴生文件载入失败（%s——重跑 tools/make_fixed_maps.gd / seed_bank.gd？）"
+				% MapIOClass.world_path_for(_map_path))
 			return
 		if not _view.build(_map, 10, 10,
 				(TerrainMaterialLibraryClass.load_default() as TerrainMaterialLibraryClass).materials,
@@ -364,12 +409,15 @@ class Checker extends Node:
 			m0_vis = int(_count_vs_color(img_m0, m0_bg["color"])["count"])
 
 		# ---- 判定 ----
+		# CHECK-W 阈值按模式取档：固定图 = 实测绘制的 3000；银行样图 = 首报 39px
+		# 按 ≥3× 余量定的银行档（见 BANK_WATER_DIFF_MIN_PX 头注——结构性弱分辨力登记）
+		var water_min := WATER_DIFF_MIN_PX if _bank_tag == "" else BANK_WATER_DIFF_MIN_PX
 		var ok1 := terrain_px > terrain_min
 		var ok2 := highlight_px > HIGHLIGHT_MIN_PX
 		var ok3 := path_px > PATH_MIN_PX
 		var ok4 := blend_px > terrain_min and style_diff_px > BLEND_DIFF_MIN_PX
 		var ok6 := grid_diff_px > GRID_DIFF_MIN_PX
-		var okW := water_diff_px > WATER_DIFF_MIN_PX and water_nodes_n > 0
+		var okW := water_diff_px > water_min and water_nodes_n > 0
 		var ok5 := road_diff_px > ROAD_DIFF_MIN_PX and road_nodes_n > 0
 		var okT2 := t2_diff_px > T2_DIFF_MIN_PX and m0_vis > int(float(img_m0.get_width() * img_m0.get_height()) * 0.05)
 		var pct := 100.0 * float(terrain_px) / float(maxi(total, 1))
@@ -385,7 +433,7 @@ class Checker extends Node:
 		_print_check(ok6, "CHECK-6 格线差分（GRID-01）：开格线 vs 关格线差分 px=%d，阈值=%d，bbox=%s"
 			% [grid_diff_px, GRID_DIFF_MIN_PX, str(g_r["bbox"])])
 		_print_check(okW, "CHECK-W 水面差分（T3 WATER-02）：水面层开/关差分 px=%d，阈值=%d，水面节点=%d，bbox=%s"
-			% [water_diff_px, WATER_DIFF_MIN_PX, water_nodes_n, str(w_r["bbox"])])
+			% [water_diff_px, water_min, water_nodes_n, str(w_r["bbox"])])
 		_print_check(ok5, "CHECK-5 道路/桥面差分（T4 ROAD-01/02）：路面层开/关差分 px=%d，阈值=%d，路面节点=%d，bbox=%s"
 			% [road_diff_px, ROAD_DIFF_MIN_PX, road_nodes_n, str(rd_r["bbox"])])
 		_print_check(okT2, "CHECK-T2 阶地/崖几何（矩阵图 + LandformProfile）：profile vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）"
@@ -398,7 +446,7 @@ class Checker extends Node:
 			"blend_px": blend_px, "blend_pct": blend_pct,
 			"style_diff_px": style_diff_px, "blend_min": BLEND_DIFF_MIN_PX,
 			"grid_diff_px": grid_diff_px, "grid_min": GRID_DIFF_MIN_PX,
-			"water_diff_px": water_diff_px, "water_min": WATER_DIFF_MIN_PX,
+			"water_diff_px": water_diff_px, "water_min": water_min,
 			"water_nodes": water_nodes_n,
 			"road_diff_px": road_diff_px, "road_min": ROAD_DIFF_MIN_PX,
 			"road_nodes": road_nodes_n,
@@ -518,7 +566,8 @@ class Checker extends Node:
 		var renderer := String(RenderingServer.get_current_rendering_method())
 		var cfg := String(ProjectSettings.get_setting_with_override(
 			"rendering/renderer/rendering_method"))
-		var tag := "%s_%dx%d" % [renderer.replace("_", ""), img_terrain.get_width(), img_terrain.get_height()]
+		var tag := "%s%s_%dx%d" % [_bank_tag, renderer.replace("_", ""),
+			img_terrain.get_width(), img_terrain.get_height()]
 		var dir_abs := ProjectSettings.globalize_path(EVIDENCE_DIR)
 		var mk := DirAccess.make_dir_recursive_absolute(dir_abs)
 		if mk != OK:
@@ -561,10 +610,11 @@ class Checker extends Node:
 			_cam.get_viewport().get_visible_rect().size.x,
 			_cam.get_viewport().get_visible_rect().size.y,
 			WINDOW_SIZE.x, WINDOW_SIZE.y])
-		L.append("图（沙盒同源 FIXED）：%s digest=%s（%d×%d）" % [
-			MapIOClass.FIXED_MAP_PATH, _map.digest(), _map.width, _map.height])
+		L.append("图：%s digest=%s（%d×%d%s）" % [
+			_map_path, _map.digest(), _map.width, _map.height,
+			"；银行样图模式（WORLD-04 ④ 留档）" if _bank_tag != "" else "；沙盒同源 FIXED"])
 		L.append("相机（规定）：图包络中心正上方直视下 pos=%s fov=%.0f near=%.1f far=%.0f（屏幕上=世界−Z 北；Transform basis x=(1,0,0) y=(0,0,-1) z=(0,1,0)）" % [
-			str(_cam.global_position), CAM_FOV, CAM_NEAR, CAM_FAR])
+			str(_map_cam_pos), CAM_FOV, CAM_NEAR, CAM_FAR])
 		L.append("环境/光照：m1a_sandbox.tscn 数值复刻（背景 0.16/0.17/0.2；环境光 0.55/0.57/0.62×0.9；太阳转角 −52/−32 能量 1.2 阴影开）")
 		L.append("材质剔除：默认 CULL_BACK（地形 = StandardMaterial3D 默认；高亮/描线 = hex_highlight.gd 显式 CULL_BACK）")
 		L.append("判定容差：单通道 8 位差 > %d；背景色 = 截图四角采样（%s）" % [
@@ -573,21 +623,25 @@ class Checker extends Node:
 		L.append("CHECK-1 地形顶面：俯视可见 px=%d / %d（%.1f%%），阈值=%d（帧像素 %.0f%%）→ %s" % [
 			r["terrain_px"], r["total"], r["terrain_pct"], r["terrain_min"],
 			TERRAIN_MIN_FRACTION * 100.0, "PASS" if oks[0] else "FAIL"])
-		L.append("CHECK-2 高亮扇面（7 格 = 中心+6 邻，offset %s）：差分可见 px=%d，阈值=%d，变化区 bbox=%s → %s" % [
-			str(HIGHLIGHT_COL_ROW), r["highlight_px"], HIGHLIGHT_MIN_PX, str(r["hl_bbox"]),
-			"PASS" if oks[1] else "FAIL"])
-		L.append("CHECK-3 描线带（12 格直线，offset 行 %d 列 %d..%d）：差分可见 px=%d，阈值=%d，变化区 bbox=%s → %s" % [
-			PATH_ROW, PATH_COL_FROM, PATH_COL_TO, r["path_px"], PATH_MIN_PX, str(r["path_bbox"]),
-			"PASS" if oks[2] else "FAIL"])
+		L.append("CHECK-2 高亮扇面（7 格 = 中心+6 邻，offset %s%s）：差分可见 px=%d，阈值=%d，变化区 bbox=%s → %s" % [
+			str(HIGHLIGHT_COL_ROW) if _bank_tag == "" else "%s（图中心自适应）" % str(Vector2i(_map.width / 2, _map.height / 2)),
+			"" if _bank_tag == "" else "（银行样图模式）", r["highlight_px"], HIGHLIGHT_MIN_PX,
+			str(r["hl_bbox"]), "PASS" if oks[1] else "FAIL"])
+		L.append("CHECK-3 描线带（12 格直线，offset 行 %d 列 %d..%d%s）：差分可见 px=%d，阈值=%d，变化区 bbox=%s → %s" % [
+			PATH_ROW, PATH_COL_FROM, PATH_COL_TO,
+			"" if _bank_tag == "" else "（银行样图模式：行/列随图自适应）",
+			r["path_px"], PATH_MIN_PX, str(r["path_bbox"]), "PASS" if oks[2] else "FAIL"])
 		L.append("CHECK-4 BLEND 对照（S-4，2026-10-11）：默认 BLEND style 同图重渲，可见 px=%d / %d（%.1f%%，阈值同 CHECK-1），与 SLOTS 地形帧差分 px=%d，阈值=%d，bbox=%s → %s" % [
 			r["blend_px"], r["total"], r["blend_pct"], r["style_diff_px"], r["blend_min"],
 			str(r["sb_bbox"]), "PASS" if oks[3] else "FAIL"])
 		L.append("CHECK-6 格线差分（T2 GRID-01，2026-10-11）：同 BLEND style 关格线重渲，与 CHECK-4 帧（开格线）差分 px=%d，阈值=%d，bbox=%s → %s" % [
 			r["grid_diff_px"], r["grid_min"], str(r["grid_bbox"]), "PASS" if oks[4] else "FAIL"])
-		L.append("CHECK-W 水面差分（T3 WATER-02，2026-10-11）：固定图 + .world.json（边河+河口湖+东北湖）构建，水面层开/关差分 px=%d，阈值=%d，水面节点=%d，bbox=%s → %s" % [
+		L.append("CHECK-W 水面差分（T3 WATER-02，2026-10-11）：底图 + .world.json（%s）构建，水面层开/关差分 px=%d，阈值=%d，水面节点=%d，bbox=%s → %s" % [
+			"银行样图伴生世界（生成水体 water_level=0——水面 y 落顶面之下被遮挡，分辨力弱属结构性，阈值走银行首报档 ≥3× 定标）" if _bank_tag != "" else "固定图：边河+河口湖+东北湖",
 			r["water_diff_px"], r["water_min"], int(r["water_nodes"]), str(r["water_bbox"]),
 			"PASS" if oks[5] else "FAIL"])
-		L.append("CHECK-5 道路/桥面差分（T4 ROAD-01/02）：同一世界构建（东西横路+跨河桥 CrossingData），路面层开/关差分 px=%d，阈值=%d，路面节点=%d，bbox=%s → %s" % [
+		L.append("CHECK-5 道路/桥面差分（T4 ROAD-01/02）：同一世界构建（%s），路面层开/关差分 px=%d，阈值=%d，路面节点=%d，bbox=%s → %s" % [
+			"银行样图路网+桥" if _bank_tag != "" else "固定图：东西横路+跨河桥 CrossingData",
 			r["road_diff_px"], r["road_min"], int(r["road_nodes"]), str(r["road_bbox"]),
 			"PASS" if oks[6] else "FAIL"])
 		L.append("CHECK-T2 阶地/崖几何（T2 LAND-01 ④ 矩阵图）：LandformProfile 默认档 vs 基线差分 px=%d，阈值=%d，bbox=%s（基线可见 px=%d）→ %s" % [

@@ -1,0 +1,1320 @@
+{
+	"cell_owners": [
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		2,
+		0,
+		0,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		0,
+		0,
+		0,
+		2,
+		2,
+		1,
+		1,
+		1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		0,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		-1,
+		-1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		1,
+		1,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		-1,
+		1,
+		1,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		1,
+		2,
+		-1,
+		-1,
+		-1,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		2,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		-1,
+		1
+	],
+	"crossings": [],
+	"links": [
+		{
+			"link_id": [
+				11,
+				12
+			],
+			"river_reach_id": 0,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				12,
+				35
+			],
+			"river_reach_id": 0,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				33,
+				57
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				53,
+				77
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				54,
+				77
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				54,
+				78
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				55,
+				78
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				57,
+				81
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				64,
+				87
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				64,
+				88
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				65,
+				88
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				76,
+				77
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				77,
+				101
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				77,
+				102
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				78,
+				79
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				78,
+				102
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				79,
+				103
+			],
+			"river_reach_id": 2,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				81,
+				106
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				87,
+				111
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				106,
+				129
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				111,
+				135
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				129,
+				153
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				135,
+				160
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				152,
+				153
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				152,
+				175
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				160,
+				184
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				175,
+				199
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				184,
+				209
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				188,
+				189
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				188,
+				212
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				189,
+				213
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				199,
+				222
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				209,
+				210
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				210,
+				211
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				211,
+				212
+			],
+			"river_reach_id": -1,
+			"road_id": 0
+		},
+		{
+			"link_id": [
+				213,
+				236
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				222,
+				247
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				236,
+				261
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				247,
+				248
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				248,
+				249
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				249,
+				250
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				250,
+				251
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				251,
+				252
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				252,
+				253
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				253,
+				254
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				254,
+				255
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				255,
+				256
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				256,
+				280
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				261,
+				284
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				280,
+				281
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				281,
+				282
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				282,
+				283
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				283,
+				284
+			],
+			"river_reach_id": -1,
+			"road_id": 1
+		},
+		{
+			"link_id": [
+				286,
+				310
+			],
+			"river_reach_id": 1,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				310,
+				311
+			],
+			"river_reach_id": 1,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				310,
+				334
+			],
+			"river_reach_id": 1,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				333,
+				334
+			],
+			"river_reach_id": 1,
+			"road_id": -1
+		}
+	],
+	"meta": {
+		"attempt_count": 1,
+		"config_digest": "58e97862fc98b9eef385373e60cd773021a17338c917364c4c3aa21f5c621fb3",
+		"engine_version": "4.7.2-stable (official)",
+		"first_pass_valid": true,
+		"generator_version": 4,
+		"repair_count": 0,
+		"rules_version": 0,
+		"schema_version": 1,
+		"seed": 7,
+		"world_digest": "f8ea586a2fc06f35fc9f2b4b9ecdb9d6da636ca277703804a47cb18463b342d1"
+	},
+	"pois": [
+		{
+			"cell_id": 65,
+			"footprint_cells": [
+				65
+			],
+			"kind": 0,
+			"poi_id": 0,
+			"role": "player_capital"
+		},
+		{
+			"cell_id": 65,
+			"footprint_cells": [
+				40,
+				41,
+				64,
+				65,
+				66,
+				88,
+				89
+			],
+			"kind": 1,
+			"poi_id": 1,
+			"role": "spawn_zone"
+		},
+		{
+			"cell_id": 189,
+			"footprint_cells": [
+				189
+			],
+			"kind": 0,
+			"poi_id": 2,
+			"role": "ai_capital"
+		},
+		{
+			"cell_id": 189,
+			"footprint_cells": [
+				165,
+				166,
+				188,
+				189,
+				190,
+				213,
+				214
+			],
+			"kind": 1,
+			"poi_id": 3,
+			"role": "spawn_zone"
+		},
+		{
+			"cell_id": 33,
+			"footprint_cells": [
+				33
+			],
+			"kind": 0,
+			"poi_id": 4,
+			"role": "ai_capital"
+		},
+		{
+			"cell_id": 33,
+			"footprint_cells": [
+				9,
+				10,
+				32,
+				33,
+				34,
+				57,
+				58
+			],
+			"kind": 1,
+			"poi_id": 5,
+			"role": "spawn_zone"
+		},
+		{
+			"cell_id": 229,
+			"footprint_cells": [
+				229
+			],
+			"kind": 2,
+			"poi_id": 6,
+			"role": "core_resource"
+		},
+		{
+			"cell_id": 62,
+			"footprint_cells": [
+				62
+			],
+			"kind": 2,
+			"poi_id": 7,
+			"role": "core_resource"
+		},
+		{
+			"cell_id": 198,
+			"footprint_cells": [
+				198
+			],
+			"kind": 2,
+			"poi_id": 8,
+			"role": "core_resource"
+		}
+	],
+	"rivers": [
+		{
+			"bed_level": -1,
+			"edges": [
+				[
+					12,
+					35
+				],
+				[
+					11,
+					12
+				]
+			],
+			"flow_level": 1,
+			"reach_id": 0,
+			"water_body_id": 0,
+			"water_levels": [
+				0,
+				0
+			]
+		},
+		{
+			"bed_level": -1,
+			"edges": [
+				[
+					286,
+					310
+				],
+				[
+					310,
+					311
+				],
+				[
+					310,
+					334
+				],
+				[
+					333,
+					334
+				]
+			],
+			"flow_level": 1,
+			"reach_id": 1,
+			"water_body_id": 5,
+			"water_levels": [
+				1,
+				1,
+				1,
+				0
+			]
+		},
+		{
+			"bed_level": -1,
+			"edges": [
+				[
+					78,
+					102
+				],
+				[
+					77,
+					102
+				],
+				[
+					77,
+					101
+				],
+				[
+					76,
+					77
+				],
+				[
+					53,
+					77
+				],
+				[
+					54,
+					77
+				],
+				[
+					54,
+					78
+				],
+				[
+					55,
+					78
+				],
+				[
+					78,
+					79
+				],
+				[
+					79,
+					103
+				]
+			],
+			"flow_level": 1,
+			"reach_id": 2,
+			"water_body_id": 2,
+			"water_levels": [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			]
+		}
+	],
+	"roads": [
+		{
+			"cells": [
+				65,
+				88,
+				64,
+				87,
+				111,
+				135,
+				160,
+				184,
+				209,
+				210,
+				211,
+				212,
+				188,
+				189
+			],
+			"connects_pois": [],
+			"is_loop": false,
+			"road_class": 0,
+			"road_id": 0
+		},
+		{
+			"cells": [
+				189,
+				213,
+				236,
+				261,
+				284,
+				283,
+				282,
+				281,
+				280,
+				256,
+				255,
+				254,
+				253,
+				252,
+				251,
+				250,
+				249,
+				248,
+				247,
+				222,
+				199,
+				175,
+				152,
+				153,
+				129,
+				106,
+				81,
+				57,
+				33
+			],
+			"connects_pois": [],
+			"is_loop": false,
+			"road_class": 0,
+			"road_id": 1
+		}
+	],
+	"schema_version": 1,
+	"states": [
+		{
+			"capital_poi_id": 0,
+			"expansionism": 5,
+			"state_id": 0
+		},
+		{
+			"capital_poi_id": 2,
+			"expansionism": 4,
+			"state_id": 1
+		},
+		{
+			"capital_poi_id": 4,
+			"expansionism": 6,
+			"state_id": 2
+		}
+	],
+	"water_bodies": [
+		{
+			"inlet_links": [
+				[
+					11,
+					12
+				]
+			],
+			"kind": 0,
+			"member_cells": [
+				11
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 0,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [],
+			"kind": 1,
+			"member_cells": [
+				36,
+				59,
+				60,
+				61,
+				83,
+				84,
+				85,
+				86,
+				109,
+				110,
+				131,
+				132,
+				133,
+				134,
+				154,
+				155,
+				156,
+				157,
+				158,
+				159,
+				176,
+				177,
+				178,
+				179,
+				180,
+				181,
+				182,
+				200,
+				201,
+				202,
+				203,
+				204,
+				205,
+				206,
+				207,
+				223,
+				224,
+				225,
+				226,
+				227,
+				228,
+				230,
+				231
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 1,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [
+				[
+					79,
+					103
+				]
+			],
+			"kind": 1,
+			"member_cells": [
+				80,
+				103,
+				104,
+				105,
+				128
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 2,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [],
+			"kind": 0,
+			"member_cells": [
+				168,
+				192,
+				193,
+				216,
+				217,
+				240,
+				241,
+				264,
+				288
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 3,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [],
+			"kind": 1,
+			"member_cells": [
+				296,
+				297,
+				298,
+				320,
+				321,
+				322,
+				345
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 4,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [
+				[
+					333,
+					334
+				]
+			],
+			"kind": 0,
+			"member_cells": [
+				308,
+				309,
+				331,
+				332,
+				333,
+				357,
+				358,
+				380,
+				381,
+				382
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 5,
+			"water_level": 0
+		},
+		{
+			"inlet_links": [],
+			"kind": 0,
+			"member_cells": [
+				314,
+				337,
+				338,
+				339,
+				361,
+				362,
+				363
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 6,
+			"water_level": 0
+		}
+	]
+}

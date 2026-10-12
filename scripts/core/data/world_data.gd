@@ -1,17 +1,18 @@
-## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体/道路/桥（M1a T2 首物 →
-##   T3 水系 → T4 道路桥解锁；执行方案 docs/M1a-terrain-T2-T5-execution-plan.md
-##   §2.5 + §2.2/§2.3/§2.4（格边重议已拍，§2.6 全关）+ §4 WATER-01/03 + §5
-##   ROAD-01/02 + 数据合同草案 docs/M1a-terrain-data-contract-draft.md
-##   §3/§4/§5/§6/§7/§8/§11/§12）
+## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体/道路/桥/POI/势力归属
+##   （M1a T2 首物 → T3 水系 → T4 道路桥 → T5 聚落势力解锁；执行方案
+##   docs/M1a-terrain-T2-T5-execution-plan.md §2.5 + §2.2/§2.3/§2.4（格边重议已拍，
+##   §2.6 全关）+ §4 WATER-01/03 + §5 ROAD-01/02 + §6 WORLD-03/05 + §7 + 数据合同
+##   草案 docs/M1a-terrain-data-contract-draft.md §3~§12）
 ## 职责：格子数据（MapData）旁边的**第四伴生文件 `<name>.world.json`** 载体——
 ##   NeighborLinkData 邻接边表（link_id = (min,max) 格稳定 ID 对）+ RiverReachData
 ##   格边河段（§2.2 重写表：河 = 共享边有序序列，ADR-14）+ WaterBodyData 湖/海
 ##   （格语义水体，WATER-03 转正）+ RoadData 道路（§7 转正，ROAD-01：格心有序
 ##   序列 + link.road_id 对账）+ CrossingData 桥（§8 格边重写表，ROAD-02：认领
 ##   语义——「路是格中心与格中心之间，河是单纯沿着边，他俩只会交叉，交叉时就是
-##   桥」，拍板⑤）+ 校验器 + 序列化（固定键序）。POI 集合属 T5 解锁，本版恒空
-##   （「关闭一个尚未实现能力不产生伪字段」的镜像：没有能力就没有数据——
-##   from_dict 对非空未解锁集合显式拒绝，不做半吊子解析）。
+##   桥」，拍板⑤）+ POIData 聚落/出生区/资源点（§9 转正，WORLD-03：role 占位、
+##   资源经济数值不编造）+ 势力归属（StateData + 格级 cell_owners——拍板⑧：
+##   归属作为生成产物进数据，「生成的世界长什么样」进数据、「怎么玩」不进；
+##   ~~势力归属禁入数据层~~ 穿格期旧口径已废）+ 校验器 + 序列化（固定键序）。
 ## 合同（翻案须先改草案对应节与 tests/test_world_data.gd / test_water_*.gd /
 ##   test_roads.gd / test_bridges.gd，不动架构）：
 ## - 旧图零迁移（§2.2）：伴生文件缺失/为空 → empty()（无河无路无 POI 的合法态），
@@ -63,6 +64,22 @@
 ##   = CROSSING_NO_ROAD 拒绝；桥址合法性首版 = 桥头（bank Δ ≤ max_bridge_bank_delta，
 ##   生成配置口径同道路）+ 净空（max(bank 高程) ≥ 河水位——桥面中段 y = max+lift
 ##   恒于水面之上的数据面前提），违例 = BRIDGE_ENDPOINT_INVALID（草案 §11 错误码）；
+## - **POI 合同（草案 §9 转正，WORLD-03）**：kind 三值（SETTLEMENT/SPAWN_ZONE/
+##   RESOURCE）；footprint 行主序规范序、含锚定格、不重复；**形状随 kind 钉死**——
+##   SPAWN_ZONE = 中心 + 六邻恰 7 格（拍板⑩ 主城七格落兵区；界内可通行是
+##   WORLD-04 校验面 NO_VALID_SPAWN，数据层只钉形状与界内），聚落/资源 = [锚定格]
+##   单格（多格聚落后续开）；role = String 占位载体（数据层不解释不定值域，仅要求
+##   非空——无 role 的 POI 无意义）；资源经济数值字段一概不存在（M2 门）；阵营
+##   归属/俘虏/占领语义不进（scenario 层——§9 禁止项对规则语义维持）；
+## - **势力归属合同（拍板⑧ + §6 WORLD-03）**：StateData（state_id 主键、
+##   capital_poi_id → SETTLEMENT 对账、expansionism 扩张参数档）+ **格级 owner 表**
+##   cell_owners（落卡载体选定：格级 owner 集合 + StateData 主城清单；国界 = 跳变边
+##   由 border_links_of 派生**不落盘**——§6 ③）；值域 = {-1 中立/水} ∪ state_id
+##   ——水格恒 -1（§7「水格传播成本不归属」），陆格可显式中立（值域事实——
+##   无主中立带的**有无未拍板**（§6 WORLD-03 卡内拍板项），中立带配置参数
+##   未实现：生成器默认全覆盖，唯不可达陆格落显式中立）；states 空 ⇒
+##   cell_owners 须空或全 -1
+##   （POI/归属空集合合法 = 归属层关的回退态，§6 风险与回退行）；
 ## - WorldData 零回写 MapData（含 mods——草案 §11 全局项；测试锚定 summary 不变）；
 ## - 纯数据类：RefCounted、零场景节点、不 preload 任何场景（ADR-2；删 scripts/ui/**
 ##   后 tests 全绿）。锚点绝对坐标不落盘（§2.3）：边锚 = 两格心连线与共享边交点，
@@ -227,6 +244,50 @@ class CrossingData:
 	var bank_b: int = ID_NONE
 
 
+## POI（草案 §9 转正，WORLD-03）：聚落 / 出生候选区 / 资源点的占位实体——
+## 资源经济数值由 M2 决定（字段不存在），role 是模板与场景层引用的占位标签
+## （数据层不解释）。出生区 footprint = 中心 + 六邻（半径 1 的七格落兵区，
+## 拍板⑩「主城七格落兵区=中心+六邻」——POIData SPAWN_ZONE footprint 原文形态）。
+class POIData:
+	extends RefCounted
+
+	## POI 类型（三值；序列化按 int 落盘）
+	enum Kind { SETTLEMENT, SPAWN_ZONE, RESOURCE }
+
+	## 主键（POI 表 poi_id 升序为规范序）
+	var poi_id: int = ID_NONE
+
+	## Kind.SETTLEMENT / Kind.SPAWN_ZONE / Kind.RESOURCE
+	var kind: int = Kind.SETTLEMENT
+
+	## 锚定格（界内；SPAWN_ZONE 锚 = 出生中心、SETTLEMENT 锚 = 主城格）
+	var cell_id: int = ID_NONE
+
+	## 占位 footprint（行主序规范序、含锚定格、不重复）：SPAWN_ZONE = 中心+六邻
+	## 恰 7 格；聚落/资源 = [cell_id] 单格（§9 初版值域）
+	var footprint_cells: Array[int] = []
+
+	## 目标角色标签（如 player_capital / ai_capital / core_resource）——占位载体，
+	## 语义由世界模板与场景层引用，数据层不解释（仅要求非空）
+	var role := ""
+
+
+## 势力（§6 WORLD-03 + §7 states 改造案，拍板⑧进数据）：生成产物侧的最小实体——
+## 主城引用 + 扩张参数档；「怎么玩」（跨河防守 buff/征服/经济）不进（§9 禁止项）。
+class StateData:
+	extends RefCounted
+
+	## 主键（states 表 state_id 升序为规范序；生成器 0 起 = 玩家 0 + AI 1..，拍板⑪）
+	var state_id: int = ID_NONE
+
+	## 主城 POI 引用（对账：可解析且 kind == SETTLEMENT；不同 state 不共享主城）
+	var capital_poi_id: int = ID_NONE
+
+	## 扩张参数档（Azgaar expansionism 的地形版保留位——「山地势力不下平原」类
+	## 个性 = 扩张参数差异，§7 文化层裁剪行；进入成本 = cellCost/expansionism）
+	var expansionism := 1
+
+
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
@@ -242,9 +303,15 @@ var roads: Array[RoadData] = []
 ## 桥表（T4 ROAD-02 解锁；crossing_id 升序规范序）
 var crossings: Array[CrossingData] = []
 
-## POI 集合属 T5 逐卡解锁（草案 §12.4）；本版恒空数组——from_dict 对非空显式拒绝
-## （不产伪字段也不假解析）。
-var pois: Array = []
+## POI 表（T5 WORLD-03 解锁；poi_id 升序规范序）
+var pois: Array[POIData] = []
+
+## 势力表（T5 WORLD-03 拍板⑧解锁；state_id 升序规范序）
+var states: Array[StateData] = []
+
+## 格级 owner 表（与格子表同长、行主序对齐；-1 = 中立/水，否则 state_id）。
+## 国界不落盘——border_links_of 由本表派生（跳变边集合，§6 ③）
+var cell_owners: Array[int] = []
 
 ## WorldMeta（草案 §10 字段集的占位形状；attempt/repair/first_pass 落码进 WORLD-04）。
 ## 手工固定图默认口径：seed=0、generator_version=0、rules_version=0（视觉模式）、
@@ -390,6 +457,83 @@ static func shore_links_of(map: MapDataClass, b: WaterBodyData) -> Array[Vector2
 	out.sort()
 	return out
 
+# ---------------- 聚落/势力查询（WORLD-03 只读面）----------------
+
+## poi_id → POI（不存在 → null；线性查——T5 规模 ≤ 数十）。
+func poi_by_id(poi_id: int) -> POIData:
+	for p in pois:
+		if p.poi_id == poi_id:
+			return p
+	return null
+
+
+## state_id → 势力（不存在 → null）。
+func state_by_id(state_id: int) -> StateData:
+	for s in states:
+		if s.state_id == state_id:
+			return s
+	return null
+
+
+## 指定 kind 的 POI 列表（poi_id 升序——表序即规范序）。
+func pois_of_kind(kind: int) -> Array[POIData]:
+	var out: Array[POIData] = []
+	for p in pois:
+		if p.kind == kind:
+			out.append(p)
+	return out
+
+
+## 有河 link 两岸格集合（cell_id → true）：河岸锚点格——格边口径下「河床占格」的
+## 格级代理（河床在连接带、不占格；出生/资源 footprint 冲突校验与 WORLD-05 桥址
+## 候选两岸共用本口径，§6 WORLD-03 ⑤ footprint 冲突面）。
+func river_flank_cells() -> Dictionary:
+	var out := {}
+	for r in rivers:
+		for e in r.edges:
+			out[e.x] = true
+			out[e.y] = true
+	return out
+
+
+## 全部道路格集合（cell_id → true；多路共享格 = 路口合法，字典天然去重）。
+func road_cells() -> Dictionary:
+	var out := {}
+	for r in roads:
+		for cid in r.cells:
+			out[cid] = true
+	return out
+
+
+## 国界 = owner 跳变边集合（§6 WORLD-03 ③ + §7 边界绘制行）：相邻两格 owner 均
+## ≥0 且互异 → 共享格边即国界边，升序规范序。**派生不落盘**（生成产物进数据、
+## 表现派生阶段按端点缝折线）；有河 link 两侧 owner 互异时天然入界 = 河界
+## （§7「有河 link 天然河界」）。独立于 links 表（无河世界 links 可为空——全图
+## 邻接遍历与满 link 表逐位一致）。
+static func border_links_of(map: MapDataClass, world: WorldData) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var owners := world.cell_owners
+	if owners.is_empty():
+		return out
+	for cell in map.cells():
+		var a := map.index_of(cell)
+		var oa := owners[a]
+		if oa < 0:
+			continue
+		for d in 6:
+			var nb := Hex.neighbor(cell, d)
+			if not map.has_cell(nb):
+				continue
+			var b := map.index_of(nb)
+			# 只取 a<b 侧避免双向重复（link 规范序同式）
+			if b < a:
+				continue
+			var ob := owners[b]
+			if ob >= 0 and ob != oa:
+				out.append(link_id_of(a, b))
+	out.sort()
+	return out
+
 # ---------------- 世界事实摘要（T5 WORLD-01 同 seed 复现验收的载体）----------------
 
 ## 世界事实摘要 = SHA-256 hex：覆盖 MapData 格子表 + 本表全部事实集合（links/
@@ -451,7 +595,10 @@ func validate(map: MapDataClass, water_terrain_id := -1,
 	var road_err := _validate_roads(map, max_road_delta)
 	if road_err != "":
 		return road_err
-	return _validate_reconciliation(map, river_claim)
+	var recon_err := _validate_reconciliation(map, river_claim)
+	if recon_err != "":
+		return recon_err
+	return _validate_settlement(map)
 
 
 ## 河段四条 + 结构完整性（WATER-01 ②；角点级无环 = 修订记录三之 4）。
@@ -660,8 +807,8 @@ func _validate_crossings(map: MapDataClass, max_bridge_bank_delta: int) -> Strin
 		var ea := map.elevation_at(ca)
 		var eb := map.elevation_at(cb)
 		if max_bridge_bank_delta >= 0 and absi(ea - eb) > max_bridge_bank_delta:
-			return "BRIDGE_ENDPOINT_INVALID：crossing %d 两岸高差 |%d−%d|=%d > 配置 %d（接坡超限——拒绝该桥址，不留悬空桥头）" \
-				% [c.crossing_id, ea, eb, absi(ea - eb), max_bridge_bank_delta]
+			return "BRIDGE_ENDPOINT_INVALID：crossing %d 两岸格 (%d,%d) 高差 |%d−%d|=%d > 配置 %d（接坡超限——拒绝该桥址，不留悬空桥头）" \
+				% [c.crossing_id, c.bank_a, c.bank_b, ea, eb, absi(ea - eb), max_bridge_bank_delta]
 		# 净空：桥面中段 y = max(两岸)×step + lift 须恒于水面 (level−0.5)×step 之上——
 		# 离散纲下 max(两岸高程) ≥ 河水位是充分条件（逐位几何断言在桥几何测试锚）
 		if maxi(ea, eb) < int(river_idx[e]["water"]):
@@ -822,6 +969,120 @@ func _validate_reconciliation(map: MapDataClass, river_claim: Dictionary) -> Str
 	return ""
 
 
+## 聚落/势力面（WORLD-03，草案 §9 转正 + 拍板⑧归属合同）：POI 形状/规范序/footprint
+## 随 kind 钉死、主城对账、cell_owners 值域与水格恒中立。footprint 的通行性/设施
+## 冲突（河岸锚点格/桥端/道路/他方出生区）与资源可达属 WORLD-04 校验器面
+## （world_validator.gd——数据层只钉形状与引用，可玩性判定在校验器）。
+func _validate_settlement(map: MapDataClass) -> String:
+	# ---- POI：主键/规范序/kind/footprint 形状 ----
+	var prev_id := ID_NONE
+	var spawn_footprints := {}  # SPAWN_ZONE footprint 并查重（他方出生区重叠在此查——
+	# 数据层可判的重叠面；与设施的冲突在校验器）
+	for pi in pois.size():
+		var p := pois[pi]
+		if p.poi_id < 0:
+			return "pois[%d] poi_id=%d 非法（负主键）" % [pi, p.poi_id]
+		if prev_id != ID_NONE and p.poi_id <= prev_id:
+			return "pois[%d] 破坏规范序（须按 poi_id 严格升序——含主键重复；got %d after %d）" \
+				% [pi, p.poi_id, prev_id]
+		prev_id = p.poi_id
+		if p.kind != POIData.Kind.SETTLEMENT and p.kind != POIData.Kind.SPAWN_ZONE \
+				and p.kind != POIData.Kind.RESOURCE:
+			return "pois[%d]（poi %d）kind=%d 非法（SETTLEMENT/SPAWN_ZONE/RESOURCE 三值，§9）" \
+				% [pi, p.poi_id, p.kind]
+		if p.role.is_empty():
+			return "pois[%d]（poi %d）role 为空（占位载体也须非空——无 role 的 POI 无意义）" \
+				% [pi, p.poi_id]
+		if p.cell_id < 0 or p.cell_id >= map.cell_count():
+			return "pois[%d]（poi %d）cell_id=%d 指向界外格（图共 %d 格）" \
+				% [pi, p.poi_id, p.cell_id, map.cell_count()]
+		if p.footprint_cells.is_empty():
+			return "pois[%d]（poi %d）footprint 为空（至少含锚定格，§9）" % [pi, p.poi_id]
+		var prev_cell := ID_NONE
+		for ci in p.footprint_cells.size():
+			var cid := p.footprint_cells[ci]
+			if cid < 0 or cid >= map.cell_count():
+				return "pois[%d]（poi %d）footprint[%d]=%d 指向界外格" % [pi, p.poi_id, ci, cid]
+			if prev_cell != ID_NONE and cid <= prev_cell:
+				return "pois[%d]（poi %d）footprint 破坏行主序规范序（含重复格 %d）" \
+					% [pi, p.poi_id, cid]
+			prev_cell = cid
+		if not p.footprint_cells.has(p.cell_id):
+			return "pois[%d]（poi %d）footprint 须含锚定格 %d（行主序规范序——升序含锚，§9）" \
+				% [pi, p.poi_id, p.cell_id]
+		if p.kind == POIData.Kind.SPAWN_ZONE:
+			# 形状钉死：中心 + 六邻恰 7 格（拍板⑩；第 2..7 项须恰为锚定格的六个邻居
+			# ——界内已由 footprint 界内查保证，此处查集合等价）
+			if p.footprint_cells.size() != 7:
+				return "POI_SHAPE：pois[%d]（poi %d）SPAWN_ZONE footprint %d 格 ≠ 7（中心+六邻，拍板⑩）" \
+					% [pi, p.poi_id, p.footprint_cells.size()]
+			var want := {p.cell_id: true}
+			var anchor := _cell_of_id(map, p.cell_id)
+			for d in 6:
+				want[map.index_of(Hex.neighbor(anchor, d))] = true
+			for cid in p.footprint_cells:
+				if not want.has(cid):
+					return "POI_SHAPE：pois[%d]（poi %d）SPAWN_ZONE footprint 含非「中心+六邻」格 %d" \
+						% [pi, p.poi_id, cid]
+			for cid in want:
+				if not p.footprint_cells.has(cid):
+					return "POI_SHAPE：pois[%d]（poi %d）SPAWN_ZONE footprint 缺「中心+六邻」格 %d" \
+						% [pi, p.poi_id, cid]
+			for cid in p.footprint_cells:
+				if spawn_footprints.has(cid) and spawn_footprints[cid] != p.poi_id:
+					return "POI_SHAPE：pois[%d]（poi %d）出生区 footprint 格 %d 与 poi %d 重叠（他方出生区，WORLD-03 ⑤）" \
+						% [pi, p.poi_id, cid, int(spawn_footprints[cid])]
+				spawn_footprints[cid] = p.poi_id
+		else:
+			if p.footprint_cells.size() != 1 or p.footprint_cells[0] != p.cell_id:
+				return "POI_SHAPE：pois[%d]（poi %d）聚落/资源 footprint 须 = [锚定格] 单格（§9 初版值域）" \
+					% [pi, p.poi_id]
+	# ---- states：主键/规范序/主城对账 ----
+	var s_prev := ID_NONE
+	var capital_seen := {}
+	for si in states.size():
+		var s := states[si]
+		if s.state_id < 0:
+			return "states[%d] state_id=%d 非法（负主键）" % [si, s.state_id]
+		if s_prev != ID_NONE and s.state_id <= s_prev:
+			return "states[%d] 破坏规范序（须按 state_id 严格升序——含主键重复）" % si
+		s_prev = s.state_id
+		if s.expansionism < 1:
+			return "states[%d]（state %d）expansionism=%d 非法（≥1——成本分母为 0 无意义）" \
+				% [si, s.state_id, s.expansionism]
+		var cap := poi_by_id(s.capital_poi_id)
+		if cap == null:
+			return "STATE_CAPITAL：states[%d]（state %d）capital_poi_id=%d 引用不可解析" \
+				% [si, s.state_id, s.capital_poi_id]
+		if cap.kind != POIData.Kind.SETTLEMENT:
+			return "STATE_CAPITAL：states[%d]（state %d）主城 poi %d kind ≠ SETTLEMENT" \
+				% [si, s.state_id, s.capital_poi_id]
+		if capital_seen.has(s.capital_poi_id):
+			return "STATE_CAPITAL：poi %d 同时为 state %d 与 %d 的主城（不同 state 不共享主城）" \
+				% [s.capital_poi_id, int(capital_seen[s.capital_poi_id]), s.state_id]
+		capital_seen[s.capital_poi_id] = s.state_id
+	# ---- cell_owners：长度/值域/水格恒中立/空 states 语义 ----
+	if not cell_owners.is_empty():
+		if states.is_empty():
+			for cid in cell_owners.size():
+				if cell_owners[cid] != ID_NONE:
+					return "OWNER_NO_STATE：cell_owners[%d]=%d 但 states 为空（无势力世界 owner 须恒 -1——归属层关的回退态）" \
+						% [cid, cell_owners[cid]]
+		if cell_owners.size() != map.cell_count():
+			return "OWNER_LENGTH：cell_owners 长度 %d ≠ 格子数 %d（行主序逐格对齐）" \
+				% [cell_owners.size(), map.cell_count()]
+		for cid in cell_owners.size():
+			var o := cell_owners[cid]
+			if o == ID_NONE:
+				continue
+			if o < 0 or state_by_id(o) == null:
+				return "OWNER_REF：cell_owners[%d]=%d 引用不存在的 state（值域 = {-1} ∪ state_id）" % [cid, o]
+			# 水格恒 -1（§7「水格传播成本不归属」；水恒 elevation 0 是量化链不变量）
+			if map.elevation_at(_cell_of_id(map, cid)) == 0:
+				return "OWNER_WATER：水格 %d owner=%d ≠ -1（水格传播成本不归属——势力不拥有水）" % [cid, o]
+	return ""
+
+
 ## 稳定角点 ID（修订记录三之 4）：物理角点 (cell, vertex) 的三个格表示——
 ## (c,k) = (N_k(c), (k+4)%6) = (N_{k−1}(c), (k+2)%6)（顶点角 30°−60°·i 的三角推得）——
 ## 取**界内**表示的最小 index_of·6+顶点。任一表示出发同值（与生成路径无关）；
@@ -856,9 +1117,14 @@ static func corner_id_of(map: MapDataClass, cell: Vector2i, vertex: int) -> int:
 ##      "road_class": int, "connects_pois": []}, …]，
 ##    "crossings": [{"crossing_id": int, "kind": int, "river_edge": [x, y],
 ##      "bank_a": int, "bank_b": int}, …]，
-##    "pois": [], "meta": {§10 字段集}}
+##    "pois": [{"poi_id": int, "kind": int, "cell_id": int,
+##      "footprint_cells": [int, …], "role": String}, …]，
+##    "states": [{"state_id": int, "capital_poi_id": int, "expansionism": int}, …]，
+##    "cell_owners": [int, …]（行长 = 格子数；缺省空数组 = 旧图零迁移），
+##    "meta": {§10 字段集}}
 ##   全部 Vector2i 显式转 [x, y] 数组（引擎直写 JSON.stringify 落成 "(3, 17)" 字符串
-##   不可还原，草案 §2.2 实测坑）。
+##   不可还原，草案 §2.2 实测坑）。states/cell_owners 缺键 = 旧图合法空（零迁移），
+##   pois 键自 T2 起恒在（恒空数组）。
 func to_dict() -> Dictionary:
 	var out_links: Array = []
 	for lk in links:
@@ -915,6 +1181,22 @@ func to_dict() -> Dictionary:
 			"bank_a": c.bank_a,
 			"bank_b": c.bank_b,
 		})
+	var out_pois: Array = []
+	for p in pois:
+		out_pois.append({
+			"poi_id": p.poi_id,
+			"kind": p.kind,
+			"cell_id": p.cell_id,
+			"footprint_cells": p.footprint_cells.duplicate(),
+			"role": p.role,
+		})
+	var out_states: Array = []
+	for s in states:
+		out_states.append({
+			"state_id": s.state_id,
+			"capital_poi_id": s.capital_poi_id,
+			"expansionism": s.expansionism,
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
@@ -922,17 +1204,21 @@ func to_dict() -> Dictionary:
 		"water_bodies": out_bodies,
 		"roads": out_roads,
 		"crossings": out_crossings,
-		"pois": [],
+		"pois": out_pois,
+		"states": out_states,
+		"cell_owners": cell_owners.duplicate(),
 		"meta": meta.duplicate(true),
 	}
 
 
 ## 版本不符 / 字段缺失 / 形状非法（link_id/edges/river_edge 等长度≠2、非整数、负
 ## 分量、x≥y；water_levels 与 edges 长度不齐；road_class≠0、crossings kind≠BRIDGE
-## 等值域单点字段）/ 未解锁集合（pois）非空 / meta 非字典 → null
+## 等值域单点字段）/ meta 非字典 → null
 ## （调用方显式判空，无隐式兜底）。兼容 JSON 数值形状（整数以 float 3.0 出现亦可
 ## 还原——MapData._is_integral_number 同款）。拓扑/对账语义由 validate 查（分层：
-## from_dict 管形状，validate 管世界事实一致性）。
+## from_dict 管形状，validate 管世界事实一致性）。pois 自 T5 WORLD-03 起解析非空
+## 集合；states/cell_owners 缺键 = 旧图合法空（零迁移，§2.2——与 pois 恒空时代的
+## 旧 .world.json 兼容）。
 static func from_dict(data: Dictionary) -> WorldData:
 	if not data.has_all(["schema_version", "links", "rivers", "water_bodies",
 			"roads", "crossings", "pois", "meta"]):
@@ -941,8 +1227,8 @@ static func from_dict(data: Dictionary) -> WorldData:
 		return null
 	if not (data["links"] is Array) or not (data["meta"] is Dictionary):
 		return null
-	# POI 仍未解锁（T5 逐实体开）——不产伪字段也不假解析；路/桥已随 T4 解锁解析
-	if not (data["pois"] is Array) or not (data["pois"] as Array).is_empty():
+	# POI 已随 T5 WORLD-03 解锁（role 占位、无经济数值字段——形状层查键集）
+	if not (data["pois"] is Array):
 		return null
 	for needed in ["rivers", "water_bodies", "roads", "crossings"]:
 		if not (data[needed] is Array):
@@ -981,6 +1267,21 @@ static func from_dict(data: Dictionary) -> WorldData:
 	var crossings_err := _crossings_from_dict(data["crossings"], out)
 	if crossings_err:
 		return null
+	var pois_err := _pois_from_dict(data["pois"], out)
+	if pois_err:
+		return null
+	# states/cell_owners：缺键 = 旧图合法空（零迁移——T4 时代 .world.json 无此二键）
+	if data.has("states"):
+		var states_err := _states_from_dict(data["states"], out)
+		if states_err:
+			return null
+	if data.has("cell_owners"):
+		if not (data["cell_owners"] is Array):
+			return null
+		for ov in (data["cell_owners"] as Array):
+			if not _is_int(ov) or int(ov) < -1:
+				return null
+			out.cell_owners.append(int(ov))
 	var m := (data["meta"] as Dictionary)
 	for k in ["schema_version", "seed", "generator_version", "rules_version",
 			"attempt_count", "repair_count"]:
@@ -1153,6 +1454,64 @@ static func _crossings_from_dict(src: Variant, out: WorldData) -> bool:
 		c.bank_a = int(d["bank_a"])
 		c.bank_b = int(d["bank_b"])
 		out.crossings.append(c)
+	return false
+
+
+## pois 数组 → POIData（形状校验：kind 三值、footprint 非空非负 int 数组、
+## role 非空 String——行主序/含锚定格/七格形状属 validate 语义层）。
+static func _pois_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["poi_id", "kind", "cell_id", "footprint_cells", "role"]):
+			return true
+		for k in ["poi_id", "kind", "cell_id"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["poi_id"]) < 0 or int(d["cell_id"]) < 0:
+			return true
+		if not (d["footprint_cells"] is Array) or not (d["role"] is String):
+			return true
+		if (d["role"] as String).is_empty():
+			return true
+		var p := POIData.new()
+		p.poi_id = int(d["poi_id"])
+		p.kind = int(d["kind"])
+		p.cell_id = int(d["cell_id"])
+		p.role = String(d["role"])
+		for cv in (d["footprint_cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			p.footprint_cells.append(int(cv))
+		out.pois.append(p)
+	return false
+
+
+## states 数组 → StateData（形状校验：主键/主城引用/expansionism 均整数且非负——
+## capital 可解析性与唯一性属 validate 对账层）。
+static func _states_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["state_id", "capital_poi_id", "expansionism"]):
+			return true
+		for k in ["state_id", "capital_poi_id", "expansionism"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["state_id"]) < 0 or int(d["capital_poi_id"]) < 0 \
+				or int(d["expansionism"]) < 1:
+			return true
+		var s := StateData.new()
+		s.state_id = int(d["state_id"])
+		s.capital_poi_id = int(d["capital_poi_id"])
+		s.expansionism = int(d["expansionism"])
+		out.states.append(s)
 	return false
 
 # ---------------- 内部 ----------------

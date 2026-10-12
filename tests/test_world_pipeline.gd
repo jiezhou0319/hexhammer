@@ -10,11 +10,14 @@
 ##   - 配置冲突显式失败：冲突原因串全列不产半图；
 ##   - 具名通道独立性：改 decoration 通道不影响 hydrology 输出摘要
 ##     （「新增一棵树不消耗前面阶段 RNG」，提案随机性纪律）；
-##   - 附加面：九阶段序固定 + 阶段版本表齐备；GENERATOR_VERSION=2（管线变更
-##     显式登记）；模板 .tres 与代码默认同源（TerrainStyle 同纪律）；植被/地表
+##   - 附加面：九阶段序固定 + 阶段版本表齐备；GENERATOR_VERSION=4（WORLD-04 修复
+##     面修订：出生锚定槽序落位 + roads 通道等成本改道——复现锚显式登记）；
+##     模板 .tres 与代码默认同源（TerrainStyle 同纪律）；植被/地表
 ##     掩码通道保留且林/泥分类在用（修订记录三之 7——按字面删通道会抽掉现有
 ##     分类）；MapGenerator 退化特例行为不变 = 独立拼装单遍 oracle 逐格对照
-##     （04 M1a-T9 细化的四步直读，不复制管线实现）。
+##     （04 M1a-T9 细化的四步直读，不复制管线实现）；T5 完整管线（WORLD-03/05
+##     阶段实做 + validation 报告键 + 通道独立性扩面 + locked 格式门 +
+##     generation_ms_by_stage 诊断通道 + roads 通道消耗面）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -89,12 +92,16 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 			skipped_count += 1
 			expect(String(diag.get("reason", "")).length() > 0,
 				"跳过段 %s 须带原因（空集合合法的显式面）" % diag["stage"])
-	# WORLD-03/05 未解锁：聚落/势力/道路/表现派生四段跳过；水系默认开 → 5 段实做
-	expect_eq(skipped_count, 4, "未解锁阶段数（settlement/allegiance/roads/presentation）")
+	# T5 完整管线（WORLD-03/05 落地后）：唯一恒跳过段 = 表现派生（国界线 mesh
+	# 属表现层后续批）；水系/聚落/势力/道路四段实做
+	expect_eq(skipped_count, 1, "未解锁阶段数（仅 presentation）")
 	var hydro: Variant = _stage_of(stages, "hydrology")
 	expect(hydro != null and not hydro.get("skipped", false), "默认模板水系阶段实做")
 	expect(hydro != null and hydro.get("post_quantum_valid", false) == true,
 		"量化后二次验证保留（WORLD-02 ⑤）")
+	for stage_name in ["settlement", "allegiance", "roads"]:
+		var s: Variant = _stage_of(stages, stage_name)
+		expect(s != null and not s.get("skipped", false), "默认模板 %s 阶段实做（T5 完整管线）" % stage_name)
 	# 可 diff：同 seed 两次跑逐阶段诊断 dict 逐字一致
 	var w2 := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	expect_eq(str(w2["stages"]), str(stages), "同 seed 两次跑逐阶段诊断一致（阶段摘要可 diff）")
@@ -129,7 +136,7 @@ func test_skipped_stages_leave_collections_empty() -> void:
 			and world.crossings.is_empty() and world.pois.is_empty(),
 			"退化特例 WorldData 全空集合（关闭未实现能力不产伪字段）")
 		expect_eq(world.validate(legacy["map"], T_WATER), "", "空世界校验合法")
-	# 面 2：九阶段入口 + 模板关停水系
+	# 面 2：九阶段入口 + 模板关停水系（聚落/势力/道路仍开——无河世界合法态）
 	var t := WorldTemplateClass.new()
 	t.hydrology_enabled = false
 	var w := WorldPipeline.generate_world(t, 7)
@@ -138,9 +145,39 @@ func test_skipped_stages_leave_collections_empty() -> void:
 		var world2: WorldDataClass = w["world"]
 		expect(world2.rivers.is_empty() and world2.water_bodies.is_empty(),
 			"关停水系 → rivers/water_bodies 空")
+		expect(not world2.pois.is_empty() and not world2.states.is_empty(),
+			"关停水系不关停聚落/势力（阶段独立开关）")
 		var hydro: Variant = _stage_of(w["stages"], "hydrology")
 		expect(hydro != null and hydro["skipped"], "水系阶段 skipped 诊断（不产伪字段）")
 		expect_eq(world2.validate(w["map"], T_WATER), "", "无河世界校验合法")
+
+# ================= T5 完整管线（阶段产物 + 校验报告 + 通道独立性扩面）=================
+
+func test_full_pipeline_produces_settlement_allegiance_roads() -> void:
+	var t := WorldTemplateClass.new()
+	t.width = 24
+	t.height = 16
+	var w := WorldPipeline.generate_world(t, 7)
+	expect(w["ok"], "小图九阶段生成应成功：%s" % str(w.get("error", "")))
+	if not w["ok"]:
+		return
+	var world: WorldDataClass = w["world"]
+	expect(world.pois.size() == 9, "POI = 3 主城 + 3 出生区 + 3 资源")
+	expect(world.states.size() == 3, "3 势力（拍板⑪）")
+	expect_eq(world.cell_owners.size(), 24 * 16, "格级 owner 表全长")
+	expect(world.roads.size() >= 1, "道路骨架产出（MST）")
+	expect(w.has("validation"), "结果携带结构化校验报告（WORLD-04 面）")
+	expect(w["validation"]["ok"], "生成即过校验：%s" % str(
+		(w["validation"]["errors"] as Array)[0]["code"] if not w["validation"]["ok"] else ""))
+	# 同 seed 通道独立性扩面：改 roads/decoration 通道不影响聚落产物（poi 事实）
+	var alt := WorldPipeline.generate_world(t, 7, {"roads": 99999, "decoration": 88888})
+	expect(alt["ok"], "通道覆盖跑应成功")
+	if alt["ok"]:
+		expect_eq(JSON.stringify((alt["world"] as WorldDataClass).to_dict()["pois"]),
+			JSON.stringify(world.to_dict()["pois"]),
+			"改 roads/decoration 通道不影响聚落事实（通道独立性——道路阶段只消耗改道并列，不上溯聚落）")
+		expect_eq(str((alt["world"] as WorldDataClass).cell_owners), str(world.cell_owners),
+			"归属分布不受 roads/decoration 通道影响")
 
 # ================= 具名通道独立性（改 decoration 不影响 hydrology）=================
 
@@ -173,23 +210,105 @@ func test_decoration_channel_does_not_touch_hydrology() -> void:
 			break
 	expect(hydro_changed, "改 hydrology 通道 seed 应能改变河网（override 机制生效）")
 
+# ================= roads 通道消耗面（v4：等成本改道——roads_reconnect 载体）=================
+
+func test_roads_channel_changes_road_facts_and_stays_off_upstream() -> void:
+	# 反向确证（沿 decoration 测试同构）：改 roads 通道 seed → 等成本并列取舍变 →
+	# 道路/桥事实应可变（若任何 override 都不改产物 = roads 通道无消费者——
+	# roads_reconnect 修复重跑退化为同输入空转，机制失效报警）；同时上游事实
+	# （河网/聚落/格子表）必须逐字节不变（通道独立性保持）
+	var t := WorldTemplateClass.new()
+	t.width = 24
+	t.height = 16
+	var base := WorldPipeline.generate_world(t, 7)
+	expect(base["ok"], "基线生成应成功")
+	if not base["ok"]:
+		return
+	var base_world: WorldDataClass = base["world"]
+	var base_roads := JSON.stringify(base_world.to_dict()["roads"])
+	var base_cross := JSON.stringify(base_world.to_dict()["crossings"])
+	var roads_changed := false
+	for alt_seed in [11, 22, 33]:
+		var h := WorldPipeline.generate_world(t, 7, {"roads": alt_seed})
+		if not h["ok"]:
+			continue
+		var hw: WorldDataClass = h["world"]
+		if JSON.stringify(hw.to_dict()["roads"]) != base_roads \
+				or JSON.stringify(hw.to_dict()["crossings"]) != base_cross:
+			roads_changed = true
+			# 上游面逐字节不变（改道只动道路阶段）
+			expect_eq(JSON.stringify(hw.to_dict()["rivers"]),
+				JSON.stringify(base_world.to_dict()["rivers"]),
+				"改 roads 通道不影响河段事实")
+			expect_eq(JSON.stringify(hw.to_dict()["pois"]),
+				JSON.stringify(base_world.to_dict()["pois"]),
+				"改 roads 通道不影响 POI 事实")
+			expect_eq((h["map"] as MapDataClass).digest(),
+				(base["map"] as MapDataClass).digest(),
+				"改 roads 通道不影响地理/量化产物（map digest）")
+			break
+	expect(roads_changed,
+		"改 roads 通道 seed 应能改变道路/桥事实（等成本改道消耗面——roads_reconnect 修复载体在起作用）")
+
+# ================= 逐阶段耗时诊断（generation_ms_by_stage，§8.4）=================
+
+func test_generation_ms_by_stage_diagnostic_channel() -> void:
+	# WORLD-04 数据合同影响行落码：逐阶段耗时走诊断通道（结果键
+	# generation_ms_by_stage），不进 WorldMeta（§10 禁止项——生成耗时类不落
+	# 世界事实）；legacy 产物不带此键（键集与旧单遍版一致的行为不变锚）
+	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
+	expect(w["ok"], "生成应成功")
+	if not w["ok"]:
+		return
+	expect(w.has("generation_ms_by_stage"), "结果携带逐阶段耗时键（诊断通道）")
+	var ms: Dictionary = w["generation_ms_by_stage"]
+	for stage_name in WorldPipeline.STAGES:
+		expect(ms.has(stage_name), "逐阶段耗时不缺 %s" % stage_name)
+		expect(int(ms[stage_name]) >= 0, "阶段 %s 耗时为非负 int ms" % stage_name)
+	expect(not (w["world"].meta as Dictionary).has("generation_ms_by_stage"),
+		"生成耗时禁入 WorldMeta（§10 禁止项——摘要只锚世界事实）")
+	# 阶段诊断 dict 不混入耗时（同 seed stages 可 diff 锚的保持面）
+	for d in w["stages"]:
+		expect(not (d as Dictionary).has("ms") and not (d as Dictionary).has("generation_ms"),
+			"阶段诊断 dict 不携带耗时键（可 diff 锚保持）")
+	var legacy := MapGenerator.generate(MapGenParamsClass.new())
+	expect(legacy["ok"], "legacy 生成应成功")
+	if legacy["ok"]:
+		expect(not (legacy as Dictionary).has("generation_ms_by_stage"),
+			"legacy 键集不含逐阶段耗时（与旧单遍 map_generator 键集一致）")
+
 # ================= 配置冲突显式失败（原因串全列不产半图）=================
 
 func test_config_conflicts_all_listed_no_half_map() -> void:
+	# T5 完整管线后配置冲突面 = 阶段依赖序（势力/道路消费聚落产物——Azgaar
+	# 「执行顺序即依赖图」的配置面）；~~开而未解锁~~ UNLOCKED_STAGES 门已随
+	# WORLD-03/05 落地拆除（翻案同步改测试纪律）
 	var t := WorldTemplateClass.new()
-	t.settlement_enabled = true
+	t.settlement_enabled = false
 	t.allegiance_enabled = true
 	t.roads_enabled = true
 	var w := WorldPipeline.generate_world(t, 7)
-	expect(not w["ok"], "开而未解锁应显式失败")
+	expect(not w["ok"], "依赖倒置应显式失败")
 	var err := String(w["error"])
-	for stage_name in ["settlement", "allegiance", "roads"]:
-		expect(err.contains(stage_name), "冲突串应全列未解锁阶段 %s（got %s）" % [stage_name, err])
-	expect(w["map"] == null, "冲突不得产出半图（map=null）")
+	for stage_name in ["allegiance", "roads"]:
+		expect(err.contains(stage_name), "冲突串应全列依赖阶段 %s（got %s）" % [stage_name, err])
+	expect(w["map"] == null, "冲突不得产出半图（config 段失败 map=null）")
 	expect(w["world"] == null, "冲突不得产出半世界")
 	# 配置段失败也可定位（阶段诊断在）
 	var stages: Array = w["stages"]
 	expect(stages.size() >= 1 and String(stages[0]["stage"]) == "config", "失败诊断首段 = config")
+
+func test_config_rejects_bad_locked_format() -> void:
+	# locked v1 格式 = "cell:<非负 int>"（WORLD-04 修复循环消费面）；其他前缀显式拒
+	var t := WorldTemplateClass.new()
+	t.locked = ["reach:0"]
+	var w := WorldPipeline.generate_world(t, 7)
+	expect(not w["ok"], "非法 locked 前缀应配置失败")
+	expect(String(w["error"]).contains("locked"), "失败串指向 locked（got %s）" % w["error"])
+	var t2 := WorldTemplateClass.new()
+	t2.locked = ["cell:12"]
+	expect_eq(WorldPipeline.generate_world(t2, 7)["ok"], true, "合法 locked 条目通过")
+	expect_eq(t2.locked_cells(), [12], "locked_cells 解析（修复注入面）")
 
 func test_config_invalid_template_params_fail() -> void:
 	var t := WorldTemplateClass.new()
@@ -206,16 +325,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 2,
-		"GENERATOR_VERSION=2（WORLD-01 管线化 + 植被/地表掩码改名——复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 4,
+		"GENERATOR_VERSION=4（WORLD-04 修复面修订：出生锚定槽序落位 + roads 通道等成本改道——同 seed 道路事实较 v3 可变，复现锚显式登记）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 2, "legacy meta 落 v2")
+		expect_eq(legacy["meta"]["generator_version"], 4, "legacy meta 落 v4")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 2, "世界 meta 落 v2")
+		expect_eq(w["world"].meta["generator_version"], 4, "世界 meta 落 v4")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）

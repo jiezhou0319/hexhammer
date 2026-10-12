@@ -1,0 +1,95 @@
+{
+	"cell_owners": [],
+	"crossings": [],
+	"links": [
+		{
+			"link_id": [
+				9,
+				13
+			],
+			"river_reach_id": 0,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				10,
+				13
+			],
+			"river_reach_id": 0,
+			"road_id": -1
+		},
+		{
+			"link_id": [
+				13,
+				14
+			],
+			"river_reach_id": 0,
+			"road_id": -1
+		}
+	],
+	"meta": {
+		"attempt_count": 4,
+		"config_digest": "",
+		"engine_version": "",
+		"first_pass_valid": false,
+		"generator_version": 0,
+		"repair_count": 3,
+		"rules_version": 0,
+		"schema_version": 1,
+		"seed": 0,
+		"world_digest": ""
+	},
+	"pois": [],
+	"rivers": [
+		{
+			"bed_level": -1,
+			"edges": [
+				[
+					13,
+					14
+				],
+				[
+					10,
+					13
+				],
+				[
+					9,
+					13
+				]
+			],
+			"flow_level": 1,
+			"reach_id": 0,
+			"water_body_id": 0,
+			"water_levels": [
+				1,
+				1,
+				0
+			]
+		}
+	],
+	"roads": [],
+	"schema_version": 1,
+	"states": [],
+	"water_bodies": [
+		{
+			"inlet_links": [
+				[
+					9,
+					13
+				]
+			],
+			"kind": 0,
+			"member_cells": [
+				0,
+				4,
+				8,
+				9,
+				12
+			],
+			"outlet_links": [],
+			"terminal": true,
+			"water_body_id": 0,
+			"water_level": 0
+		}
+	]
+}

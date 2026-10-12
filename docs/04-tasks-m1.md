@@ -423,6 +423,62 @@ playability）、**跳过 5 段**（hydrology/settlement/allegiance/roads/presen
 2026-10-11T20:39:57 → 22:06:19，1 insertion 1 deletion；评审时记 21:45:02，终跑
 gate_all 探针重出后再移）——批次边界噪声，像素统计逐位一致无实质影响。
 
+**T5-B 聚落势力、自动路网与校验银行批登记（2026-10-12 完成；WORLD-03/04/05 三卡——
+T5 收官批：聚落/出生区/资源/势力归属 + 校验/有限修复/seed 银行 + 道路骨架自动路网；
+评审修复波随批并入：三项 medium 实证修复、六项 low 全修、GENERATOR_VERSION 3→4）**：
+
+| ID | 卡 | 验收（执行方案 §6 摘要） | 完成登记 |
+|---|---|---|---|
+| WORLD-03 | 聚落/出生区/资源 + 势力归属（Azgaar burgs+states 改造版；拍板⑧扩容） | 3 组合法出生区；核心资源在允许预算内可达；不占桥端/河床/道路禁用区域（提案 :284 验收原文）+ 势力归属层（拍板⑧扩入）：3 势力归属分配 + 国界边集合可枚举 + 无主中立带可配置 | **2026-10-12 完成**：① `scripts/core/data/world_data.gd` 扩 POIData（草案 §9 转正）/StateData/cell_owners（拍板⑧载体落卡 = 格级 owner 集合 + 主城清单；国界 = `WorldData.border_links_of` 跳变边派生不落盘，§6③）；② `scripts/content/settlement_generator.gd`：适居度 = −(h−50)/5 高程带（档带中点由量化链反演，§7 换算注）+ 河/海岸独立加成；出生 = 适居度前列带 biased(0,max,5) + 首都间距 (W+H)/2/3 收缩重试 + 七格落兵区（拍板⑩⑪）；state 生长 = 多源 Dijkstra，成本表用 §7 states 版实读数值（平原 0/丘 300/山 2200/海 1000——丘山档由 h=44/67 反演 level 2/3）+ 河界加成 20（势力期无桥）+ expansionism 分摊（模板 [5,4,6]）；水格不入队（§7）；**关键取舍**：normalize 平票语义按卡表「平票不改判」取**严格**敌对>己方（§7 行写 ≥ 与卡表冲突；严格版结构性蕴含卡表「己方>2 豁免」，注释已注调和依据）；「河岸锚点格」格边转译 = 有河 link 两岸格（河床在连接带不占格）；出生区×道路冲突的服务豁免（连接本区主城的路可穿区——validator 与生成器同口径，道路须含主城锚，二者合同互证）；③ 失败样例入库：`tools/make_settlement_fixture.gd` 落 4×4 零内点图（NO_VALID_SPAWN 全 4 attempt 拒绝）三件套于 FAILED_FIXTURE_DIR/world/ 子目录（与连通性失败样例分流——顶层 test_map_source 断言只扫顶层；测试断言同模板同 seed 复现同失败）。测试 = `tests/test_world_settlement.gd` **11 用例**（七格 footprint/组间环距 oracle/NO_VALID_SPAWN fixture 复验/适居度确定性与三项构成+§7 成本表数值锚/资源平地口径可达/footprint 冲突两面/owner 覆盖与水格中立/国界跳变边独立 oracle/同 seed 归属一致/带标记暴力 Dijkstra oracle/normalize 平票与豁免语义/势力关回退态）+ `tests/test_world_data.gd` 13→**17**（POI/势力往返+旧图零迁移（缺 states/cell_owners 键合法空）/POI 形状钉死拒绝/state 与 owner 不变量拒绝/国界派生 oracle） |
+| WORLD-04 | 校验、有限修复与 seed 银行 | 100 个发布 seed 按模板与尺寸验收；不合格图入库，修复不动锁定约束，最多 4 次尝试（提案 :285 验收原文；100/100、≥95% 为候选目标非实测承诺） | **2026-10-12 完成**：① `scripts/content/world_validator.gd` = 草案 §11 七码（NO_VALID_SPAWN/RESOURCE_UNREACHABLE/RIVER_CYCLE/NO_RIVER_OUTLET/BRIDGE_ENDPOINT_INVALID/ROAD_NETWORK_DISCONNECTED/LOCKED_CONSTRAINT_CONFLICT）+ 两结构性扩格码（POI_FOOTPRINT_CONFLICT/WORLD_DATA_INVALID）逐码落 fixture；错误 {code,cell_ids,link_ids,constraint_id,explanation} 五键、explanation 含定位逐码断言；② 修复循环 `WorldPipeline.generate_validated`：≤4 attempt（第 5 次拒绝实测 = attempts_trace.size()==4）、失败动作按固定顺序选通道（河→聚落→道路）确定性 bump（attempt×7919 质数步长）、只动非 locked（locked_cells 禁入新放置 + owner_pins 归属锚定 + 锚定出生/资源 POI 原样重发——修复不动 locked 三面测试锚定；主城锚 = 路网必经端点，validator locked 检查豁免锚格并注释依据）、每次后全量重验；attempt_count/repair_count/first_pass_valid 落 WorldMeta（8×5 修复成功样本锚定 attempts=4/repairs=3/first_pass=false）；阶段硬失败保留部分产物入库（config 段失败仍 null = 不产半图）；③ seed 银行 `tools/seed_bank.gd`：按模板×尺寸分组固定清单（default_terraces@60x40 六 seed + @24x16 五 seed）+ smoke/full 两档（提交级 smoke = 每组 3 seed）、首过单独计、失败样例三件套（含 .world.json 伴生）、样图落 `resources/maps/bank/` 供探针留档。测试 = `tests/test_world_validator.gd` **18 用例**（错误五键形状+§11 码表在册/逐码 fixture 断言 explanation 含定位/attempt 上限第 5 次拒绝/8×5 修复成功 meta 三字段/修复不动 locked（owner 锚定+锚定 POI 原样重发+LOCKED 零错+非锚槽重抽分辨力）/失败样例目录三件套可加载复验/银行 smoke 批跑+首过计数/银行 seed 重跑 world_digest 3 次一致/成功世界保存→重载同校验/初始 owner 与运行时征服分离；含评审波转正的锚定槽反例 `test_repair_pin_nonfirst_slot_keeps_role_and_id`） |
+| WORLD-05 | 道路骨架与绕行（自动路网；阶段重排，修订记录三之 6：自 ROAD-03 上移——原 T4 卡消费 T5 的 POI 与 WORLD-04 校验器，阶段倒置） | 必需聚落全部连接；禁桥时无法连接则返回失败；可选回路不能突破硬约束（提案 :281 验收原文） | **2026-10-12 完成**：`scripts/content/road_network_generator.gd` 固定顺序（卡表风险栏）：桥址枚举（硬合法 = 桥头 Δ≤max_bridge_bank_delta ∧ 净空 max(两岸)≥水位；偏好排除 = 急弯中边（edge[k]⊥edge[k+2] 判据复用 WorldData 公开合同）+ reach 首尾边，tier1/tier2 兜底 = ROAD-02③「偏好非硬约束」）→ 聚落对 Dijkstra（步进 1+Δ×2+地形带费 1/4/12+绕水+河界加成 20——内部口径不进数据）→ MST（并列取聚落对字典序）→ 逐路落地（已用 link 禁复用、跨河建 CrossingData 认领）→ 可选回路逐条增量全量重验（复用 WORLD-04 校验器，破约束即回滚弃路）。失败两出路：MST 对不可达 = ROAD_NETWORK_DISCONNECTED 具名失败（错误指向聚落对格 id+poi id+阻挡 reach 表，不删河不压山）；回路不可行 = 放弃候选。桥址确定性全禁的测试用净空法（水位 5>两岸 1）——桥头 Δ 抬升法会被锯齿链共享端格破坏（实测 25 边中 9 边 Δ=0，已弃）。测试 = `tests/test_world_roads.gd` **6 用例**（MST 全连通+并查集 oracle+Δ 复查/河分离场景桥认领语义（crossing.river_edge∈reach.edges、两岸=link 端、link.road_id 对账、全量 validate）/禁桥失败指向聚落对与河段（净空法确定性全禁）/可选回路加路重验与 link 不复用/locked 绕行先验/路径权重不进数据+同 seed 确定性） |
+
+管线跨卡面（同批落码）：settlement/allegiance/roads 三阶段实做（阶段开关独立、依赖序冲突
+显式失败）、playability 接入校验器（报告通道不判管线失败——修复循环/银行消费）、
+GENERATOR_VERSION 2→3（实现波）→**4**（评审波修复面修订：出生锚定槽序落位 + roads 通道
+等成本改道——同 seed 道路事实较 v3 可变，复现锚显式登记于
+`tests/test_world_pipeline.gd:327`）、模板 scenario/infrastructure 参数组 + locked v1 格式
+`cell:<id>`（其他前缀显式拒——reach 级锁未开）；`tests/test_world_pipeline.gd` 13→**17**
+（跳过段 4→1 仅 presentation、依赖序冲突全列、locked 格式门、T5 完整管线产物+validation 键、
+通道独立性扩面）。
+
+**T5-B 批门禁与证据（本会话实跑）**：`--import` exit 0；run_tests = **29 文件 /
+384 用例 / 0 失败** exit 0（评审修复波终数 = 实现波 381 + 评审转正/扩面净 +3；基线实况
+26 文件/341 用例——+3 文件 +43 用例只增不减，登记会话复核同数：settlement 11/roads 6/
+validator 18/data 13→17/pipeline 13→17）。gate_all 全链 **5/5 PASS** exit 0（干净导入/
+单测+故障自检（runner v3.1）/拾取 **11 用例/0 失败**/高亮 **31 用例/0 失败**/相机
+**11 用例/0 失败** 三 scene_check）+ 渲染探针真渲染实跑 exit 0：默认固定图 **8/8 CHECK
+PASS**（证据刷新 = `docs/evidence/m1a/render_probe_stats_forwardplus_1280x720.txt`，像素
+统计逐位一致）；银行样图模式（render_probe 扩 `-- --map=<路径>`：固定格坐标改图心自适应、
+证据名加样图前缀、固定图行为不变）评审波改等比相机后 **PROBE OK 8/8**（证据 =
+`docs/evidence/m1a/render_probe_stats_default_terraces_60x40_sample__forwardplus_1280x720.txt`
+；**弱分辨力如实登记**：CHECK-W 水面差分仅 px=2、阈值走银行首报档——生成水体海恒
+water_level=0，海拔 0 海水面 y=(0−0.5)×step 落海床之下不可见，water_geometry_builder
+半档错位公式只在手工 water_level≥1 水体上校准过——T3 侧水面构建器与 T5 生成水位的跨批
+错配，本批不修（越界改 T3 渲染合同），建议登记后续卡）。seed 银行 full 批跑实跑：
+**11/11 通过、全部 first_pass=true**（60×40 组 6/6、24×16 组 5/5，每 seed ~1.3s/0.2s；
+登记会话复跑同结果）；银行失败样例无（11 seed 全过），失败入库面由 NO_VALID_SPAWN
+fixture 承担。**评审结论**：三项 medium 均已实证修复（锚定槽按槽号落位反例复测 PIN_KEPT
+且转正为测试、银行样图探针改等比相机后 PROBE OK 8/8 且弱分辨力已登记、roads 通道等成本
+改道复测 bump 后道路事实可变而确定性/独立性保持），六项 low 全修，门禁复跑 384/0 exit=0
+——放行。**登记会话清整**：删除三份陈旧银行失败样例
+worldfail_default_terraces@24x16_{7,42,7301} 九件（评审修复波前的中间态产物——当前代码下
+该三 seed 均 first_pass=true（本会话 full 复跑证实）、无任何测试/工具引用（grep 证实），
+与「银行失败样例无」的批事实冲突，故不入库）。
+
+**遗留 low（评审登记，一处）**：`tests/fixtures/maps/failed/world/
+worldfail_no_valid_spawn_4x4.meta.json:6` 仍登记 generator_version=3——v4 落地后未重跑
+`tools/make_settlement_fixture.gd`（「同 seed 同模板恒同样本——重跑覆盖落盘」的版本登记
+面）；银行样图已随 v4 重生成、此件未同步（对照 `resources/maps/bank/*.meta.json` 均 =4、
+`scripts/content/world_pipeline.gd:58` GENERATOR_VERSION := 4）。产物数据无漂移（4×4 止步
+hydrology 阶段，v4 改动面不触及；test_no_valid_spawn_fixture 断言 digest 自洽与复现失败，
+门禁 384/0 过）——仅版本登记脱节。
+
+**完成边界（如实）**：表现派生阶段（国界线 mesh）未做——owner/跳变边数据面与派生查询
+（border_links_of）已就绪，首产物留待表现批；「游戏可玩」属 M1b+；测试内 Dijkstra oracle
+用带标记暴力松弛（竞争生长语义 = 扩张只经本方领地，非逐势力独立最短路——曾按独立最短路
+实现致 28 格差异，已纠正）并以 expansionism=[1,1,1] 模板取整数成本消除浮点次序噪声。
+
 **边界声明（照抄方案自身口径）**：T5 完整世界生成挂 M3 门（或主创另立地形里程碑）；
 T6 规则深化沿 03 M3 决策门；M2 资源定稿前 POI 用 role 占位。指标数值（交付率/帧时
 间等）全为候选目标，T0 基线实测前不构成承诺。
