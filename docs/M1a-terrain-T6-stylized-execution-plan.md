@@ -218,6 +218,22 @@ S3 落卡时定是否拆分）、mountain（骨架，S3）、isolated_peak 与 e
 
 ## §8 S6 派系适宜度
 
+> **第一刀完成登记（2026-10-13，施工批次）**：本阶段已按「只做适宜度与候选」
+> 交付前四件——① 适宜度 profile 资源化（`SuitabilityProfile` Resource +
+> `resources/world/suitability/` 两内置 .tres：mountain_preferring /
+> plain_preferring，提案 :144/:145 矮人/人类示例的解耦读法）；② 两阶段选址
+> 纯函数（`SuitabilityGenerator`：硬筛选拒绝具名 AREA_BELOW_MIN /
+> NO_REGION_ACCESS / NO_WATER_IN_RANGE → 评分（地貌偏好 + 可扩展空间 + 水）
+> → 间距贪心与上限，产出 `WorldData.faction_suitability` 事实
+> {profile_id, candidate_sites, qualified_count, rejection_reasons}，缺键合法
+> SCHEMA_VERSION=1 维持）；③ 预览 suitability 视图（TerrainViewData 第六视图
+> ——提案 :239 两类偏好候选标注的正式版，S2 临时标注通道就此取代）；④
+> GENERATOR_VERSION v8 + suitability v1 阶段 + 模板 suitability 组（regions
+> 模板启用、default/legacy 钉死关闭 = 零漂移）。**剩余两件 = 后续批次非目标**：
+> 范围⑤ 聚落阶段 profile 接线（SettlementGenerator 适居度公式不动，候选表
+> 暂无下游消费者——本刀只产事实）与范围④ 开局保证模式（配置入口亦未开——
+> 「开启须进 config_hash」的要求随该批次落字）。
+
 | 项 | 内容 |
 |---|---|
 | **范围** | ① **偏好配置与派系名解耦**（提案 :146、:254）：适宜度 profile 配置（profile_id + 偏好项——地貌偏好/可扩展空间/水资源/资源条件/战略位置），**不把派系名称写进基础地貌生成代码**（提案红线 :146）；配置进模板/独立 Resource（生成器配置不进世界事实——草案 §1.2 边界）。② **两阶段选址**（提案 :150-156）：硬筛选（面积/通达/水/资源必需项全合格才入候选集）→ 适宜度评分 → 间距规则共同决定落点——「高风格分不得覆盖不可用条件」。③ **FactionSuitability 数据面**：profile_id/candidate_sites/rejection_reasons（world_data.gd 扩容，缺键合法）。④ **开局保证模式 = 配置入口默认关**（§10 默认答案③）：开启须进 config_hash（提案 :158「必须进入配置哈希，不能悄悄修改默认地形」）；本批次不实现保证模式的修复循环（拓宽谷地/补山口等留后）。⑤ 与现有 settlement 阶段衔接：适居度筛选扩为 profile 驱动（现 −(h−50)/5 高程带 + 河/海岸加成结构保留为默认 profile），势力归属/出生区锚（WORLD-03）不重开 |
