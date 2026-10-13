@@ -19,6 +19,10 @@
 ##     不换 seed 掩盖——提案 :109）；
 ##   - 通道隔离：isolated_peak 只动峰布点（分区/骨架/格级事实逐字节不变）、
 ##     erosion 开态只进侵蚀阶段（composition 诊断逐字一致）、关态零消耗；
+##   - v9 复审修锚「锥体不移动归一化锚点」：峰高从默认到上限（1000‰）全程
+##     量化图水陆分区逐格不变（局部地标不重画海岸线）+ 生成侧有效平原分母与
+##     S5 校验侧终图口径同源（PEAK_AREA_BUDGET 无跨口径误判）+ 侵蚀后锚点
+##     不变量对账（erosion 诊断 anchors_kept）；
 ##   - TerrainErosion/TerrainComposition 纯函数手算 oracle（强度档/沟壑通道/
 ##     刻蚀/下限钳/回退减半与清零/圆锥核/最小间距换算）。
 ## oracle 原则：期望距离/预算/档位全部手算或 HexMath 原语独立推导；同 seed
@@ -31,6 +35,7 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
 const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 const WorldTemplateClass := preload("res://scripts/core/data/world_template.gd")
+const WorldValidator := preload("res://scripts/content/world_validator.gd")
 const WorldPipeline := preload("res://scripts/content/world_pipeline.gd")
 const Comp := preload("res://scripts/content/terrain_composition.gd")
 const Erosion := preload("res://scripts/content/terrain_erosion.gd")
@@ -275,6 +280,76 @@ func test_s4_erosion_channel_isolation() -> void:
 		expect_eq((y["world"] as WorldDataClass).meta["world_digest"],
 			(x["world"] as WorldDataClass).meta["world_digest"],
 			"侵蚀关态世界事实一致")
+
+# ================= v9 复审修锚：锥体不移动归一化锚点 =================
+
+func test_s4_peak_term_never_redraws_coastline() -> void:
+	# 第四项（锥体）不得移动归一化锚点：峰高从默认 550 到上限 1000 全程，量化图
+	# 水陆分区逐格不变（修复前 seed 999 ph=1000：陆格 2177→2152——锥顶抬全图
+	# h_max、海面阈随之抬升、贴海平原格翻水 = 局部地标无声重画海岸线）；侵蚀两态
+	# 都查（erosion 海面守护同按锚点口径——原口径下两阶段阈值不同源）
+	var t550 := _full()
+	var t1000 := _full()
+	t1000.peak_height = 1000
+	var r550 := WorldPipeline.generate_world(t550, 999)
+	var r1000 := WorldPipeline.generate_world(t1000, 999)
+	expect(r550["ok"] and r1000["ok"], "峰高两档生成应成功（seed 999——复审件复现样本）")
+	if not (r550["ok"] and r1000["ok"]):
+		return
+	var w1000: WorldDataClass = r1000["world"]
+	expect(not w1000.isolated_peaks.is_empty(),
+		"样本图须有孤峰（本锚非零面——零峰图锥体不在场，测不到分母）")
+	var m550: MapDataClass = r550["map"]
+	var m1000: MapDataClass = r1000["map"]
+	var partition_diff := 0
+	for cell in m550.cells():
+		if m550.is_passable(cell) != m1000.is_passable(cell) \
+				or (m550.elevation_at(cell) > 0) != (m1000.elevation_at(cell) > 0):
+			partition_diff += 1
+	expect_eq(partition_diff, 0,
+		"峰高 550↔1000 水陆分区逐格不变（锥体不重画海岸线——v9 锚点口径）")
+	# 侵蚀关态同查（关态锥体直进量化——锚点是唯一的分母来源）
+	var t1000off := _full()
+	t1000off.peak_height = 1000
+	t1000off.erosion_enabled = false
+	var t550off := _full()
+	t550off.erosion_enabled = false
+	var r1000off := WorldPipeline.generate_world(t1000off, 999)
+	var r550off := WorldPipeline.generate_world(t550off, 999)
+	expect(r1000off["ok"] and r550off["ok"], "侵蚀关态两跑应成功")
+	if r1000off["ok"] and r550off["ok"]:
+		var mo550: MapDataClass = r550off["map"]
+		var mo1000: MapDataClass = r1000off["map"]
+		var partition_diff_off := 0
+		for cell in mo550.cells():
+			if mo550.is_passable(cell) != mo1000.is_passable(cell) \
+					or (mo550.elevation_at(cell) > 0) != (mo1000.elevation_at(cell) > 0):
+				partition_diff_off += 1
+		expect_eq(partition_diff_off, 0, "侵蚀关态峰高两档水陆分区逐格不变")
+
+func test_s4_budget_denominator_same_source_with_validator() -> void:
+	# 分母同源锚：composition 侧 effective_plain_cells（叠加前判陆口径）== S5
+	# 校验侧 region_metrics 终图口径——修复前两口径在峰高近上限时漂移（seed 999
+	# ph=1000：636→622），窄平原图上可对构造合法产物误判 PEAK_AREA_BUDGET；
+	# 侵蚀诊断 anchors_kept（锚点不变量对账面）一并断言
+	var t := _full()
+	t.peak_height = 1000
+	var r := WorldPipeline.generate_world(t, 999)
+	expect(r["ok"], "上限峰高生成应成功")
+	if not r["ok"]:
+		return
+	var comp: Dictionary = _stage_of(r["stages"], "composition")
+	var ero: Dictionary = _stage_of(r["stages"], "erosion")
+	var m: Dictionary = WorldValidator.region_metrics(r["map"], r["world"],
+		{"water_terrain_id": T_WATER})
+	var validator_plain := int(m["peaks"]["effective_plain_cells"])
+	expect_eq(int(comp["effective_plain_cells"]), validator_plain,
+		"有效平原分母生成侧 == 校验侧终图口径（同源——预算判罚无跨口径误判）")
+	expect(str(ero["summary"]).contains("anchors_kept=true"),
+		"侵蚀后锚点不变量对账通过（erosion 诊断留痕）")
+	# 机制生效面：峰体在场且侵蚀在场（防锚定空转——零峰/关侵蚀时本测试退化）
+	expect(int(comp["isolated_peak_count"]) > 0, "样本图须有孤峰（非零面）")
+	expect(not ero.get("skipped", false), "样本图侵蚀阶段实做（非跳过）")
 
 # ================= TerrainErosion 纯函数手算 oracle =================
 

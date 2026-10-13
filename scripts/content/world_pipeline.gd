@@ -2,12 +2,15 @@
 ##   docs/M1a-terrain-T2-T5-execution-plan.md §6 WORLD-01 + 主创拍板⑧
 ##   「WORLD 侧按 Azgaar 思路重构」+ 拍板④「不造气候」；T6 S3 增 composition
 ##   阶段 + T6 S4 增 erosion 阶段与孤峰地标项 + T6 S5 playability 阶段接入
-##   区域验收面——docs/M1a-terrain-T6-stylized-execution-plan.md §2.1/§5/§6/§7）
-## 职责：Azgaar 管线骨架的**去气候十一阶段**编排——配置校验 → 地理骨架（双噪声）→
+##   区域验收面 + T6 S6 第一刀增 suitability 阶段（派系适宜度与候选落点）
+##   ——docs/M1a-terrain-T6-stylized-execution-plan.md §2.1/§5/§6/§7/§8）
+## 职责：Azgaar 管线骨架的**去气候十二阶段**编排——配置校验 → 地理骨架（双噪声）→
 ##   **地貌构图（T6 S3 regions 路线：宏观分区 + 骨架 + 连续高度混合 + T6 S4 孤峰
 ##   地标第四项；模板选 dual_noise 时跳过 = 既有路线零漂移）→ 选择性侵蚀
 ##   （T6 S4：连续高度外观细化 + 复查回退；模板可关、regions 路线专属）** →
 ##   地貌整形（量化）→ 河网与水体（WORLD-02 河口反向生长，消费侵蚀后最终事实）
+##   → **派系适宜度（T6 S6 第一刀：与派系名解耦的 profile 两阶段候选选址——
+##   硬筛选拒绝具名 + 评分/间距；零随机消耗；聚落消费本表 = 后续批次不接线）**
 ##   → 聚落与占点（WORLD-03 SettlementGenerator；出生落点避让孤峰影响域）→
 ##   势力归属（WORLD-03 多源 Dijkstra + normalize）→ 道路骨架（WORLD-05 MST +
 ##   桥址搜索 + 加路重验）→ 可玩校验（WorldValidator 结构化错误报告——WORLD-04
@@ -21,7 +24,7 @@
 ##   geography 先例）。
 ## 三条入口：
 ##   - generate_legacy(params)：MapGenerator 旧单遍直行代码的**退化特例**
-##     （噪声地理骨架 + 量化 + 可玩校验三段实做，其余六段按模板跳过）——
+##     （噪声地理骨架 + 量化 + 可玩校验三段实做，其余九段按模板跳过）——
 ##     行为不变：同 seed 同参数逐格同图（tests/test_world_pipeline.gd 独立
 ##     oracle 锚 + tests/test_map_source.gd 既有复现锚）；
 ##   - generate_world(template, seed, channel_overrides, repair_ctx)：九阶段
@@ -37,7 +40,9 @@
 ##   + T6 S4 侵蚀通道 erosion（biome 通道删除——拍板④）；**通道互相独立**：新增
 ##   一棵树（decoration）不消耗前面阶段 RNG（测试锚）；isolated_peak 通道 S3 零
 ##   消耗、S4 起由孤峰布点消耗；erosion 通道由沟壑场 seed 派生消耗（侵蚀关 =
-##   零消耗回退态）；连续场另有多噪声——高度场 seed =
+##   零消耗回退态）；suitability 阶段零随机消耗（poi 通道声明不消耗——
+##   settlement 族，提案 :221 八通道无独立适宜度通道；「改派系显示/名单配置
+##   不改基础地形与水系校验值」的机器面）；连续场另有多噪声——高度场 seed =
 ##   params.seed、植被/地表掩码场 seed+VEGETATION_SEED_OFFSET、细节场（regions
 ##   路线）seed+TerrainComposition.DETAIL_FIELD_SEED_OFFSET、沟壑场（erosion 阶段）
 ##   erosion 通道 seed+TerrainErosion.EROSION_FIELD_SEED_OFFSET
@@ -62,6 +67,7 @@ const RoadGenClass := preload("res://scripts/content/road_network_generator.gd")
 const WorldValidatorClass := preload("res://scripts/content/world_validator.gd")
 const CompositionClass := preload("res://scripts/content/terrain_composition.gd")
 const ErosionClass := preload("res://scripts/content/terrain_erosion.gd")
+const SuitabilityGenClass := preload("res://scripts/content/suitability_generator.gd")
 
 ## 生成器版本：管线步骤、分类表、参数语义任一变更时 +1（meta 落盘，复现口径
 ## 的锚）。v2 = WORLD-01 管线化（单遍 → 九阶段退化特例）+ 湿度通道改名
@@ -86,8 +92,24 @@ const ErosionClass := preload("res://scripts/content/terrain_erosion.gd")
 ## + region_metrics 结构化诊断——占比/连通片/谷地面积同 seed 可 diff）——
 ## **dual_noise/legacy 路线逐格输出与校验报告零漂移**（区域事实恒空 → 区域
 ## 检查零触发；报告键集不变）；regions 模板同 seed 校验报告较 v6 属新能力面；
-## config_digest 键集随模板 S5 验收组扩容。
-const GENERATOR_VERSION := 7
+## config_digest 键集随模板 S5 验收组扩容；v8 = T6 S6 第一刀（派系适宜度与
+## 候选落点：STAGES 增 suitability 阶段（hydrology 与 settlement 之间——提案
+## :54-55 主线序「合法排水河湖 → 派系适宜度与候选落点 → 聚落」）+ WorldData
+## faction_suitability 事实 + 模板 suitability 组（SuitabilityProfile 子资源）+
+## SuitabilityGenerator 两阶段选址纯函数（零随机消耗，通道面 = poi 声明不消耗
+## ——settlement 族，提案 :221 八通道无独立适宜度通道）——**dual_noise/legacy
+## 路线逐格输出与阶段诊断零漂移**（默认/legacy 模板阶段跳过、事实恒空；
+## regions 模板新增 faction_suitability 事实 = 新能力面）；config_digest 键集
+## 随模板 S6 组扩容；v9 = T6 S4 复审修「锥体不移动归一化锚点」（composition
+## 产物新增 field_min/field_max = 前三项极值锚点，管线 h_min/h_max 改消费锚点
+## 而非叠加锥体后重算——原口径下峰高近上限时锥顶抬高全图 h_max、量化海面阈
+## 随之抬升，贴海平原格翻水 = 局部地标无声重画海岸线，且生成侧预算分母
+## （叠加前判陆）与 S5 校验侧分母（最终量化图判陆）不同源，窄平原图可对构造
+## 合法产物误判 PEAK_AREA_BUDGET；erosion 阶段极值重算改锚点不变量对账，违者
+## 具名失败）——**dual_noise/legacy 路线逐格输出与阶段诊断零漂移**（composition/
+## erosion 跳过、锚点仍来自 geography 场重算路径不变）；regions 模板同 seed
+## 量化图仅在锥顶超出前三项 max 的图上变化（锥顶改由 clampi 收顶档）。
+const GENERATOR_VERSION := 9
 
 ## 植被/地表掩码场 seed 偏移（与高度场同 seed 时错开通道；值 = 旧
 ## MOISTURE_SEED_OFFSET 原样继承——改名不改值，通道输出不漂移；写死常量
@@ -112,12 +134,15 @@ const TERRAIN_FOREST := 5
 const VEGETATION_FOREST_THRESHOLD := 0.60
 const VEGETATION_MUD_THRESHOLD := 0.70
 
-## 十一阶段固定序（执行顺序即依赖图——Azgaar 可定位性正面纪律的沿用；顺序是
+## 十二阶段固定序（执行顺序即依赖图——Azgaar 可定位性正面纪律的沿用；顺序是
 ## 合同：后段消费前段产出，测试锚定顺序不可变。v5 增 composition 于 geography
 ## 与 quantize 之间——regions 路线在连续域完成「分区 → 骨架 → 权重混合」后再
 ## 交量化；v6 增 erosion 于 composition 与 quantize 之间——提案 :46-57 主线序
 ## 「连续高度 → 选择性侵蚀 → 六边形投影」的落位（侵蚀作用于连续高度、可改变
-## 量化结果；下游水系/聚落消费侵蚀后的最终事实））
+## 量化结果；下游水系/聚落消费侵蚀后的最终事实）；v8 增 suitability 于
+## hydrology 与 settlement 之间——提案 :53-55 主线序「合法排水、河湖 → 派系
+## 适宜度与候选落点 → 聚落、道路」的落位（适宜度消费量化后地形 + 水系事实，
+## 产出候选供后续聚落批次消费——本刀不接线））
 const STAGES: Array[String] = [
 	"config",        # ① 配置校验（模板 × 参数硬边界 + 冲突全列）
 	"geography",     # ② 地理骨架（双噪声连续场采样——两路线共用的基础/细节源）
@@ -125,11 +150,12 @@ const STAGES: Array[String] = [
 	"erosion",       # ④ 选择性侵蚀（T6 S4：连续高度外观细化+复查回退；regions 路线专属、模板可关）
 	"quantize",      # ⑤ 地貌整形（归一化 → 量化整数高程 → 地表分类 → 写 MapData）
 	"hydrology",     # ⑥ 河网与水体（WORLD-02 河口反向生长；模板可关；消费侵蚀后事实）
-	"settlement",    # ⑦ 聚落与占点（WORLD-03 实做；模板可关；出生落点避让孤峰影响域）
-	"allegiance",    # ⑧ 势力归属（WORLD-03 实做；模板可关）
-	"roads",         # ⑨ 道路骨架（WORLD-05 实做；模板可关）
-	"playability",   # ⑩ 可玩校验（连通性 + WorldValidator 结构化报告——WORLD-04）
-	"presentation",  # ⑪ 表现派生（未解锁——首产物随国界线 mesh）
+	"suitability",   # ⑦ 派系适宜度（T6 S6 第一刀：两阶段候选选址；regions 路线/模板可关；零随机消耗）
+	"settlement",    # ⑧ 聚落与占点（WORLD-03 实做；模板可关；出生落点避让孤峰影响域）
+	"allegiance",    # ⑨ 势力归属（WORLD-03 实做；模板可关）
+	"roads",         # ⑩ 道路骨架（WORLD-05 实做；模板可关）
+	"playability",   # ⑪ 可玩校验（连通性 + WorldValidator 结构化报告——WORLD-04）
+	"presentation",  # ⑫ 表现派生（未解锁——首产物随国界线 mesh）
 ]
 
 ## 阶段版本（独立于 GENERATOR_VERSION 的逐阶段算法版本——阶段输出规范序摘要
@@ -141,11 +167,17 @@ const STAGES: Array[String] = [
 ## + WorldData.isolated_peaks 事实）；erosion v1 = T6 S4 首落（TerrainErosion
 ## 三件：区域强度/刻蚀/复查回退）；playability v3 = T6 S5 区域验收面接入
 ## （模板 regions 验收子组 → 区域检查码 + region_metrics 结构化诊断——判罚与
-## 诊断同源于 WorldValidator.region_metrics 单次计算）
+## 诊断同源于 WorldValidator.region_metrics 单次计算）；suitability v1 = T6 S6
+## 第一刀（SuitabilityGenerator 两阶段选址：硬筛选拒绝计数 + 三项加权评分 +
+## 间距贪心——profile 参数进模板 config_digest）；composition v3 / erosion v2 =
+## T6 S4 复审修「锥体不移动归一化锚点」（composition 产物新增 field_min/
+## field_max 锚点键；erosion 输入合同改锚点口径——海面阈/海岸带档/land_cells
+## 计量随之同源，阶段收尾由极值重算改锚点不变量对账——锥顶超锚点的图上侵蚀
+## 输出可变，故两阶段各 +1）
 const STAGE_VERSIONS := {
-	"config": 1, "geography": 1, "composition": 2, "erosion": 1, "quantize": 1,
-	"hydrology": 1, "settlement": 1, "allegiance": 1, "roads": 2, "playability": 3,
-	"presentation": 1,
+	"config": 1, "geography": 1, "composition": 3, "erosion": 2, "quantize": 1,
+	"hydrology": 1, "suitability": 1, "settlement": 1, "allegiance": 1, "roads": 2,
+	"playability": 3, "presentation": 1,
 }
 
 ## 具名随机通道（提案随机性纪律：通道互相独立——「新增一棵树不消耗前面
@@ -178,12 +210,16 @@ const CHANNEL_SEED_OFFSETS := {
 ## 改道**（并列重挂——roads_reconnect 修复重跑的实现载体，v4 起）；
 ## composition 声明主通道 region（layout/region/mountain/isolated_peak 四通道
 ## 在阶段内各管一步——通道隔离的分步锚面，见 _stage_composition）；
-## erosion 声明 erosion 通道（沟壑场 seed 的派生源——rng 对象不消耗））
+## erosion 声明 erosion 通道（沟壑场 seed 的派生源——rng 对象不消耗）；
+## suitability 声明 poi 通道（settlement 族——提案 :221 八通道无独立适宜度
+## 通道；本阶段**零随机消耗**，通道传入仅为签名统一；若后续选址引入随机须
+## 开具名通道沿 CHANNEL_SEED_OFFSETS 追加纪律）
 const STAGE_CHANNEL := {
 	"config": "geography", "geography": "geography", "composition": "region",
 	"erosion": "erosion",
 	"quantize": "geography",
-	"hydrology": "hydrology", "settlement": "poi", "allegiance": "poi",
+	"hydrology": "hydrology", "suitability": "poi",
+	"settlement": "poi", "allegiance": "poi",
 	"roads": "roads", "playability": "geography", "presentation": "decoration",
 }
 
@@ -263,11 +299,12 @@ static func generate_validated(template: WorldTemplateClass, seed_value: int,
 			# 三个生成阶段的失败可修复（换出生候选带/重连道路/重画河段——卡表
 			# 修复动作面）；config/地理/构图/侵蚀/量化/校验段失败 = 确定性错误，
 			# 重试无意义即返（composition/erosion 失败 = 分区/骨架/侵蚀确定性
-			# 失败——v6 起同列）
+			# 失败——v6 起同列；suitability 失败 = 配置/profile 确定性错误——v8
+			# 起同列，本刀阶段无失败路径）
 			var failed_stage := _failed_stage_of(r)
 			if failed_stage == "" or failed_stage == "config" or failed_stage == "geography" \
 					or failed_stage == "composition" or failed_stage == "erosion" \
-					or failed_stage == "quantize" \
+					or failed_stage == "quantize" or failed_stage == "suitability" \
 					or failed_stage == "playability":
 				r["attempts_trace"] = trace
 				r["repair_actions"] = actions.duplicate()
@@ -512,6 +549,13 @@ static func _run_stage(stage_name: String, state: GenState,
 			if not state.template.hydrology_enabled:
 				return _skip(stage_name, "模板未启用水系阶段（无河世界合法态——WorldData 对应集合恒空）")
 			return _stage_hydrology(state, channels[STAGE_CHANNEL[stage_name]])
+		"suitability":
+			if not state.template.suitability_enabled:
+				return _skip(stage_name, "模板未启用派系适宜度阶段（faction_suitability 恒空——无候选世界合法态，T6 S6）")
+			if state.world.terrain_regions.is_empty():
+				return _skip(stage_name, "区域事实为空（terrain_route=%s——适宜度消费分区/权重场事实，regions 路线才产；跳过 = 零漂移）"
+					% state.template.terrain_route)
+			return _stage_suitability(state, channels[STAGE_CHANNEL[stage_name]])
 		"settlement":
 			if not state.template.settlement_enabled:
 				return _skip(stage_name, "模板未启用聚落阶段（无 POI 世界合法态——WorldData.pois 恒空）")
@@ -664,12 +708,14 @@ static func _stage_composition(state: GenState, channels: Dictionary) -> Diction
 			"diagnostics": {"stage": "composition",
 			"version": STAGE_VERSIONS["composition"],
 			"summary": "failed：%s" % result["error"]}}
+	# 归一化锚点 = composition 前三项极值（field_min/field_max——叠加锥体前）：
+	# **不以叠加后的场重算**。若按含锥顶的场取 h_max，量化海面阈（绝对值）随峰高
+	# 抬升、贴海平原格翻水——「局部地标无声重画海岸线」，且生成侧预算分母与 S5
+	# 校验侧分母（最终量化图口径）不同源（v9 复审修）。锥顶 n>1 由 quantize 的
+	# clampi 收顶档（岩）——地标穿云合法，分母不动。
 	state.heights = result["heights"]
-	state.h_min = INF
-	state.h_max = -INF
-	for v in state.heights:
-		state.h_min = minf(state.h_min, v)
-		state.h_max = maxf(state.h_max, v)
+	state.h_min = float(result["field_min"])
+	state.h_max = float(result["field_max"])
 	var regions: Array[WorldDataClass.TerrainRegion] = []
 	for rg in result["regions"]:
 		regions.append(rg)
@@ -708,6 +754,9 @@ static func _stage_composition(state: GenState, channels: Dictionary) -> Diction
 		"boundary_max_delta": float(stats["boundary_max_delta"]),
 		"max_neighbor_delta": float(stats["max_neighbor_delta"]),
 		"isolated_peak_count": int(stats["peaks"]),
+		# 有效平原分母（生成侧判陆口径——v9 起与 S5 校验侧终图口径同源，
+		# tests 锚「分母同源」断言取数处）
+		"effective_plain_cells": int(stats["effective_plain_cells"]),
 	}}
 
 
@@ -717,8 +766,11 @@ static func _stage_composition(state: GenState, channels: Dictionary) -> Diction
 ## （起伏/水陆/坡度三面确定性减弱/回退，诊断留痕）。随机源 = erosion 通道 seed
 ## 派生的沟壑连续场（**取自通道 rng 对象的 seed 值**——override 经通道对象
 ## 生效，与阶段通道面一致；rng 序列本身不消耗，geography「通道传入仅为签名
-## 统一」先例）。产物覆写 GenState.heights；h_min/h_max 理论不变
-## （极值格不侵蚀的构造保证）但仍重算（防御性对账，成本一次线性扫）。
+## 统一」先例）。产物覆写 GenState.heights；h_min/h_max = composition 前三项
+## 极值锚点（v9：**不随侵蚀重算**——重算会把锥顶收入分母、破坏「锥体不重画
+## 海岸线」；erode 的海面守护/海岸带档改按锚点口径，与布点判陆、quantize
+## 投影同源）。收尾做锚点不变量对账（场 min 恰为锚点 min、场 max ≥ 锚点 max
+## ——构造保证：极值格强度恒 0；违者具名失败，见函数体）。
 ## **只承担外观细化、不提供权威河流**（提案 :102）——下游 hydrology 照常消费
 ## 侵蚀后的最终事实。
 static func _stage_erosion(state: GenState, rng: RandomNumberGenerator) -> Dictionary:
@@ -740,21 +792,33 @@ static func _stage_erosion(state: GenState, rng: RandomNumberGenerator) -> Dicti
 		return {"ok": false, "error": "选择性侵蚀失败：%s" % result["error"],
 			"diagnostics": {"stage": "erosion", "version": STAGE_VERSIONS["erosion"],
 			"summary": "failed：%s" % result["error"]}}
+	# 锚点不变量对账（v9：state.h_min/h_max = composition 前三项极值，**侵蚀后
+	# 不重算**——重算会把锥顶收入分母、破坏「锥体不重画海岸线」的三处同源）。
+	# 构造保证：极值格（含前三项 min/max 两格）强度恒 0 不被刻蚀、刻蚀只降不升
+	# ⇒ 场 min 恰为锚点 min、场 max ≥ 锚点 max（锥顶可超，量化 clampi 收顶档）。
+	# 违者 = 生成器 bug，具名失败不静默放行（hydrology post_quantum_valid 同款
+	# 「构造已保证合法，此处失败即 bug」先例——不再以重算吞掉漂移）。
 	var pre_min := state.h_min
 	var pre_max := state.h_max
 	state.heights = result["heights"]
-	state.h_min = INF
-	state.h_max = -INF
+	var field_min := INF
+	var field_max := -INF
 	for v in state.heights:
-		state.h_min = minf(state.h_min, v)
-		state.h_max = maxf(state.h_max, v)
+		field_min = minf(field_min, v)
+		field_max = maxf(field_max, v)
+	if absf(field_min - pre_min) > 1e-6 or field_max < pre_max - 1e-6:
+		return {"ok": false, "error": "侵蚀后极值不变量破坏：场 [%s,%s] 越出锚点 [%s,%s]"
+			% [str(field_min), str(field_max), str(pre_min), str(pre_max)],
+			"diagnostics": {"stage": "erosion", "version": STAGE_VERSIONS["erosion"],
+			"summary": "invariant_broken：field=[%s,%s] anchors=[%s,%s]"
+				% [str(field_min), str(field_max), str(pre_min), str(pre_max)]}}
 	var stats: Dictionary = result["stats"]
 	return {"ok": true, "error": "", "diagnostics": {
 		"stage": "erosion", "version": STAGE_VERSIONS["erosion"],
-		"summary": "carved=%d/%dland weaken=%d rollback=%d violations=%d range_kept=%s maxstep=%.3f" % [
+		"summary": "carved=%d/%dland weaken=%d rollback=%d violations=%d anchors_kept=%s maxstep=%.3f" % [
 			stats["carved_cells"], stats["land_cells"], stats["weakened_cells"],
 			stats["rollback_cells"], stats["post_violations"],
-			str(absf(state.h_min - pre_min) < 1e-6 and absf(state.h_max - pre_max) < 1e-6),
+			str(absf(field_min - pre_min) < 1e-6 and field_max >= pre_max - 1e-6),
 			stats["max_delta"]],
 		# 结构化键（tests 消费面：复查回退留痕断言取数处）
 		"post_violations": int(stats["post_violations"]),
@@ -869,7 +933,70 @@ static func _stage_hydrology(state: GenState, rng: RandomNumberGenerator) -> Dic
 	}}
 
 
-# ---------------- ⑦ 聚落与占点（WORLD-03）----------------
+# ---------------- ⑦ 派系适宜度（T6 S6 第一刀）----------------
+
+## SuitabilityGenerator.evaluate_profiles：模板 profile 清单逐项两阶段选址（硬
+## 筛选 → 评分/间距），产物直接落 WorldData.faction_suitability（事实面：
+## profile_id/候选锚+千分分数/qualified_count/拒绝原因计数）。**零随机消耗**
+## （poi 通道传入仅为签名统一——确定性算法；「改派系显示/名单配置不改基础
+## 地形与水系」的机器面：本阶段只读地形/水系事实，地形各阶段不读 profile）。
+## **事实自检**：组装后全量 world.validate（hydrology post_quantum 先例——适宜度
+## 是 hydrology 二次验证之后才产事实的第一个事实族，无该自检则回归只靠单测；
+## 构造已保证合法，此处失败即生成器 bug，具名失败不静默放行）。
+## **无合格候选不是阶段失败**——空候选 + rejection_reasons 是合法产出（默认
+## 模式「没有合格候选时返回明确失败原因」，提案 :162；开局保证模式 = 后续
+## 批次；除事实自检的生成器 bug 面外无失败路径）。聚落/道路不消费本表
+## （接线 = 后续批次）。
+static func _stage_suitability(state: GenState, _rng: RandomNumberGenerator) -> Dictionary:
+	var result := SuitabilityGenClass.evaluate_profiles(state.map, state.world,
+		state.template.suitability_profiles, {
+			"water_terrain_id": TERRAIN_WATER,
+		})
+	if not result["ok"]:
+		return {"ok": false, "error": "派系适宜度失败：%s" % result["error"],
+			"diagnostics": {"stage": "suitability",
+			"version": STAGE_VERSIONS["suitability"],
+			"summary": "failed：%s" % result["error"]}}
+	var facts: Array[WorldDataClass.FactionSuitability] = []
+	for fs in result["results"]:
+		facts.append(fs)
+	state.world.faction_suitability = facts
+	# 事实自检（全量 validate——含本阶段新落的事实面；阈值面未启用 = -1 不查，
+	# 与 hydrology post_quantum 同参口径）
+	var verdict := state.world.validate(state.map, TERRAIN_WATER, -1, -1)
+	if verdict != "":
+		return {"ok": false, "error": "适宜度事实自检失败：%s" % verdict,
+			"diagnostics": {"stage": "suitability",
+			"version": STAGE_VERSIONS["suitability"],
+			"summary": "post_fact_invalid：%s" % verdict}}
+	var stats: Dictionary = result["stats"]
+	var profiles_line := PackedStringArray()
+	var results_stats: Array = []
+	var candidates_stats: Array = stats["candidates"]
+	var qualified_stats: Array = stats["qualified"]
+	var rejection_stats: Array = stats["rejections"]
+	for k in facts.size():
+		var fs := facts[k]
+		profiles_line.append("%s:%d/%d" % [fs.profile_id, (candidates_stats[k] as int),
+			(qualified_stats[k] as int)])
+		results_stats.append({
+			"profile_id": fs.profile_id,
+			"candidates": int(candidates_stats[k]),
+			"qualified": int(qualified_stats[k]),
+			"rejections": (rejection_stats[k] as Dictionary).duplicate(),
+		})
+	return {"ok": true, "error": "", "diagnostics": {
+		"stage": "suitability", "version": STAGE_VERSIONS["suitability"],
+		"summary": "profiles=%d candidates/qualified=[%s]" % [facts.size(), ",".join(profiles_line)],
+		# 结构化键（tests 消费面：逐 profile 候选/合格/拒绝计数——与 hydrology 段
+		# post_quantum_valid 同款「摘要串 + 结构化键」先例；post_fact_valid = 事实
+		# 自检通过面，tests 断言取数处）
+		"profile_results": results_stats,
+		"post_fact_valid": true,
+	}}
+
+
+# ---------------- ⑧ 聚落与占点（WORLD-03）----------------
 
 ## SettlementGenerator.place_settlements：适居度前列带偏置抽取 + 最小环距 +
 ## 7 格落兵区 + 资源占位。随机消耗 = poi 通道（偏置抽取唯一消耗点——通道独立
@@ -950,7 +1077,7 @@ static func _cell_of_id(map: MapDataClass, id: int) -> Vector2i:
 	return Hex.axial_of(Vector2i(id % map.width, id / map.width))
 
 
-# ---------------- ⑧ 势力归属（WORLD-03）----------------
+# ---------------- ⑨ 势力归属（WORLD-03）----------------
 
 ## SettlementGenerator.grow_states：主城多源 Dijkstra（§7 states 版成本表 +
 ## 河界加成）+ normalize 多数滤波。确定性阶段（无随机消耗）；水格恒中立。
@@ -988,7 +1115,7 @@ static func _stage_allegiance(state: GenState, _rng: RandomNumberGenerator) -> D
 	}}
 
 
-# ---------------- ⑨ 道路骨架（WORLD-05）----------------
+# ---------------- ⑩ 道路骨架（WORLD-05）----------------
 
 ## RoadNetworkGenerator：聚落图 MST + 桥址搜索 + 可选回路（每次加路后全量重验
 ## 在生成器内部逐路执行）。随机消耗 = roads 通道（等成本改道并列——v4 起的唯一
@@ -1031,7 +1158,7 @@ static func _stage_roads(state: GenState, rng: RandomNumberGenerator) -> Diction
 	}}
 
 
-# ---------------- ⑩ 可玩校验（WORLD-04）----------------
+# ---------------- ⑪ 可玩校验（WORLD-04）----------------
 
 ## 可玩校验 = MapConnectivity 连通性（旧行为继承——断路/孤岛只进报告）+
 ## WorldValidator 结构化报告（WORLD-04 落码：错误 {code, cell_ids, link_ids,

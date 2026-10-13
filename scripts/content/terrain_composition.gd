@@ -93,6 +93,8 @@ const EFFECTIVE_PLAIN_WEIGHT_MAX := 0.30
 ##   "cell_regions": Array[int]（行长，-1 不出现——regions 路线全覆盖）,
 ##   "cell_mountain_weights": Array[int]（千分整数 0..1000）,
 ##   "heights": PackedFloat32Array（混合后连续高度——quantize 的唯一输入）,
+##   "field_min"/"field_max": float（归一化锚点 = 前三项极值——叠加锥体前；
+##     管线 h_min/h_max 权威来源，第四项不回写分母，见 ④ 段）,
 ##   "stats": {结构统计 + 连续场邻差诊断（max_neighbor_delta /
 ##     boundary_max_delta——「过渡带无阶跃」的留证面）+ 孤峰统计}}
 static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
@@ -148,7 +150,13 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 		mix_min = minf(mix_min, v)
 		mix_max = maxf(mix_max, v)
 
-	# ④ 孤峰地标（S4：表达式第四项——布点消耗 isolated_peak 通道）
+	# ④ 孤峰地标（S4：表达式第四项——布点消耗 isolated_peak 通道）。**归一化锚点
+	#   = 前三项极值（field_min/field_max），第四项叠加后不得回写分母**：锥体是
+	#   局部地标（提案 :74-82），若锥顶计入 h_max 则量化海面阈（绝对值）随峰高
+	#   抬升、贴海平原格翻水——「局部地标无声重画海岸线」，且生成侧预算分母
+	#   （本函数判陆口径）与 S5 校验侧分母（最终量化图口径）不同源，窄平原图上
+	#   可对构造合法的产物误判 PEAK_AREA_BUDGET。锚点交给管线（erosion 海面守护
+	#   与 quantize 投影同源消费——复审修，GENERATOR_VERSION v9）。
 	var peak_result := place_isolated_peaks(map, heights, mix_min, mix_max,
 		weight_mountains, cell_region, {
 			"ranges": skel["ranges"],
@@ -191,6 +199,12 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 		"cell_regions": cell_region,
 		"cell_mountain_weights": cell_mountain_weights,
 		"heights": heights,
+		# 归一化锚点（前三项极值——叠加锥体前的 mix_min/mix_max）：管线 h_min/h_max
+		# 的权威来源。锥顶可超出 field_max（量化 n>1 → clampi 顶档），但**分母不含
+		# 锥顶**——海面阈三处同源（布点判陆/erosion 守护/quantize 投影），锥体不
+		# 重画海岸线（v9 复审修；见上方 ④ 段头注）
+		"field_min": mix_min,
+		"field_max": mix_max,
 		"stats": {
 			"region_count": regions.size(),
 			"mountain_regions": part["mountain_region_count"],

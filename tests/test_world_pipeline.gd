@@ -53,6 +53,28 @@
 ##     诊断——**dual_noise/legacy 逐格输出与校验报告零漂移**（区域事实恒空 →
 ##     区域检查零触发）的登记面）；config_digest 键集随模板 S5 验收组扩容；
 ##   - playability 阶段版本 2 → 3（阶段算法细粒度锚，test_stage_order 断言扩）。
+## **T6 S6 合同变更登记（2026-10-13 第一刀，v8）**——按新合同显式更新既有断言（未删测试）：
+##   - 阶段序：十一阶段 → **十二阶段**（suitability 插入 hydrology 与 settlement
+##     之间——提案 :53-55 主线序「合法排水河湖 → 派系适宜度与候选落点 → 聚落」），
+##     eleven→twelve 更名；suitability v1 首落（SuitabilityGenerator 两阶段选址：
+##     零随机消耗，poi 通道声明不消耗）；
+##   - 默认模板诊断：skipped 段 3 → 4（+ 默认模板 suitability_enabled=false 跳过）；
+##   - GENERATOR_VERSION：7 → 8（v8 = 派系适宜度与候选落点：WorldData.
+##     faction_suitability 事实 + 模板 suitability 组（SuitabilityProfile 子资源，
+##     进 config_digest）+ regions 模板启用两内置 profile——**dual_noise/legacy
+##     逐格输出与既有事实零漂移**（阶段跳过、事实恒空）的登记面）；
+##   - 行为面锚（生成/资源/视图）在 tests/test_world_suitability.gd 与
+##     test_terrain_view_data.gd（本文件只锚管线合同面）。
+## **T6 S4 复审修合同变更登记（2026-10-13，v9）**——按新合同显式更新既有断言（未删测试）：
+##   - GENERATOR_VERSION：8 → 9（v9 = 锥体不移动归一化锚点：composition 产物增
+##     field_min/field_max（前三项极值锚点），管线 h_min/h_max 改消费锚点而非
+##     叠加锥体后重算——修复「峰高近上限时锥顶抬全图 h_max → 量化海面阈抬升 →
+##     贴海平原格翻水（局部地标无声重画海岸线）」与「生成侧预算分母（叠加前
+##     判陆）≠ S5 校验侧分母（终图判陆）」两缺陷（复审件 medium，行为锚在
+##     tests/test_terrain_s4.gd 两新用例）；dual_noise/legacy 逐格输出零漂移
+##     （composition/erosion 跳过、锚点仍来自 geography 场重算——登记面）；
+##   - 阶段版本：composition 2 → 3（产物键扩容）/ erosion 1 → 2（输入合同改
+##     锚点口径 + 收尾改锚点不变量对账——锥顶超锚点的图上侵蚀输出可变）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -79,23 +101,26 @@ const T_FOREST := 5
 
 # ================= 九阶段序 + 阶段版本 + 具名通道（WORLD-01 ①④）=================
 
-func test_stage_order_eleven_stages_fixed() -> void:
-	# Azgaar 去气候十一阶段（拍板⑧ + T6 v5 增 composition + v6 增 erosion）：配置→
-	# 地理→地貌构图（regions 路线）→选择性侵蚀（S4）→量化→河网水体→聚落→势力→
-	# 道路→可玩校验→表现派生——执行顺序即依赖图，顺序是合同
-	#（~~十阶段~~ T6 S4 合同变更登记，见文件头注）
+func test_stage_order_twelve_stages_fixed() -> void:
+	# Azgaar 去气候十二阶段（拍板⑧ + T6 v5 增 composition + v6 增 erosion + v8 增
+	# suitability）：配置→地理→地貌构图（regions 路线）→选择性侵蚀（S4）→量化→
+	# 河网水体→**派系适宜度（S6 第一刀）**→聚落→势力→道路→可玩校验→表现派生
+	# ——执行顺序即依赖图，顺序是合同（~~十一阶段~~ T6 S6 合同变更登记，见文件头注）
 	var want: Array[String] = ["config", "geography", "composition", "erosion",
-		"quantize", "hydrology", "settlement", "allegiance", "roads", "playability",
-		"presentation"]
-	expect_eq(WorldPipeline.STAGES, want, "十一阶段固定序（v6：erosion 插入 composition 与 quantize 之间——连续域侵蚀先于量化投影，提案 :46-57）")
+		"quantize", "hydrology", "suitability", "settlement", "allegiance", "roads",
+		"playability", "presentation"]
+	expect_eq(WorldPipeline.STAGES, want, "十二阶段固定序（v8：suitability 插入 hydrology 与 settlement 之间——提案 :53-55 主线序「河湖 → 派系适宜度 → 聚落」）")
 	for stage_name in want:
 		expect(WorldPipeline.STAGE_VERSIONS.has(stage_name), "阶段版本表缺 %s" % stage_name)
 		expect(int(WorldPipeline.STAGE_VERSIONS[stage_name]) >= 1, "阶段 %s 版本 ≥1" % stage_name)
-	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 2,
-		"composition v2（S4 孤峰地标第四项——阶段算法变更的细粒度锚）")
-	expect_eq(int(WorldPipeline.STAGE_VERSIONS["erosion"]), 1, "erosion v1（S4 首落）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 3,
+		"composition v3（v9 复审修：产物新增 field_min/field_max 归一化锚点键——锥体不回写分母）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["erosion"]), 2,
+		"erosion v2（v9 复审修：输入合同改锚点口径 + 收尾改锚点不变量对账）")
 	expect_eq(int(WorldPipeline.STAGE_VERSIONS["playability"]), 3,
 		"playability v3（S5 区域验收面接入——模板 regions 验收组 → 区域检查码 + region_metrics 诊断）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["suitability"]), 1,
+		"suitability v1（S6 第一刀：两阶段候选选址——阶段算法细粒度锚）")
 
 func test_named_channels_independent_seeds() -> void:
 	# 十具名通道（geography/hydrology/poi/roads/decoration + T6 追加 layout/region/
@@ -129,7 +154,7 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 	if not w["ok"]:
 		return
 	var stages: Array = w["stages"]
-	expect_eq(stages.size(), 11, "诊断数 = 十一阶段（v6）")
+	expect_eq(stages.size(), 12, "诊断数 = 十二阶段（v8）")
 	var skipped_count := 0
 	for d in stages:
 		var diag: Dictionary = d
@@ -142,8 +167,8 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 				"跳过段 %s 须带原因（空集合合法的显式面）" % diag["stage"])
 	# 默认模板 = dual_noise 路线（默认值不变 = 现有模板行为零漂移）：恒跳过段 =
 	# 表现派生 + dual_noise 路线下的 composition + dual_noise 路线下的 erosion
-	#（~~2~~ T6 S4 合同变更登记，见头注）
-	expect_eq(skipped_count, 3, "未选用/未解锁阶段数（presentation + dual_noise 下 composition/erosion）")
+	# + 默认关停的 suitability（~~3~~ T6 S6 合同变更登记，见头注）
+	expect_eq(skipped_count, 4, "未选用/未解锁阶段数（presentation + dual_noise 下 composition/erosion + 未启用 suitability）")
 	var comp_diag: Variant = _stage_of(stages, "composition")
 	expect(comp_diag != null and comp_diag.get("skipped", false),
 		"dual_noise 默认模板 composition 跳过（不产伪字段——regions 事实集合恒空）")
@@ -154,6 +179,11 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 		"dual_noise 默认模板 erosion 跳过（regions 路线专属——不产伪字段）")
 	expect(String(ero_diag.get("reason", "")).contains("regions"),
 		"erosion 跳过原因具名路线（got %s）" % str(ero_diag.get("reason", "")))
+	var suit_diag: Variant = _stage_of(stages, "suitability")
+	expect(suit_diag != null and suit_diag.get("skipped", false),
+		"默认模板 suitability 跳过（suitability_enabled=false——不产伪字段）")
+	expect(String(suit_diag.get("reason", "")).contains("未启用"),
+		"suitability 跳过原因具名「未启用」（got %s）" % str(suit_diag.get("reason", "")))
 	var hydro: Variant = _stage_of(stages, "hydrology")
 	expect(hydro != null and not hydro.get("skipped", false), "默认模板水系阶段实做")
 	expect(hydro != null and hydro.get("post_quantum_valid", false) == true,
@@ -384,16 +414,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 7,
-		"GENERATOR_VERSION=7（T6 S5 区域验收面：playability v3 消费模板 regions 验收子组 → 区域检查码五枚 + region_metrics 结构化诊断——dual_noise/legacy 逐格输出与校验报告零漂移（区域事实恒空），复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 9,
+		"GENERATOR_VERSION=9（T6 S4 复审修「锥体不移动归一化锚点」：composition 产物增 field_min/field_max 前三项极值锚点、管线 h_min/h_max 改消费锚点而非叠加锥体后重算——修复峰高近上限时锥顶抬全图 h_max、量化海面阈随之抬升致贴海平原格翻水（局部地标无声重画海岸线）与生成侧/S5 校验侧预算分母不同源两缺陷；erosion 极值重算改锚点不变量对账；dual_noise/legacy 逐格输出零漂移（composition/erosion 跳过、锚点仍来自 geography），复现锚显式登记）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 7, "legacy meta 落 v7")
+		expect_eq(legacy["meta"]["generator_version"], 9, "legacy meta 落 v9")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 7, "世界 meta 落 v7")
+		expect_eq(w["world"].meta["generator_version"], 9, "世界 meta 落 v9")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）
