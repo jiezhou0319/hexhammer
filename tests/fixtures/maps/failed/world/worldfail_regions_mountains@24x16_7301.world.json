@@ -1158,6 +1158,80 @@
 		2
 	],
 	"crossings": [],
+	"faction_suitability": [
+		{
+			"candidate_sites": [
+				{
+					"cell_id": 100,
+					"score": 996
+				},
+				{
+					"cell_id": 216,
+					"score": 931
+				},
+				{
+					"cell_id": 300,
+					"score": 889
+				},
+				{
+					"cell_id": 200,
+					"score": 850
+				}
+			],
+			"profile_id": "mountain_preferring",
+			"qualified_count": 220,
+			"rejection_reasons": [
+				{
+					"code": "AREA_BELOW_MIN",
+					"count": 10
+				},
+				{
+					"code": "NO_REGION_ACCESS",
+					"count": 3
+				},
+				{
+					"code": "NO_WATER_IN_RANGE",
+					"count": 81
+				}
+			]
+		},
+		{
+			"candidate_sites": [
+				{
+					"cell_id": 83,
+					"score": 999
+				},
+				{
+					"cell_id": 7,
+					"score": 996
+				},
+				{
+					"cell_id": 230,
+					"score": 989
+				},
+				{
+					"cell_id": 383,
+					"score": 946
+				}
+			],
+			"profile_id": "plain_preferring",
+			"qualified_count": 220,
+			"rejection_reasons": [
+				{
+					"code": "AREA_BELOW_MIN",
+					"count": 10
+				},
+				{
+					"code": "NO_REGION_ACCESS",
+					"count": 3
+				},
+				{
+					"code": "NO_WATER_IN_RANGE",
+					"count": 81
+				}
+			]
+		}
+	],
 	"isolated_peaks": [],
 	"links": [
 		{
@@ -1747,15 +1821,15 @@
 	],
 	"meta": {
 		"attempt_count": 4,
-		"config_digest": "5d25747f467174b1cd3d8c2ffa7be0a62a5f6836349c9996acf5f7236e787ad3",
+		"config_digest": "90e76d14cbb3cef60881e33c8855f1722115ede55b2a3fdd096be2aaba2e4bf1",
 		"engine_version": "4.7.2-stable (official)",
 		"first_pass_valid": false,
-		"generator_version": 7,
+		"generator_version": 9,
 		"repair_count": 3,
 		"rules_version": 0,
 		"schema_version": 1,
 		"seed": 7301,
-		"world_digest": "bc7dd2979a7849a2f09a6eab38f7c691ca6fdb8d96ef14aa6d71b0d2dae76849"
+		"world_digest": "087353b004550baf5e9da741c0d233bcdbb60467126543cab29bd0b396ca0fff"
 	},
 	"mountain_ranges": [
 		{

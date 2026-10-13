@@ -18438,6 +18438,80 @@
 		3
 	],
 	"crossings": [],
+	"faction_suitability": [
+		{
+			"candidate_sites": [
+				{
+					"cell_id": 55,
+					"score": 999
+				},
+				{
+					"cell_id": 634,
+					"score": 997
+				},
+				{
+					"cell_id": 2370,
+					"score": 973
+				},
+				{
+					"cell_id": 1309,
+					"score": 954
+				}
+			],
+			"profile_id": "mountain_preferring",
+			"qualified_count": 2027,
+			"rejection_reasons": [
+				{
+					"code": "AREA_BELOW_MIN",
+					"count": 25
+				},
+				{
+					"code": "NO_REGION_ACCESS",
+					"count": 18
+				},
+				{
+					"code": "NO_WATER_IN_RANGE",
+					"count": 3551
+				}
+			]
+		},
+		{
+			"candidate_sites": [
+				{
+					"cell_id": 1999,
+					"score": 981
+				},
+				{
+					"cell_id": 5557,
+					"score": 969
+				},
+				{
+					"cell_id": 4787,
+					"score": 937
+				},
+				{
+					"cell_id": 3738,
+					"score": 921
+				}
+			],
+			"profile_id": "plain_preferring",
+			"qualified_count": 2027,
+			"rejection_reasons": [
+				{
+					"code": "AREA_BELOW_MIN",
+					"count": 25
+				},
+				{
+					"code": "NO_REGION_ACCESS",
+					"count": 18
+				},
+				{
+					"code": "NO_WATER_IN_RANGE",
+					"count": 3551
+				}
+			]
+		}
+	],
 	"isolated_peaks": [
 		{
 			"cell_id": 551,

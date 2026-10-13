@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SuitabilityProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/suitability_profile.gd" id="1_prof"]
+
+[resource]
+script = ExtResource("1_prof")
+profile_id = "mountain_preferring"
+landform_affinity = 0.85
+weight_landform = 0.55
+weight_expansion = 0.25
+weight_water = 0.2
+min_area_cells = 7
+district_radius = 2
+require_access = true
+require_water = true
+water_range = 3
+min_spacing = 6
+max_candidates = 4

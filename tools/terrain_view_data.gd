@@ -31,6 +31,14 @@
 ##   - skeleton 骨架（S3 实做）：四级灰度结构图——谷底 0.45 / 支脉 0.65 / 主脊
 ##     0.95 / 背景 0.18（同格多属取最高优先级：主脊 > 支脉 > 谷底）；同样
 ##     has_data=false 显式态。孤峰层随 S4 扩（预留：值域加档不改既有档）。
+##   - suitability 偏好候选（S6 实做——提案 :239「山地偏好候选/平原偏好候选」
+##     预览标注的**正式版**：S2 临时标注通道在此由 WorldData.faction_suitability
+##     事实驱动，标注规则 = 管线 SuitabilityGenerator 两阶段选址（硬筛选 → 评分/
+##     间距），不再有临时规则）：结构调试视图（非灰度评审面——passability 同款
+##     口径），底图 = 陆格灰 0.42 / 水格灰 0.12，候选锚格按 profile 槽位取
+##     SUITABILITY_PALETTE 固定色（首版两类 = 红/蓝——山地/平原偏好一眼可辨；
+##     >2 profile 循环取色）；无适宜度事实（阶段未启用/无候选/dual_noise/旧图）
+##     → has_data=false + 具名原因（不产伪字段）。
 class_name TerrainViewData
 extends RefCounted
 
@@ -39,11 +47,13 @@ const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
 const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 
-## 视图名固定序（CLI views=all 的展开序；五视图全部实做——region/skeleton 自 S3）
-const VIEW_ORDER: Array[String] = ["height", "slope", "passability", "region", "skeleton"]
+## 视图名固定序（CLI views=all 的展开序；六视图全部实做——region/skeleton 自 S3、
+## suitability 自 S6）
+const VIEW_ORDER: Array[String] = ["height", "slope", "passability", "region", "skeleton", "suitability"]
 
-## 已实做视图（S3 起 region/skeleton 转实做——数据依赖面见各视图头注）
-const IMPLEMENTED_VIEWS: Array[String] = ["height", "slope", "passability", "region", "skeleton"]
+## 已实做视图（S3 起 region/skeleton 转实做、S6 起 suitability 实做——数据依赖面
+## 见各视图头注）
+const IMPLEMENTED_VIEWS: Array[String] = ["height", "slope", "passability", "region", "skeleton", "suitability"]
 
 ## 不可通行格色（近黑灰 ~40/255：与纯黑背景、灰度数据最暗值均差 ≥ 25/255——
 ## 判定容差（render_probe CHANNEL_TOL=14）之外，slope=0/水格 0 档纯黑数据格
@@ -337,11 +347,83 @@ static func _no_region_data_reason(world: WorldDataClass) -> String:
 		return "无区域数据（dual_noise 路线/旧图——regions 模板路线才产分区事实）"
 	return ""
 
+# ---------------- 偏好候选（S6 实做：faction_suitability 事实驱动）----------------
+
+## 偏好候选视图灰度/色档（写死——跨版本可比）：底图陆格灰 0.42 / 水格灰 0.12
+##（水恒 elevation 0 的不变量口径）；候选锚 = SUITABILITY_PALETTE 按 profile
+## 槽位取色（结构调试视图用色——passability COMPONENT_PALETTE 同款口径，灰度
+## 人工评审属 S7 与本视图互补不冲突）
+const SUITABILITY_LAND_GRAY := 0.42
+const SUITABILITY_WATER_GRAY := 0.12
+
+## 偏好候选色板：槽 0 红（山地偏好）/ 槽 1 蓝（平原偏好）——提案 :239 两类候选
+## 一眼可辨；>2 profile 循环取后 4 项（黄/紫/青/橙）
+const SUITABILITY_PALETTE: Array[Color] = [
+	Color(0.85, 0.30, 0.25),  # 槽 0（首 profile = 山地偏好——红）
+	Color(0.25, 0.60, 0.90),  # 槽 1（次 profile = 平原偏好——蓝）
+	Color(0.94, 0.77, 0.20),  # 黄（扩展 profile 循环）
+	Color(0.63, 0.38, 0.72),  # 紫
+	Color(0.15, 0.73, 0.68),  # 青
+	Color(0.88, 0.55, 0.18),  # 橙
+]
+
+## 偏好候选视图（S6 正式版——提案 P0 :239 标注口径，标注规则 = 管线
+## SuitabilityGenerator 两阶段选址，无临时规则）。返回 {
+##   "view": "suitability", "implemented": true, "has_data": bool,
+##   "reason": String（has_data=false 时具名）,
+##   "ranks": PackedInt32Array（-1 非候选；否则 profile 槽位——秩表即图例表）,
+##   "colors": PackedColorArray,
+##   "profiles": Array[Dictionary]（槽位逐 profile：profile_id/candidates/
+##     qualified/rejections——候选计数与拒绝摘要，替代 S2「说明临时规则」的
+##     正式版：规则即管线事实面）}
+static func suitability_view(map: MapDataClass, world: WorldDataClass = null) -> Dictionary:
+	if world == null:
+		return {"view": "suitability", "implemented": true, "has_data": false,
+			"reason": "无派系适宜度数据（未提供 WorldData——银行样图缺 .world.json 伴生或调用方未传）"}
+	if world.faction_suitability.is_empty():
+		return {"view": "suitability", "implemented": true, "has_data": false,
+			"reason": "无派系适宜度数据（阶段未启用/无候选/旧图——faction_suitability 恒空 = T6 S6 前或未启用模板的合法态）"}
+	var cells := map.cells()
+	var ranks := PackedInt32Array()
+	ranks.resize(cells.size())
+	for i in cells.size():
+		ranks[i] = -1
+	for slot in world.faction_suitability.size():
+		var fs: WorldDataClass.FactionSuitability = world.faction_suitability[slot]
+		for cs in fs.candidate_sites:
+			if cs.cell_id >= 0 and cs.cell_id < ranks.size():
+				ranks[cs.cell_id] = slot  # 界外候选由 WorldData.validate 拒——视图只读防御
+	var colors := PackedColorArray()
+	colors.resize(cells.size())
+	for i in cells.size():
+		if ranks[i] >= 0:
+			colors[i] = SUITABILITY_PALETTE[ranks[i] % SUITABILITY_PALETTE.size()]
+		elif map.elevation_at(cells[i]) == 0:
+			colors[i] = Color(SUITABILITY_WATER_GRAY, SUITABILITY_WATER_GRAY, SUITABILITY_WATER_GRAY)
+		else:
+			colors[i] = Color(SUITABILITY_LAND_GRAY, SUITABILITY_LAND_GRAY, SUITABILITY_LAND_GRAY)
+	var profiles: Array = []
+	for fs in world.faction_suitability:
+		var rejections := {}
+		for rr in fs.rejection_reasons:
+			rejections[rr["code"]] = int(rr["count"])
+		profiles.append({
+			"profile_id": fs.profile_id,
+			"candidates": fs.candidate_sites.size(),
+			"qualified": fs.qualified_count,
+			"rejections": rejections,
+		})
+	return {
+		"view": "suitability", "implemented": true, "has_data": true,
+		"ranks": ranks, "colors": colors, "profiles": profiles,
+	}
+
 # ---------------- 统一分派 ----------------
 
 ## 视图名单一分派（渲染/CLI 唯一入口）：实做视图各归其位（region/skeleton 自
-## S3 转实做——数据面见各视图头注）；未知名 → implemented=false（原因具名——
-## 调用方显式报「未实现」，不冒充）。world 缺省 = 数据面视图走 has_data=false。
+## S3、suitability 自 S6 转实做——数据面见各视图头注）；未知名 →
+## implemented=false（原因具名——调用方显式报「未实现」，不冒充）。world 缺省 =
+## 数据面视图走 has_data=false。
 static func derive(view_name: String, map: MapDataClass,
 		world: WorldDataClass = null) -> Dictionary:
 	match view_name:
@@ -355,6 +437,8 @@ static func derive(view_name: String, map: MapDataClass,
 			return region_view(map, world)
 		"skeleton":
 			return skeleton_view(map, world)
+		"suitability":
+			return suitability_view(map, world)
 		_:
 			return {
 				"view": view_name, "implemented": false,

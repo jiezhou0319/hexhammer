@@ -1,8 +1,8 @@
 {
 	"digest": "f378180ef5d5e27b846379cddddfafc294457e165f565ed5a5f20dcef5450b19",
-	"generator_version": 7,
+	"generator_version": 9,
 	"group": "regions_mountains@96x64",
 	"kind": "seed_bank_sample",
 	"seed": 7,
-	"world_digest": "06df80b4ba12b336b6b21d57288823a573a831c3c7882d4655a53fe6bdd54e20"
+	"world_digest": "bdc286100f181cfa642a31b62cbf0044280f7991d974d60edfeb8855d12b4def"
 }

@@ -9,9 +9,11 @@
 ##   （双噪声数值）+ regions 宏观分区组（T6 S3 分区骨架 + S4 孤峰/侵蚀子组 +
 ##   S5 验收子组——WorldValidator 区域检查码的阈值面，未验证起调值）+ hydrology 水系组
 ##   （WORLD-02 河口反向生长参数）+ scenario 组（聚落/势力，WORLD-03 解锁：出生
-##   区/资源/扩张参数/河界加成）+ infrastructure 组（道路骨架，WORLD-05 解锁：
-##   回路数/高差阈值）+ locked/preferred 约束名列表（**locked v1 格式
-##   "cell:<id>"**——WORLD-04 修复循环消费：修复动作不得触碰锁定格）。
+##   区/资源/扩张参数/河界加成；**适宜度子组 T6 S6 第一刀解锁**——与派系名解耦的
+##   profile 清单（SuitabilityProfile 子资源，首版山地/平原两内置）+ 阶段开关；
+##   聚落阶段 profile 接线与开局保证模式入口 = 后续批次）+ infrastructure 组（道路骨架，
+##   WORLD-05 解锁：回路数/高差阈值）+ locked/preferred 约束名列表（**locked v1
+##   格式 "cell:<id>"**——WORLD-04 修复循环消费：修复动作不得触碰锁定格）。
 ## 参数事实源：模板的 geography/dimensions 数值是**authored 默认**，运行时经
 ##   apply_to_params(seed) 落成 MapGenParams（唯一运行载体）——MapGenParams 不
 ##   再另有模板层，避免双事实源；scenario/infrastructure 数值（成本表/预算/阈值）
@@ -221,6 +223,22 @@ const REGIONS_PATH := "res://resources/world/templates/world_template_regions.tr
 ## 桥头两岸高差上限（ROAD-02 ③ 桥址合法性首版 = 桥头/净空；-1 = 不查）
 @export var max_bridge_bank_delta: int = 2
 
+# ---- scenario 组·适宜度子组（T6 S6 第一刀解锁；关闭 = 跳过阶段，
+#      WorldData.faction_suitability 恒空——无候选世界合法态。**profile 参数 =
+#      未验证起调值**（提案 :166「本阶段提供配置入口，不杜撰最终平衡数值」），
+#      调参走模板版本/GENERATOR_VERSION；**开局保证模式入口未开**（须进
+#      config_hash 的要求随该批次落字——聚落接线/开局保证 = 后续批次）----
+
+## 派系适宜度阶段总开关（false = 跳过；faction_suitability 空集合合法。仅
+## regions 路线产分区/权重事实——dual_noise 路线下开启也在阶段内按「无区域
+## 事实」显式跳过，零漂移）
+@export var suitability_enabled: bool = false
+## 适宜度 profile 清单（SuitabilityProfile 子资源——与派系名解耦的偏好配置，
+## 提案 :146/:254；出现序 = 事实表序。启用阶段时须非空（validate 查）；
+## profile 参数进 to_dict/config_digest——「改偏好配置不改基础地形」由地形
+## 各阶段不读本组结构性保证，config_digest 可分辨候选事实口径）
+@export var suitability_profiles: Array[SuitabilityProfile] = []
+
 # ---- locked/preferred 约束（WORLD-04 修复循环消费面：locked = 修复不得触碰）----
 
 ## 锁定约束 id 列表（**v1 格式 = "cell:<id>"**——修复循环解析为锁定格：道路/新
@@ -259,8 +277,10 @@ static func make_default() -> WorldTemplate:
 
 ## 代码内 regions 路线模板（world_template_regions.tres 的对账基准——同源纪律）：
 ## 地形路线 = regions + 侵蚀开（composition 阶段实做 + erosion 阶段实做——S4 起
-## regions 路线的完整形态），九阶段其余开关与默认模板一致；
-## regions/孤峰/侵蚀参数组数值 = 未验证起调值（T6 方案 §10 默认答案②④）。
+## regions 路线的完整形态）+ **适宜度开（T6 S6 第一刀：山地/平原两个内置
+## profile——faction_suitability 事实的 authored 入口）**，九阶段其余开关与默认
+## 模板一致；regions/孤峰/侵蚀/适宜度参数组数值 = 未验证起调值（T6 方案 §10
+## 默认答案②④ + 提案 :166）。
 static func make_regions() -> WorldTemplate:
 	var t := new()
 	t.template_id = "regions_mountains"
@@ -269,16 +289,21 @@ static func make_regions() -> WorldTemplate:
 	# sea_level 下调 = 骨架增益拉宽值域后补偿有效海面（否则平原半数沉水、陆块
 	# 破碎）；max_road_delta 2 = 山口/谷地路线的高差档（双噪声默认图 Δ1 档在
 	# 山区不可修路）；erosion_enabled = S4 起调开（关态 = regions_no_erosion 对照
-	# 形态，预览工具三路对照的「分区骨架版」入口）
+	# 形态，预览工具三路对照的「分区骨架版」入口）；suitability = S6 两内置
+	# profile（山地偏好/平原偏好——提案 :144/:145 矮人/人类示例的读法）
 	t.sea_level = 0.18
 	t.max_road_delta = 2
 	t.erosion_enabled = true
+	t.suitability_enabled = true
+	t.suitability_profiles = [SuitabilityProfile.make_mountain(),
+		SuitabilityProfile.make_plain()]
 	return t
 
 
 ## 代码内退化特例模板：一切可选阶段关闭——MapGenerator.generate 旧单遍行为的
 ## 模板面（无河无聚落无路 = §0「段独立可交付」的合法态）。terrain_route 钉死
-## "dual_noise"（T6 拍板③：legacy 模板不接 regions 路线，逐格输出字节级不变）。
+## "dual_noise"（T6 拍板③：legacy 模板不接 regions 路线，逐格输出字节级不变）；
+## 适宜度同关（faction_suitability 恒空——legacy 零漂移面）。
 static func make_legacy() -> WorldTemplate:
 	var t := new()
 	t.template_id = "legacy_single_pass"
@@ -287,6 +312,7 @@ static func make_legacy() -> WorldTemplate:
 	t.settlement_enabled = false
 	t.allegiance_enabled = false
 	t.roads_enabled = false
+	t.suitability_enabled = false
 	return t
 
 
@@ -429,6 +455,22 @@ func validate() -> String:
 		return "模板 %s max_road_delta=%d 非法（≥0 或 -1 = 不查）" % [template_id, max_road_delta]
 	if max_bridge_bank_delta < -1:
 		return "模板 %s max_bridge_bank_delta=%d 非法（≥0 或 -1 = 不查）" % [template_id, max_bridge_bank_delta]
+	# ---- scenario 组·适宜度子组（T6 S6 第一刀：启用须有 profile，profile 硬边界
+	# 与 id 唯一性在此拦——配置错误不产半图）----
+	if suitability_enabled and suitability_profiles.is_empty():
+		return "模板 %s suitability_enabled=true 但 profile 清单为空（与派系名解耦 ≠ 无配置——启用即至少一个 profile）" % template_id
+	var profile_ids := {}
+	for p in suitability_profiles:
+		if p == null:
+			return "模板 %s suitability_profiles 含 null（.tres 资源槽未解析——显式失败不静默跳过）" % template_id
+		var perr: String = p.validate()
+		if perr != "":
+			return "模板 %s %s" % [template_id, perr]
+		if profile_ids.has(p.profile_id):
+			return "模板 %s profile_id「%s」重复（同图同 profile 只评一次）" % [template_id, p.profile_id]
+		profile_ids[p.profile_id] = true
+	if suitability_profiles.size() > 8:
+		return "模板 %s suitability_profiles %d 项 > 8（上界防呆——首版两类偏好）" % [template_id, suitability_profiles.size()]
 	# ---- locked 格式（v1 = "cell:<id>"；其他前缀显式拒绝——能力边界诚实面）----
 	for entry in locked:
 		var parts := entry.split(":")
@@ -494,6 +536,17 @@ func to_dict() -> Dictionary:
 		"road_loop_count": road_loop_count,
 		"max_road_delta": max_road_delta,
 		"max_bridge_bank_delta": max_bridge_bank_delta,
+		"suitability_enabled": suitability_enabled,
+		"suitability_profiles": _profiles_to_dicts(),
 		"locked": locked.duplicate(),
 		"preferred": preferred.duplicate(),
 	}
+
+
+## profile 清单 → dict 清单（config_digest 面：子资源参数全量进哈希——同 seed
+## 改 profile 时候选事实口径可分辨；固定键序沿 SuitabilityProfile.to_dict）。
+func _profiles_to_dicts() -> Array:
+	var out: Array = []
+	for p in suitability_profiles:
+		out.append(p.to_dict() if p != null else {})
+	return out

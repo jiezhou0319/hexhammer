@@ -29,5 +29,7 @@ roads_enabled = false
 road_loop_count = 0
 max_road_delta = 1
 max_bridge_bank_delta = 2
+suitability_enabled = false
+suitability_profiles = []
 locked = Array[String]([])
 preferred = Array[String]([])

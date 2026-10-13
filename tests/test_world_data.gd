@@ -23,7 +23,16 @@
 ##   - 孤峰事实（T6 S4 解锁）：IsolatedPeakData（中心界内/影响半径 ≥1/峰高
 ##     千分 1..1000/形状值域单点 CONE——枚举存在 ≠ 能力开放）、peak_by_id
 ##     查询面、无分区不得有孤峰（PEAK_NO_REGIONS）——往返/旧图零迁移（缺
-##     isolated_peaks 键 = S3 时代合法空）/拒绝锚同前四件纪律。
+##     isolated_peaks 键 = S3 时代合法空）/拒绝锚同前四件纪律；
+##   - 派系适宜度事实（T6 S6 第一刀解锁）：FactionSuitability/CandidateSite
+##     （profile_id 非空且唯一——与派系名解耦 ≠ 无身份；候选锚 = 界内通行格
+##     （水格锚 = SUITABILITY_WATER、不可通行陆格锚 = SUITABILITY_IMPASSABLE
+##     ——通行性是独立字段不随高程推导，两类伪合格分开报）、分数千分 0..1000、
+##     （分数降序 cell_id 升序）规范序、qualified_count ≥ 候选数、
+##     rejection_reasons {code,count} 形状）、无分区不得有适宜度
+##     （SUITABILITY_NO_REGIONS）——往返/旧图零迁移（缺 faction_suitability
+##     键 = S5 时代合法空）/拒绝锚同前四件纪律（生成行为面见
+##     tests/test_world_suitability.gd）。
 ## oracle 原则：期望邻接关系由 MapData/HexMath 原语独立推导（index_of / dir_between /
 ##   axial_of），不复制 WorldData 内部比较器；JSON 往返走真实文件（user:// 临时件）。
 extends "res://tests/test_case.gd"
@@ -729,3 +738,142 @@ func test_peaks_from_dict_shape_gates() -> void:
 	var bad_missing := good.duplicate(true)
 	(bad_missing["isolated_peaks"] as Array)[0].erase("peak_height")
 	expect(WorldDataClass.from_dict(bad_missing) == null, "缺 peak_height 键 → from_dict 拒")
+
+# ================= 派系适宜度事实（T6 S6 第一刀解锁）=================
+
+## 适宜度 fixture：_regions_world 底座（两区/权重场）+ 山地/平原两 profile 事实
+##（候选锚取陆格 0/2 与 16/17——分数/合格数/拒绝计数手造）。
+func _suitability_world() -> Array:
+	var pair := _regions_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	for cell in map.cells():
+		map.set_elevation(cell, 1)
+	var mtn := WorldDataClass.FactionSuitability.new()
+	mtn.profile_id = "mountain_preferring"
+	mtn.qualified_count = 2
+	for cell_score in [[0, 900], [2, 700]]:
+		var cs := WorldDataClass.CandidateSite.new()
+		cs.cell_id = int(cell_score[0])
+		cs.score = int(cell_score[1])
+		mtn.candidate_sites.append(cs)
+	mtn.rejection_reasons.append({"code": "NO_WATER_IN_RANGE", "count": 3})
+	var pln := WorldDataClass.FactionSuitability.new()
+	pln.profile_id = "plain_preferring"
+	pln.qualified_count = 5
+	for cell_score in [[17, 850], [16, 600]]:
+		var cs2 := WorldDataClass.CandidateSite.new()
+		cs2.cell_id = int(cell_score[0])
+		cs2.score = int(cell_score[1])
+		pln.candidate_sites.append(cs2)
+	world.faction_suitability = [mtn, pln]
+	return pair
+
+
+func test_suitability_roundtrip_and_old_world_compat() -> void:
+	var pair := _suitability_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	expect_eq(world.validate(map), "", "最小适宜度世界合法")
+	var facts := world.to_dict()
+	var suits: Array = facts["faction_suitability"]
+	expect_eq(suits.size(), 2, "两 profile 序列化")
+	expect_eq(suits[0]["profile_id"], "mountain_preferring", "profile_id 序列化")
+	expect_eq((suits[0]["candidate_sites"] as Array).size(), 2, "候选序列化")
+	expect_eq(suits[0]["candidate_sites"][0]["score"], 900, "千分分数序列化")
+	expect_eq(suits[0]["qualified_count"], 2, "合格计数序列化")
+	expect_eq(suits[0]["rejection_reasons"][0]["code"], "NO_WATER_IN_RANGE", "拒绝原因序列化")
+	expect_eq((suits[1]["rejection_reasons"] as Array).size(), 0, "零计数不落键——无实际发生原因的 profile 拒绝表为空")
+	# JSON 文件往返（真实落盘——MapIO.write_world 通道）
+	var path := "user://t6_world_data_suitability.world.json"
+	expect_eq(MapIO.write_world(world, path), OK, "落盘")
+	var back := MapIO.read_world(path)
+	expect(back != null, "读回")
+	if back != null:
+		expect_eq(back.to_dict(), facts, "适宜度序列化往返逐字节一致")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	# 旧图零迁移：S5 时代形状（无 faction_suitability 键）仍可解析 = 合法空
+	var old_shape := WorldDataClass.empty().to_dict()
+	old_shape.erase("faction_suitability")
+	var parsed: Variant = WorldDataClass.from_dict(old_shape)
+	expect(parsed is WorldDataClass, "缺 faction_suitability 键 = 旧图合法空（零迁移，SCHEMA_VERSION=1 维持）")
+	if parsed is WorldDataClass:
+		expect((parsed as WorldDataClass).faction_suitability.is_empty(), "缺键解析为空集合")
+
+
+func test_suitability_shape_rules_rejected() -> void:
+	# 无分区不得有适宜度 → SUITABILITY_NO_REGIONS（没有能力就没有数据）；
+	# 清空全部分区/骨架/格级事实（只留适宜度——SKELETON_NO_REGIONS 先触发会
+	# 盖掉本码，须隔离出单一违规面）
+	var p1 := _suitability_world()
+	var w1: WorldDataClass = p1[1]
+	w1.terrain_regions = []
+	w1.mountain_ranges = []
+	w1.ridge_branches = []
+	w1.valleys = []
+	w1.cell_regions = []
+	w1.cell_mountain_weights = []
+	expect(w1.validate(p1[0]).contains("SUITABILITY_NO_REGIONS"),
+		"区域表空而适宜度非空 → 拒（适宜度消费分区/权重事实）")
+	# profile_id 空 / 重复 → SUITABILITY_PROFILE
+	var p2 := _suitability_world()
+	(p2[1] as WorldDataClass).faction_suitability[0].profile_id = ""
+	expect((p2[1] as WorldDataClass).validate(p2[0]).contains("SUITABILITY_PROFILE"),
+		"profile_id 空 → 拒（与派系名解耦 ≠ 无身份）")
+	var p3 := _suitability_world()
+	var w3: WorldDataClass = p3[1]
+	w3.faction_suitability[1].profile_id = w3.faction_suitability[0].profile_id
+	expect(w3.validate(p3[0]).contains("SUITABILITY_PROFILE"),
+		"profile_id 重复 → 拒（同图同 profile 只评一次）")
+	# 水格候选锚 → SUITABILITY_WATER（不产伪合格的数据面）
+	var p4 := _suitability_world()
+	var w4: WorldDataClass = p4[1]
+	var map4: MapDataClass = p4[0]
+	w4.faction_suitability[0].candidate_sites[0].cell_id = 3
+	map4.set_elevation(Hex.axial_of(Vector2i(3 % map4.width, 3 / map4.width)), 0)
+	expect(w4.validate(map4).contains("SUITABILITY_WATER"),
+		"候选锚在水格 → 拒（合格候选须为通行格）")
+	# 不可通行陆格候选锚 → SUITABILITY_IMPASSABLE（通行性是独立字段不随高程
+	# 推导——悬崖等不可通行陆格 = 伪合格，与水格分开报）
+	var p8 := _suitability_world()
+	var w8: WorldDataClass = p8[1]
+	var map8: MapDataClass = p8[0]
+	w8.faction_suitability[0].candidate_sites[0].cell_id = 1
+	map8.set_passable(Hex.axial_of(Vector2i(1 % map8.width, 1 / map8.width)), false)
+	expect(w8.validate(map8).contains("SUITABILITY_IMPASSABLE"),
+		"候选锚在不可通行陆格 → 拒（独立字段口径——elevation>0 不代理通行）")
+	# 规范序破坏 → SUITABILITY_ORDER（（分数降序，cell_id 升序））
+	var p5 := _suitability_world()
+	(p5[1] as WorldDataClass).faction_suitability[0].candidate_sites[0].score = 100
+	expect((p5[1] as WorldDataClass).validate(p5[0]).contains("SUITABILITY_ORDER"),
+		"分数乱序 → 拒（规范序是合同）")
+	# qualified_count < 候选数 → SUITABILITY_COUNT（间距/上限只减不增）
+	var p6 := _suitability_world()
+	(p6[1] as WorldDataClass).faction_suitability[0].qualified_count = 1
+	expect((p6[1] as WorldDataClass).validate(p6[0]).contains("SUITABILITY_COUNT"),
+		"qualified_count < 候选数 → 拒")
+	# 拒绝原因缺键 → SUITABILITY_REJECTION
+	var p7 := _suitability_world()
+	((p7[1] as WorldDataClass).faction_suitability[0].rejection_reasons[0] as Dictionary).erase("count")
+	expect((p7[1] as WorldDataClass).validate(p7[0]).contains("SUITABILITY_REJECTION"),
+		"拒绝原因缺 count 键 → 拒")
+
+
+func test_suitability_from_dict_shape_gates() -> void:
+	# from_dict 形状层：坏形状 → null 不冒充
+	var good := (_suitability_world()[1] as WorldDataClass).to_dict()
+	var bad_score := good.duplicate(true)
+	(bad_score["faction_suitability"] as Array)[0]["candidate_sites"][0]["score"] = 1001
+	expect(WorldDataClass.from_dict(bad_score) == null, "分数越千分值域 → from_dict 拒")
+	var bad_cell := good.duplicate(true)
+	(bad_cell["faction_suitability"] as Array)[0]["candidate_sites"][0]["cell_id"] = -1
+	expect(WorldDataClass.from_dict(bad_cell) == null, "负锚格 → from_dict 拒")
+	var bad_pid := good.duplicate(true)
+	(bad_pid["faction_suitability"] as Array)[0]["profile_id"] = ""
+	expect(WorldDataClass.from_dict(bad_pid) == null, "空 profile_id → from_dict 拒")
+	var bad_missing := good.duplicate(true)
+	(bad_missing["faction_suitability"] as Array)[0].erase("qualified_count")
+	expect(WorldDataClass.from_dict(bad_missing) == null, "缺 qualified_count 键 → from_dict 拒")
+	var bad_rejection := good.duplicate(true)
+	(bad_rejection["faction_suitability"] as Array)[0]["rejection_reasons"][0]["count"] = -1
+	expect(WorldDataClass.from_dict(bad_rejection) == null, "拒绝计数负值 → from_dict 拒")

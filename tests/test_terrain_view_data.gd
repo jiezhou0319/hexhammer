@@ -9,6 +9,11 @@
 ##     事实）→ has_data=false + 具名「无区域数据」原因（S2 合同的显式态，
 ##     不产伪字段不冒充）；有数据 → 灰度连续场（region：lerp(平原亮,群山暗,w)）
 ##     / 四级秩（skeleton：主脊>支脉>谷底>背景，同格取最高）手算 oracle；
+##   - suitability 偏好候选视图（**T6 S6 合同变更**：~~五视图~~ 增 suitability
+##     第六视图——提案 :239 预览标注的正式版，faction_suitability 事实驱动）：
+##     无适宜度事实（world 缺省/空表）→ has_data=false + 具名原因；有数据 →
+##     候选锚按 profile 槽位取 SUITABILITY_PALETTE 色 + 底图水/陆灰档 +
+##     profiles 计数复读（生成行为面见 tests/test_world_suitability.gd）；
 ##   - derive() 分派（实做路由到位 / 未知名显式拒绝 / world 透传）。
 ## oracle 原则：全部期望值手算（无生成器、无随机；分区 fixture 手造 WorldData）；
 ##   同图两次派生一致（纯函数确定性）。
@@ -22,14 +27,15 @@ const Views := preload("res://tools/terrain_view_data.gd")
 
 # ================= 视图清单与数据面合同 =================
 
-func test_view_order_five_all_implemented() -> void:
-	expect_eq(Views.VIEW_ORDER, ["height", "slope", "passability", "region", "skeleton"],
-		"视图固定序 = 提案 :236 五视图")
-	expect_eq(Views.IMPLEMENTED_VIEWS, ["height", "slope", "passability", "region", "skeleton"],
-		"实做视图 = 五（region/skeleton 随 S3 转 实做——T6 S3 合同变更，头注登记）")
+func test_view_order_six_all_implemented() -> void:
+	# ~~五视图~~ 六视图（T6 S6 合同变更：增 suitability——头注登记）
+	expect_eq(Views.VIEW_ORDER, ["height", "slope", "passability", "region", "skeleton", "suitability"],
+		"视图固定序 = 提案 :236 五视图 + S6 suitability（:239 预览标注正式版）")
+	expect_eq(Views.IMPLEMENTED_VIEWS, ["height", "slope", "passability", "region", "skeleton", "suitability"],
+		"实做视图 = 六（region/skeleton 自 S3、suitability 自 S6）")
 	for v in Views.VIEW_ORDER:
 		expect(Views.IMPLEMENTED_VIEWS.has(v),
-			"视图名只允许已知五者：%s" % v)
+			"视图名只允许已知六者：%s" % v)
 
 func test_region_skeleton_no_data_explicit_state() -> void:
 	# 「无区域数据不冒充」的机器锚（S2 合同的 S3 形态）：world 缺省 / 空分区事实
@@ -283,6 +289,14 @@ func test_derive_dispatches_and_rejects_unknown() -> void:
 		var d := Views.derive(view_name, map)
 		expect_eq(d["implemented"], true, "derive('%s') 实做（S3）" % view_name)
 		expect_eq(d["has_data"], false, "derive('%s') 无 world → 无数据态" % view_name)
+	# suitability（S6 实做）：world 缺省/空表走「无数据」态
+	var suit_no := Views.derive("suitability", map)
+	expect_eq(suit_no["implemented"], true, "derive('suitability') 实做（S6）")
+	expect_eq(suit_no["has_data"], false, "derive('suitability') 无 world → 无数据态")
+	var suit_empty := Views.derive("suitability", map, WorldDataClass.empty())
+	expect_eq(suit_empty["has_data"], false, "空 faction_suitability → 无数据态（阶段未启用/无候选）")
+	expect(String(suit_empty["reason"]).contains("无派系适宜度数据"),
+		"suitability 原因须具名「无派系适宜度数据」：%s" % str(suit_empty["reason"]))
 	var pair := _regions_view_world()
 	var with_world := Views.derive("region", pair[0], pair[1])
 	expect_eq(with_world["has_data"], true, "derive('region', world) 路由到 region_view 且出数")
@@ -436,3 +450,100 @@ func _split_map() -> MapDataClass:
 			m.set_terrain(cell, 3)
 			m.set_passable(cell, false)
 	return m
+
+# ================= suitability 偏好候选视图（S6 实做——手造 WorldData oracle）=================
+
+## 适宜度视图 fixture：3×2 = 6 格全陆（elev 1）+ 两区（cell_regions/权重手造）；
+## faction_suitability = 山地/平原两 profile，各两候选（分数手造）。
+func _suitability_view_world() -> Array:
+	var map := MapDataClass.new(3, 2)
+	for cell in map.cells():
+		map.set_elevation(cell, 1)
+	var world := WorldDataClass.empty()
+	var rg0 := WorldDataClass.TerrainRegion.new()
+	rg0.region_id = 0
+	rg0.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS
+	rg0.core_cells.append(0)
+	rg0.adjacency.append(1)
+	var rg1 := WorldDataClass.TerrainRegion.new()
+	rg1.region_id = 1
+	rg1.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.PLAINS
+	rg1.core_cells.append(1)
+	rg1.adjacency.append(0)
+	world.terrain_regions = [rg0, rg1]
+	for i in map.cell_count():
+		world.cell_regions.append(0 if i < 2 else 1)
+		world.cell_mountain_weights.append(900 if i < 2 else 100)
+	for pair in [["mountain_preferring", [0, 2], [900, 700]],
+			["plain_preferring", [3, 5], [850, 600]]]:
+		var fs := WorldDataClass.FactionSuitability.new()
+		fs.profile_id = pair[0]
+		fs.qualified_count = 3
+		var cells_of: Array = pair[1]
+		var scores_of: Array = pair[2]
+		for k in cells_of.size():
+			var cs := WorldDataClass.CandidateSite.new()
+			cs.cell_id = int(cells_of[k])
+			cs.score = int(scores_of[k])
+			fs.candidate_sites.append(cs)
+		fs.rejection_reasons.append({"code": "NO_WATER_IN_RANGE", "count": 2})
+		world.faction_suitability.append(fs)
+	return [map, world]
+
+
+func test_suitability_view_ranks_colors_and_profiles() -> void:
+	var pair := _suitability_view_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	var data := Views.suitability_view(map, world)
+	expect_eq(data["implemented"], true, "suitability 视图已实做（S6）")
+	expect_eq(data["has_data"], true, "有适宜度事实 → 出数")
+	var ranks: PackedInt32Array = data["ranks"]
+	# 秩 oracle：槽 0 候选 {0,2}、槽 1 候选 {3,5}、其余 -1（手造事实的直读）
+	for i in map.cell_count():
+		var want := -1
+		if i == 0 or i == 2:
+			want = 0
+		elif i == 3 or i == 5:
+			want = 1
+		expect_eq(ranks[i], want, "偏好候选秩 %d（want %d——槽位即图例）" % [i, want])
+	# 色 oracle：候选 = 槽位色板色；非候选陆格 = 陆灰（水/陆灰档写死——跨版本可比）
+	var colors: PackedColorArray = data["colors"]
+	for i in map.cell_count():
+		var want_c: Color = Views.SUITABILITY_PALETTE[ranks[i]] if ranks[i] >= 0 \
+			else Color(Views.SUITABILITY_LAND_GRAY, Views.SUITABILITY_LAND_GRAY,
+				Views.SUITABILITY_LAND_GRAY)
+		expect_almost_eq(colors[i].r, want_c.r, 1e-6, "候选/陆格色 r %d" % i)
+		expect_almost_eq(colors[i].g, want_c.g, 1e-6, "候选/陆格色 g %d" % i)
+		expect_almost_eq(colors[i].b, want_c.b, 1e-6, "候选/陆格色 b %d" % i)
+	# 两类偏好候选色可辨（提案 :239「山地偏好候选/平原偏好候选」一眼可辨的前提）
+	expect(Views.SUITABILITY_PALETTE[0] != Views.SUITABILITY_PALETTE[1],
+		"首两槽色必须互异（红=山地/蓝=平原）")
+	# profiles 计数复读（facts → 视图统计不二算）
+	var profiles: Array = data["profiles"]
+	expect_eq(profiles.size(), 2, "两 profile 槽位")
+	expect_eq(profiles[0]["profile_id"], "mountain_preferring", "槽 0 = 山地偏好")
+	expect_eq(profiles[0]["candidates"], 2, "槽 0 候选计数复读")
+	expect_eq(profiles[0]["qualified"], 3, "槽 0 合格计数复读")
+	expect_eq(profiles[1]["profile_id"], "plain_preferring", "槽 1 = 平原偏好")
+	expect_eq((profiles[1]["rejections"] as Dictionary)["NO_WATER_IN_RANGE"], 2,
+		"拒绝原因计数复读")
+	# 同图两次派生一致（纯函数确定性）
+	var again := Views.suitability_view(map, world)
+	expect_eq(str(again["colors"]), str(data["colors"]), "同图两次派生色一致")
+
+
+func test_suitability_view_water_cells_get_water_gray() -> void:
+	# 水格底图档（水恒 elevation 0 的不变量口径）：3×2 图格 1 设水 → 非候选水格
+	# 取 SUITABILITY_WATER_GRAY（与陆灰差 ≥0.2——水陆可辨）
+	var pair := _suitability_view_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	map.set_elevation(Hex.axial_of(Vector2i(1, 0)), 0)
+	# 格 1 不是任何 profile 的候选（fixture 候选 = {0,2,3,5}）——水格走水灰档
+	var data := Views.suitability_view(map, world)
+	var colors: PackedColorArray = data["colors"]
+	expect_almost_eq(colors[1].r, Views.SUITABILITY_WATER_GRAY, 1e-6, "水格底图灰档 r")
+	expect_almost_eq(colors[1].g, Views.SUITABILITY_WATER_GRAY, 1e-6, "水格底图灰档 g")
+	expect(colors[1].r < Views.SUITABILITY_LAND_GRAY - 0.2,
+		"水灰与陆灰差 ≥0.2（底图水陆可辨）")

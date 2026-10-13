@@ -17,7 +17,10 @@
 ##   桥」，拍板⑤）+ POIData 聚落/出生区/资源点（§9 转正，WORLD-03：role 占位、
 ##   资源经济数值不编造）+ 势力归属（StateData + 格级 cell_owners——拍板⑧：
 ##   归属作为生成产物进数据，「生成的世界长什么样」进数据、「怎么玩」不进；
-##   ~~势力归属禁入数据层~~ 穿格期旧口径已废）+ 校验器 + 序列化（固定键序）。
+##   ~~势力归属禁入数据层~~ 穿格期旧口径已废）+ **派系适宜度（T6 S6 第一刀：
+##   FactionSuitability——与派系名解耦的 profile_id + 候选落点（锚格/千分分数）+
+##   硬筛选拒绝原因计数；「偏好只表示适合度不表示归属」（提案 :140），聚落/道路
+##   消费本表属后续批次，本刀只产事实）** + 校验器 + 序列化（固定键序）。
 ## 合同（翻案须先改草案对应节与 tests/test_world_data.gd / test_water_*.gd /
 ##   test_roads.gd / test_bridges.gd，不动架构）：
 ## - 旧图零迁移（§2.2）：伴生文件缺失/为空 → empty()（无河无路无 POI 的合法态），
@@ -86,6 +89,17 @@
 ##   cell_owners 须空或全 -1
 ##   （POI/归属空集合合法 = 归属层关的回退态，§6 风险与回退行）；
 ## - WorldData 零回写 MapData（含 mods——草案 §11 全局项；测试锚定 summary 不变）；
+## - **派系适宜度合同（T6 S6 第一刀，提案 :208-211）**：profile_id 非空且表内唯一
+##   （与派系名解耦 ≠ 无身份）；候选锚 = 界内**通行格**（水格锚 = SUITABILITY_
+##   WATER、不可通行陆格锚 = SUITABILITY_IMPASSABLE——通行性是独立字段不随高程
+##   推导，map_data.gd 合同；两类锚都是伪合格，分开报）、
+##   分数千分整数 0..1000、（分数降序，cell_id 升序）规范序、锚不重复；
+##   qualified_count ≥ 候选数（间距/上限只减不增）；rejection_reasons = [{code,
+##   count}]（code 非空、count ≥0——「没有候选时输出原因」的数据面）；**间距/
+##   面积/水量程数值约束属 profile 生成配置不进数据**（「有配置才判」——ROAD-01
+##   Δ 阈值同款口径，数据层只钉结构与值域）；无分区事实不得有适宜度
+##   （SUITABILITY_NO_REGIONS——没有能力就没有数据）；faction_suitability 缺键 =
+##   旧图合法空（零迁移，与 states/cell_owners 同纪律）；
 ## - 纯数据类：RefCounted、零场景节点、不 preload 任何场景（ADR-2；删 scripts/ui/**
 ##   后 tests 全绿）。锚点绝对坐标不落盘（§2.3）：边锚 = 两格心连线与共享边交点，
 ##   由 HexMath 全局参数唯一路径现算。
@@ -401,6 +415,50 @@ class IsolatedPeakData:
 	var shape: int = Shape.CONE
 
 
+## 候选落点（T6 S6，提案 :208-211 FactionSuitability.candidate_sites 的成员形状）：
+## 锚定格 + 千分分数。片区（district）不落盘——它由锚点 + profile 的半径/类属
+## 阈值在生成期派生（profile 属生成器配置不进世界事实，草案 §1.2；下游聚落
+## 接线时按同一 profile 现算，沿「生成期中间产物不落盘」纪律）。
+class CandidateSite:
+	extends RefCounted
+
+	## 锚定格（界内**通行格**——validate 查 is_passable（水/不可通行陆格均拒）；
+## 候选锚 = 后续落点/出生区的取用面）
+	var cell_id: int = ID_NONE
+
+	## 适宜度分数（千分整数 0..1000 = 三项加权归一分 ×1000 四舍五入——序列化
+	## 确定形状，peak_height/cell_mountain_weights 千分整数同纪律；生成期浮分
+	## 只进诊断不进事实）
+	var score := 0
+
+
+## 派系适宜度（T6 S6 第一刀，提案 :208-211 FactionSuitability 适配）：某偏好
+## profile 在本图的候选落点事实——「地形先成形、派系后选址」的选址侧产物
+## （提案 :140）。**只是候选不是归属**：偏好 ≠ 领土（提案 :32 非目标「永久派系
+## 领土」），聚落/道路消费本表属后续批次（本刀不接线）。合格候选全部满足硬
+## 条件（结构性由生成侧两阶段选址保证，本层查形状/界内/通行格/规范序）；无合格
+## 候选时表可空但 rejection_reasons 必须把原因说清（不产伪合格，提案 :162）。
+class FactionSuitability:
+	extends RefCounted
+
+	## profile 身份引用（SuitabilityProfile.profile_id——与派系名解耦的偏好类型；
+	## 非空且表内唯一，validate 查）
+	var profile_id := ""
+
+	## 候选落点（（分数降序，cell_id 升序）规范序——间距贪心选取后的产物；
+	## 合格但被间距让位的格不计入，见 qualified_count）
+	var candidate_sites: Array[CandidateSite] = []
+
+	## 硬筛选通过数（间距/上限之前的合格候选总数——「候选集合有多大」的事实面，
+	## 后续开局保证模式（本刀非目标）检查候选数量的取数位）
+	var qualified_count := 0
+
+	## 硬筛选拒绝原因计数（[{code, count}] 固定码序 = 硬检查评估序：面积 → 通达
+	## → 水；每格计首个失败原因一次，不重复计——「没有候选时输出原因」的机器
+	## 面，提案 :162。码表：AREA_BELOW_MIN / NO_REGION_ACCESS / NO_WATER_IN_RANGE）
+	var rejection_reasons: Array[Dictionary] = []
+
+
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
@@ -453,6 +511,12 @@ var cell_regions: Array[int] = []
 ## 边界用连续权重场表达」的落盘面。千分整数 = 序列化确定形状（float 往返精度
 ## 面回避）；生成期浮场精度只进诊断不进事实）
 var cell_mountain_weights: Array[int] = []
+
+## 派系适宜度表（T6 S6 第一刀 regions 路线解锁；profile 出现序 = 模板清单序）。
+## dual_noise/legacy 路线与未启用阶段的模板恒空（关闭未实现能力不产伪字段）；
+## 无合格候选时条目仍在（rejection_reasons 说明原因）——空表 = 阶段未跑，条目
+## 空候选 = 跑了但无一合格，两态可辨
+var faction_suitability: Array[FactionSuitability] = []
 
 ## WorldMeta（草案 §10 字段集的占位形状；attempt/repair/first_pass 落码进 WORLD-04）。
 ## 手工固定图默认口径：seed=0、generator_version=0、rules_version=0（视觉模式）、
@@ -766,7 +830,10 @@ func validate(map: MapDataClass, water_terrain_id := -1,
 	var settle_err := _validate_settlement(map)
 	if settle_err != "":
 		return settle_err
-	return _validate_terrain_regions(map)
+	var region_err := _validate_terrain_regions(map)
+	if region_err != "":
+		return region_err
+	return _validate_suitability(map)
 
 
 ## 河段四条 + 结构完整性（WATER-01 ②；角点级无环 = 修订记录三之 4）。
@@ -1417,6 +1484,64 @@ func _validate_terrain_regions(map: MapDataClass) -> String:
 	return ""
 
 
+## 派系适宜度面（T6 S6 第一刀）：无分区事实不得有适宜度（「没有能力就没有
+## 数据」——SUITABILITY_NO_REGIONS，与孤峰 PEAK_NO_REGIONS 同款）；profile_id
+## 非空且表内唯一（与派系名解耦 ≠ 无身份）；候选锚界内/通行格/分数值域/（分数
+## 降序，cell_id 升序）规范序/锚不重复；qualified_count ≥ 候选数（被间距让位的
+## 合格格只能多不能少）；rejection_reasons 形状（code 非空、count ≥0）。**间距/
+## 面积/水量程的数值约束属 profile 生成配置，本层不查**（「阈值来自生成配置
+## 不进数据」——ROAD-01 Δ 阈值同款口径；数据层只钉结构与值域）。
+func _validate_suitability(map: MapDataClass) -> String:
+	if faction_suitability.is_empty():
+		return ""
+	if terrain_regions.is_empty():
+		return "SUITABILITY_NO_REGIONS：适宜度非空但区域表为空（适宜度消费分区/权重事实——没有能力就没有数据）"
+	var seen_profiles := {}
+	for si in faction_suitability.size():
+		var fs := faction_suitability[si]
+		if fs.profile_id.is_empty():
+			return "SUITABILITY_PROFILE：faction_suitability[%d] profile_id 为空（与派系名解耦 ≠ 无身份）" % si
+		if seen_profiles.has(fs.profile_id):
+			return "SUITABILITY_PROFILE：profile_id「%s」重复（faction_suitability[%d] 与 [%d]——同图同 profile 只评一次）" \
+				% [fs.profile_id, int(seen_profiles[fs.profile_id]), si]
+		seen_profiles[fs.profile_id] = si
+		if fs.qualified_count < fs.candidate_sites.size():
+			return "SUITABILITY_COUNT：profile「%s」qualified_count=%d < 候选数 %d（间距/上限只减不增——被让位格只多不少）" \
+				% [fs.profile_id, fs.qualified_count, fs.candidate_sites.size()]
+		var prev_site: CandidateSite = null
+		var seen_cells := {}
+		for cs in fs.candidate_sites:
+			if cs.cell_id < 0 or cs.cell_id >= map.cell_count():
+				return "SUITABILITY_CELL：profile「%s」候选锚 %d 指向界外格（图共 %d 格）" \
+					% [fs.profile_id, cs.cell_id, map.cell_count()]
+			if map.elevation_at(_cell_of_id(map, cs.cell_id)) == 0:
+				return "SUITABILITY_WATER：profile「%s」候选锚 %d 是水格（合格候选须为通行格——不产伪合格）" \
+					% [fs.profile_id, cs.cell_id]
+			if not map.is_passable(_cell_of_id(map, cs.cell_id)):
+				return "SUITABILITY_IMPASSABLE：profile「%s」候选锚 %d 是不可通行陆格（通行性是独立字段、不随高程推导——悬崖等不可通行格 = 伪合格，拒绝）" \
+					% [fs.profile_id, cs.cell_id]
+			if cs.score < 0 or cs.score > 1000:
+				return "SUITABILITY_SCORE：profile「%s」候选 %d 分数 %d 越界（千分整数 0..1000）" \
+					% [fs.profile_id, cs.cell_id, cs.score]
+			if seen_cells.has(cs.cell_id):
+				return "SUITABILITY_CELL：profile「%s」候选锚 %d 重复" % [fs.profile_id, cs.cell_id]
+			seen_cells[cs.cell_id] = true
+			# 规范序：（分数降序，cell_id 升序）——并列分数按锚格升序钉死（确定性）
+			if prev_site != null and (cs.score > prev_site.score
+					or (cs.score == prev_site.score and cs.cell_id <= prev_site.cell_id)):
+				return "SUITABILITY_ORDER：profile「%s」候选 (%d,%d) 破坏（分数降序，cell_id 升序）规范序（前项 (%d,%d)）" \
+					% [fs.profile_id, cs.score, cs.cell_id, prev_site.score, prev_site.cell_id]
+			prev_site = cs
+		for rr in fs.rejection_reasons:
+			if not (rr is Dictionary) or not rr.has("code") or not rr.has("count"):
+				return "SUITABILITY_REJECTION：profile「%s」rejection_reasons 项缺 code/count 键（got %s）" \
+					% [fs.profile_id, str(rr)]
+			if String(rr["code"]).is_empty() or not _is_int(rr["count"]) or int(rr["count"]) < 0:
+				return "SUITABILITY_REJECTION：profile「%s」rejection_reasons 项非法（code 非空、count ≥0：got %s）" \
+					% [fs.profile_id, str(rr)]
+	return ""
+
+
 ## 有序格序列形状检查（主脊/支脉共用）：非空下界 min_cells、界内、行进相邻
 ##（相邻两格互为界内邻居）、不重复。
 func _ordered_cell_path_check(map: MapDataClass, cells: Array[int],
@@ -1592,6 +1717,26 @@ func to_dict() -> Dictionary:
 			"peak_height": pk.peak_height,
 			"shape": pk.shape,
 		})
+	var out_suitability: Array = []
+	for fs in faction_suitability:
+		var out_sites: Array = []
+		for cs in fs.candidate_sites:
+			out_sites.append({
+				"cell_id": cs.cell_id,
+				"score": cs.score,
+			})
+		var out_rejections: Array = []
+		for rr in fs.rejection_reasons:
+			out_rejections.append({
+				"code": String(rr["code"]),
+				"count": int(rr["count"]),
+			})
+		out_suitability.append({
+			"profile_id": fs.profile_id,
+			"qualified_count": fs.qualified_count,
+			"candidate_sites": out_sites,
+			"rejection_reasons": out_rejections,
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
@@ -1609,6 +1754,7 @@ func to_dict() -> Dictionary:
 		"isolated_peaks": out_peaks,
 		"cell_regions": cell_regions.duplicate(),
 		"cell_mountain_weights": cell_mountain_weights.duplicate(),
+		"faction_suitability": out_suitability,
 		"meta": meta.duplicate(true),
 	}
 
@@ -1721,6 +1867,12 @@ static func from_dict(data: Dictionary) -> WorldData:
 			if not _is_int(wv) or int(wv) < 0 or int(wv) > 1000:
 				return null
 			out.cell_mountain_weights.append(int(wv))
+	# 派系适宜度（T6 S6 第一刀）：缺键 = 旧图合法空（零迁移——S5 时代 .world.json
+	# 无此键；与 states/cell_owners 同纪律）
+	if data.has("faction_suitability"):
+		var suit_err := _suitability_from_dict(data["faction_suitability"], out)
+		if suit_err:
+			return null
 	var m := (data["meta"] as Dictionary)
 	for k in ["schema_version", "seed", "generator_version", "rules_version",
 			"attempt_count", "repair_count"]:
@@ -2109,6 +2261,52 @@ static func _peaks_from_dict(src: Variant, out: WorldData) -> bool:
 		pk.peak_height = int(d["peak_height"])
 		pk.shape = int(d["shape"])
 		out.isolated_peaks.append(pk)
+	return false
+
+
+## faction_suitability 数组 → FactionSuitability（形状校验：profile_id 非空、
+## qualified_count ≥0、候选锚非负 + 分数千分 0..1000、rejection 项 code/count
+## 形状——规范序/界内/陆格/唯一性属 validate 语义层）。
+static func _suitability_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["profile_id", "qualified_count", "candidate_sites", "rejection_reasons"]):
+			return true
+		if not (d["profile_id"] is String) or (d["profile_id"] as String).is_empty():
+			return true
+		if not _is_int(d["qualified_count"]) or int(d["qualified_count"]) < 0:
+			return true
+		if not (d["candidate_sites"] is Array) or not (d["rejection_reasons"] is Array):
+			return true
+		var fs := FactionSuitability.new()
+		fs.profile_id = String(d["profile_id"])
+		fs.qualified_count = int(d["qualified_count"])
+		for sv in (d["candidate_sites"] as Array):
+			if not (sv is Dictionary) or not (sv as Dictionary).has_all(["cell_id", "score"]):
+				return true
+			var sd: Dictionary = sv
+			if not _is_int(sd["cell_id"]) or not _is_int(sd["score"]):
+				return true
+			if int(sd["cell_id"]) < 0 or int(sd["score"]) < 0 or int(sd["score"]) > 1000:
+				return true
+			var cs := CandidateSite.new()
+			cs.cell_id = int(sd["cell_id"])
+			cs.score = int(sd["score"])
+			fs.candidate_sites.append(cs)
+		for rv in (d["rejection_reasons"] as Array):
+			if not (rv is Dictionary) or not (rv as Dictionary).has_all(["code", "count"]):
+				return true
+			var rd: Dictionary = rv
+			if not (rd["code"] is String) or (rd["code"] as String).is_empty():
+				return true
+			if not _is_int(rd["count"]) or int(rd["count"]) < 0:
+				return true
+			fs.rejection_reasons.append({"code": String(rd["code"]), "count": int(rd["count"])})
+		out.faction_suitability.append(fs)
 	return false
 
 # ---------------- 内部 ----------------

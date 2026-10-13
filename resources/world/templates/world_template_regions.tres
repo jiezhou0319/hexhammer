@@ -1,6 +1,8 @@
 [gd_resource type="Resource" script_class="WorldTemplate" format=3]
 
 [ext_resource type="Script" path="res://scripts/core/data/world_template.gd" id="1_tpl"]
+[ext_resource type="Resource" path="res://resources/world/suitability/suitability_profile_mountain.tres" id="2_smtn"]
+[ext_resource type="Resource" path="res://resources/world/suitability/suitability_profile_plain.tres" id="3_spln"]
 
 [resource]
 script = ExtResource("1_tpl")
@@ -57,5 +59,7 @@ roads_enabled = true
 road_loop_count = 0
 max_road_delta = 2
 max_bridge_bank_delta = 2
+suitability_enabled = true
+suitability_profiles = [ExtResource("2_smtn"), ExtResource("3_spln")]
 locked = Array[String]([])
 preferred = Array[String]([])

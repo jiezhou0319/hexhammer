@@ -19,8 +19,8 @@
 ##                           「分区骨架版」入口）
 ##   width=<int> height=<int> 尺寸覆盖（默认模板自带 60×40）
 ##   views=<csv|all>         视图清单（默认 height,slope,passability；region/
-##                           skeleton 已随 S3 实做——无区域数据时显式报「无数据」
-##                           不产图、不计失败）
+##                           skeleton 已随 S3 实做、suitability 随 S6 实做——无
+##                           区域/适宜度数据时显式报「无数据」不产图、不计失败）
 ##   out=<dir>               输出目录（默认 res://docs/evidence/t6——m1a evidence 先例）
 ## 渲染口径（提案「固定对照」的可复现面）：
 ##   - 相机（规定）：正交俯视**数据面**——图包络（map_focus_bounds）中心正上方直视下，
@@ -35,7 +35,9 @@
 ##   - 背景 = 深蓝黑（灰度数据 r=g=b 恒不撞色；四角一致性自检沿 render_probe）。
 ## 视图数据派生 = tools/terrain_view_data.gd（纯逻辑件，tests/test_terrain_view_data.gd
 ##   逐行为锚定）：高度灰度 / 坡度 / 可用通行连通片（MapConnectivity 口径分级着色）
-##   三种实做 + region/skeleton 挂点。
+##   / 区域（群山权重连续场）/ 骨架 五种实做 + suitability 偏好候选（T6 S6——
+##   提案 :239「山地偏好候选/平原偏好候选」预览标注的**正式版**：WorldData.
+##   faction_suitability 事实驱动，标注规则 = 管线两阶段选址，无临时规则）。
 ## 像素自检（沿 render_probe 差分/像素证据先例；**本工具是证据 harness 非门禁**——
 ##   不进 headless 套件，run_tests.gd 只收集 tests/test_*.gd 不感知本文件）：
 ##   CHECK-A 四角背景色一致性（取景假设自检）；CHECK-B 每视图非背景像素占比 >
@@ -201,7 +203,7 @@ class Runner extends Node:
 			+ "map=res://resources/maps/bank/default_terraces_60x40_sample.json "
 			+ "views=height,slope,passability out=res://docs/evidence/t6")
 		print("  或：... -- seeds=7,42 template=regions_mountains width=60 height=40（即时生成批量）")
-		print("  views 可选：%s（region/skeleton 随 S3 实做——无区域数据时显式报无数据）或 all"
+		print("  views 可选：%s（region/skeleton 自 S3、suitability 自 S6 实做——无数据时显式报无数据）或 all"
 			% ", ".join(TerrainViewDataClass.VIEW_ORDER))
 		get_tree().quit(1)
 
@@ -632,6 +634,16 @@ class Runner extends Node:
 						TerrainViewDataClass.SKELETON_BRANCH_GRAY,
 						TerrainViewDataClass.SKELETON_PEAK_GRAY,
 						TerrainViewDataClass.SKELETON_SPINE_GRAY])
+				"suitability":
+					var prof_lines := PackedStringArray()
+					var profs: Array = data["profiles"]
+					for pr in profs:
+						var pd: Dictionary = pr
+						prof_lines.append("%s 候选=%d/合格=%d 拒绝=%s" % [
+							str(pd["profile_id"]), int(pd["candidates"]),
+							int(pd["qualified"]), str(pd["rejections"])])
+					L.append("  偏好候选（T6 S6 正式版——提案 :239 预览标注口径）：profile=%d；[%s]；候选锚按 profile 槽位取色（首版两类：红=槽0（山地偏好，make_mountain）/蓝=槽1（平原偏好，make_plain）——res://resources/world/suitability/）；标注规则 = 管线两阶段选址（硬筛选：面积/通达/水 → 评分：地貌偏好+可扩展空间+水 → 间距），无临时规则（S2 临时标注通道已由本视图取代）" % [
+						profs.size(), "；".join(prof_lines)])
 		var rendered: Array = []
 		for r in records:
 			if r["state"] == "渲染":
