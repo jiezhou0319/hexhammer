@@ -1,7 +1,9 @@
 ## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体/道路/桥/POI/势力归属
-##   + 地貌分区/骨架事实（T6 S3 解锁；执行方案 docs/M1a-terrain-T6-stylized-execution-plan.md
-##   §2.1/§5 + 提案 docs/evidence/风格化地图生成方案_群山平原与派系适配_修订版.md
-##   §数据与确定性合同 :189-199 TerrainRegion/TerrainSkeleton——名称按「可与现有
+##   + 地貌分区/骨架/孤峰事实（T6 S3 分区骨架 + S4 孤峰解锁；执行方案
+##   docs/M1a-terrain-T6-stylized-execution-plan.md §2.1/§5/§6 + 提案
+##   docs/evidence/风格化地图生成方案_群山平原与派系适配_修订版.md
+##   §数据与确定性合同 :189-199 TerrainRegion/TerrainSkeleton（isolated_peaks
+##   S4 落位）+ §群山与孤峰的不同职责 :73-82——名称按「可与现有
 ##   工程适配」授权落本表；此前批次见 docs/M1a-terrain-T2-T5-execution-plan.md
 ##   §2.5 + §2.2/§2.3/§2.4（格边重议已拍，§2.6 全关）+ §4 WATER-01/03 +
 ##   §5 ROAD-01/02 + §6 WORLD-03/05 + §7 + 数据合同草案
@@ -367,6 +369,38 @@ class ValleyData:
 	var cells: Array[int] = []
 
 
+## 孤峰（T6 S4，提案 :78-79/:120「孤峰对象」+ TerrainSkeleton.isolated_peaks 适配）：
+## 显式局部地标——中心格 + 影响半径 + 峰高 + 形状。与主山系的区别是**对象归属**：
+## 只有本表成员才是孤峰（主山系内部突出峰属 MountainRangeData 骨架，不自动转化
+## ——提案 :79「按对象归属和空间隔离程度判定」的机器表达 = 两表互斥、由生成侧
+## 间距约束保证，数据层不重复存「非山系峰」派生事实）。影响格集（山脚）由
+## 中心+半径派生不落盘（沿 S3「生成期中间产物不落盘」纪律）；间距/预算/避让的
+## 数值约束属生成配置，S5 校验器按模板阈值查（本层只钉结构）。
+class IsolatedPeakData:
+	extends RefCounted
+
+	## 峰体轮廓（首版单值——提案 :287「首期可只做少量圆锥／岩峰轮廓」，T6 §10
+	## 默认答案④；后续岩柱/台地等形态扩展时加值，非 CONE 由 from_dict 与
+	## validate 双拒绝——Kind.FERRY「枚举存在 ≠ 能力开放」同款纪律）
+	enum Shape { CONE }
+
+	## 主键（isolated_peaks 表 peak_id 升序为规范序）
+	var peak_id: int = ID_NONE
+
+	## 中心格（界内；峰体与影响半径的原点）
+	var cell_id: int = ID_NONE
+
+	## 影响半径（六边形环距 ≥1：山脚 = 距中心 ≤ 此值的格集——预算/避让的计量面）
+	var influence_radius: int = 1
+
+	## 峰高（千分整数 1..1000 = 连续域高度增益 ×1000 四舍五入——序列化确定形状，
+	## cell_mountain_weights 千分整数同纪律；生成期浮值只进诊断不进事实）
+	var peak_height := 0
+
+	## Shape.CONE（首版值域单点）
+	var shape: int = Shape.CONE
+
+
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
@@ -404,6 +438,11 @@ var ridge_branches: Array[RidgeBranchData] = []
 
 ## 宽谷表（T6 S3；valley_id 升序规范序）
 var valleys: Array[ValleyData] = []
+
+## 孤峰表（T6 S4 regions 路线解锁；peak_id 升序规范序）。dual_noise 路线恒空
+##（关闭未实现能力不产伪字段）；regions 路线可空（小图零孤峰 = 合法态，
+## 提案 :82「小地图可以没有孤峰」）
+var isolated_peaks: Array[IsolatedPeakData] = []
 
 ## 格级地貌归属表（与格子表同长、行主序对齐；-1 = 无分区事实，否则 region_id；
 ## 值 = 该格归一化权重场的 argmax 区域——过渡带格也归属（权重连续、归属取主导））
@@ -590,6 +629,14 @@ func mountain_range_by_id(range_id: int) -> MountainRangeData:
 	for mr in mountain_ranges:
 		if mr.range_id == range_id:
 			return mr
+	return null
+
+
+## peak_id → 孤峰（不存在 → null；T6 S4 只读面——预览/校验/侵蚀强度共用）。
+func peak_by_id(peak_id: int) -> IsolatedPeakData:
+	for p in isolated_peaks:
+		if p.peak_id == peak_id:
+			return p
 	return null
 
 
@@ -1268,6 +1315,8 @@ func _validate_terrain_regions(map: MapDataClass) -> String:
 	if terrain_regions.is_empty() and not (mountain_ranges.is_empty() \
 			and ridge_branches.is_empty() and valleys.is_empty()):
 		return "SKELETON_NO_REGIONS：区域表为空但骨架非空（无分区事实不得有骨架——没有能力就没有数据）"
+	if terrain_regions.is_empty() and not isolated_peaks.is_empty():
+		return "PEAK_NO_REGIONS：区域表为空但孤峰非空（孤峰是 regions 路线事实——没有能力就没有数据）"
 	var range_ids := {}
 	prev_id = ID_NONE
 	for mi in mountain_ranges.size():
@@ -1326,6 +1375,27 @@ func _validate_terrain_regions(map: MapDataClass) -> String:
 				return "valleys[%d]（valley %d）cells 破坏行主序规范序（含重复格 %d）" \
 					% [vi, vl.valley_id, cid]
 			prev_cell = cid
+	# ---- isolated_peaks：孤峰结构（T6 S4——主键/规范序/界内/半径/峰高/形状）----
+	prev_id = ID_NONE
+	for pi in isolated_peaks.size():
+		var pk := isolated_peaks[pi]
+		if pk.peak_id < 0:
+			return "isolated_peaks[%d] peak_id=%d 非法（负主键）" % [pi, pk.peak_id]
+		if prev_id != ID_NONE and pk.peak_id <= prev_id:
+			return "isolated_peaks[%d] 破坏规范序（须按 peak_id 严格升序——含主键重复）" % pi
+		prev_id = pk.peak_id
+		if pk.cell_id < 0 or pk.cell_id >= map.cell_count():
+			return "PEAK_CELL：isolated_peaks[%d]（peak %d）cell_id=%d 指向界外格（图共 %d 格）" \
+				% [pi, pk.peak_id, pk.cell_id, map.cell_count()]
+		if pk.influence_radius < 1:
+			return "PEAK_RADIUS：isolated_peaks[%d]（peak %d）influence_radius=%d 非法（≥1——零半径无影响面）" \
+				% [pi, pk.peak_id, pk.influence_radius]
+		if pk.peak_height < 1 or pk.peak_height > 1000:
+			return "PEAK_HEIGHT：isolated_peaks[%d]（peak %d）peak_height=%d 越界（千分整数 1..1000）" \
+				% [pi, pk.peak_id, pk.peak_height]
+		if pk.shape != IsolatedPeakData.Shape.CONE:
+			return "PEAK_SHAPE：isolated_peaks[%d]（peak %d）shape=%d 非法（首版值域单点 CONE——枚举存在 ≠ 能力开放）" \
+				% [pi, pk.peak_id, pk.shape]
 	# ---- 格级事实：cell_regions / cell_mountain_weights ----
 	if not cell_regions.is_empty() or not cell_mountain_weights.is_empty():
 		if terrain_regions.is_empty():
@@ -1513,6 +1583,15 @@ func to_dict() -> Dictionary:
 			"range_id": vl.range_id,
 			"cells": vl.cells.duplicate(),
 		})
+	var out_peaks: Array = []
+	for pk in isolated_peaks:
+		out_peaks.append({
+			"peak_id": pk.peak_id,
+			"cell_id": pk.cell_id,
+			"influence_radius": pk.influence_radius,
+			"peak_height": pk.peak_height,
+			"shape": pk.shape,
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
@@ -1527,6 +1606,7 @@ func to_dict() -> Dictionary:
 		"mountain_ranges": out_ranges,
 		"ridge_branches": out_branches,
 		"valleys": out_valleys,
+		"isolated_peaks": out_peaks,
 		"cell_regions": cell_regions.duplicate(),
 		"cell_mountain_weights": cell_mountain_weights.duplicate(),
 		"meta": meta.duplicate(true),
@@ -1621,6 +1701,11 @@ static func from_dict(data: Dictionary) -> WorldData:
 	if data.has("valleys"):
 		var valleys_err := _valleys_from_dict(data["valleys"], out)
 		if valleys_err:
+			return null
+	# 孤峰（T6 S4）：缺键 = 旧图合法空（零迁移——S3 时代 .world.json 无此键）
+	if data.has("isolated_peaks"):
+		var peaks_err := _peaks_from_dict(data["isolated_peaks"], out)
+		if peaks_err:
 			return null
 	if data.has("cell_regions"):
 		if not (data["cell_regions"] is Array):
@@ -1992,6 +2077,38 @@ static func _valleys_from_dict(src: Variant, out: WorldData) -> bool:
 				return true
 			vl.cells.append(int(cv))
 		out.valleys.append(vl)
+	return false
+
+
+## isolated_peaks 数组 → IsolatedPeakData（形状校验：主键/中心/半径/峰高非负边界 +
+## shape **值域单点 == CONE**——非首版形态形状层即拒，Kind.FERRY 同款纪律）。
+static func _peaks_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["peak_id", "cell_id", "influence_radius", "peak_height", "shape"]):
+			return true
+		for k in ["peak_id", "cell_id", "influence_radius", "peak_height", "shape"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["peak_id"]) < 0 or int(d["cell_id"]) < 0:
+			return true
+		if int(d["influence_radius"]) < 1:
+			return true
+		if int(d["peak_height"]) < 1 or int(d["peak_height"]) > 1000:
+			return true
+		if int(d["shape"]) != IsolatedPeakData.Shape.CONE:
+			return true  # 首版值域单点（枚举存在 ≠ 能力开放）
+		var pk := IsolatedPeakData.new()
+		pk.peak_id = int(d["peak_id"])
+		pk.cell_id = int(d["cell_id"])
+		pk.influence_radius = int(d["influence_radius"])
+		pk.peak_height = int(d["peak_height"])
+		pk.shape = int(d["shape"])
+		out.isolated_peaks.append(pk)
 	return false
 
 # ---------------- 内部 ----------------

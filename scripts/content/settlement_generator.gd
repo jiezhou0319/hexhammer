@@ -32,6 +32,8 @@
 ##   归属不变）；cfg.pinned = 前次尝试产物的原样重发面——{"spawn_anchor_slots":
 ##   {槽序号: 锚格}（footprint 触及锁定格的出生槽——**槽位保持**：槽序号即
 ##   role/poi_id 派生序，非首槽锚定不翻阵营）, "resource_cells": [格]}。
+## 孤峰避让面（T6 S4）：cfg.avoid_cells = 出生候选禁入格集（管线注入 = 距孤峰
+##   中心 < 最小间距的格——出生落点避让孤峰，提案 :78；缺省/空 = 行为不变）。
 ## 纯函数：RefCounted、零场景节点（ADR-2）；确定性 = 同 map 同 cfg 同 rng 序列
 ##   → 同产出（并列一律取 cell_id 升序钉死；Dijkstra 并列成本取小 state_id）。
 class_name SettlementGenerator
@@ -171,7 +173,9 @@ static func place_settlements(map: MapDataClass, world: WorldDataClass,
 	var scores := habitability(map, world, int(cfg["water_terrain_id"]),
 		float(cfg["sea_level"]), int(cfg["elevation_levels"]))
 
-	# 冲突面（放置期禁入；手工世界可能预置桥/路——一并避开）
+	# 冲突面（放置期禁入；手工世界可能预置桥/路——一并避开）。avoid_cells =
+	# 孤峰避让格集（T6 S4：距峰中心 < 最小间距的格不作出生候选——出生落点避让
+	# 孤峰，提案 :78；dual_noise/零孤峰世界恒空 = 行为不变）
 	var river_flanks := world.river_flank_cells()
 	var bridge_banks := {}
 	for c in world.crossings:
@@ -181,6 +185,9 @@ static func place_settlements(map: MapDataClass, world: WorldDataClass,
 	var locked := {}
 	for cid in cfg.get("locked_cells", []):
 		locked[int(cid)] = true
+	var avoid := {}
+	for cid in cfg.get("avoid_cells", []):
+		avoid[int(cid)] = true
 
 	# 候选池：中心 + 六邻全界内、全可通行、零冲突；适居度降序、并列 cell_id 升序
 	var candidates: Array = []
@@ -188,7 +195,8 @@ static func place_settlements(map: MapDataClass, world: WorldDataClass,
 		var i := map.index_of(cell)
 		if map.elevation_at(cell) == 0 or not map.is_passable(cell):
 			continue
-		if river_flanks.has(i) or bridge_banks.has(i) or road_cells.has(i) or locked.has(i):
+		if river_flanks.has(i) or bridge_banks.has(i) or road_cells.has(i) or locked.has(i) \
+				or avoid.has(i):
 			continue
 		var foot := spawn_footprint_of(map, i)
 		if foot.is_empty():

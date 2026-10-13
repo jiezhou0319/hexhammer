@@ -17,7 +17,9 @@
 ##     （no_candidate）各一确定样本；生成器只读（生成前后 map.summary 逐字节
 ##     一致——不静默重塑整图高程）；
 ##   - 水体声明：贴图界分量 SEA / 内陆分量 LAKE / 成员水位不齐具名失败；
-##   - 多河河口最小六边形环距约束（Azgaar burgs 间距同族）。
+##   - 多河河口最小六边形环距约束（Azgaar burgs 间距同族）；
+##   - T6 S4 对账面：hydrology 输出不受 erosion 通道影响（生成器输入面不含
+##     侵蚀通道；同量化图必得同 hydrology 诊断——通道隔离锚，见文件尾块）。
 ## oracle 原则：角点同一性用 WorldData.corner_id_of（数据层稳定 ID 公开合同，
 ##   tests/test_world_data.gd 另锚）+ RiverFixtures 几何共角点判定双路互证；
 ##   期望单调性/容纳/间距由 HexMath/MapData 原语独立推导，不复制生成器实现。
@@ -399,3 +401,45 @@ func test_cfg_missing_key_named_failure() -> void:
 	var result := RiverGen.generate(map, _rng(5), cfg)
 	expect(not result["ok"], "配置缺键应失败")
 	expect(String(result["error"]).contains("缺键"), "失败串指明缺键（got %s）" % result["error"])
+
+# ================= T6 S4：hydrology 输出与侵蚀通道的对账面 =================
+
+func test_hydrology_unaffected_by_erosion_channel_when_map_unchanged() -> void:
+	# 通道隔离锚（T6 §6 验收「hydrology 阶段输出摘要不受 erosion 通道影响」）：
+	# 河网生成器的输入面 = (量化图, hydrology 通道 rng, cfg)——erosion 通道不在
+	# 其中（RiverGen.CFG_KEYS 无该键）；管线面上同量化图（侵蚀关 = erosion 通道
+	# 零消耗 → map 恒同）必得同 hydrology 诊断。侵蚀开态下图可变 → 河网随之变
+	# 是「下游消费最终事实」的既定语义（提案 :223），不属本锚。
+	expect(not RiverGen.CFG_KEYS.has("erosion"),
+		"河网生成器配置键不含 erosion（生成器不认侵蚀通道——结构面）")
+	var WPC := preload("res://scripts/content/world_pipeline.gd")
+	var WTC := preload("res://scripts/core/data/world_template.gd")
+	var t := WTC.make_regions()
+	t.erosion_enabled = false
+	var base: Dictionary = WPC.generate_world(t, 7)
+	var alt: Dictionary = WPC.generate_world(t, 7, {"erosion": 424242})
+	expect(base["ok"] and alt["ok"], "侵蚀关两跑应成功")
+	if not (base["ok"] and alt["ok"]):
+		return
+	var base_map: MapDataClass = base["map"]
+	var alt_map: MapDataClass = alt["map"]
+	expect_eq(alt_map.digest(), base_map.digest(),
+		"侵蚀关态改 erosion 通道 → 量化图逐字节一致（erosion 通道零消耗前提）")
+	var base_hydro := {}
+	var alt_hydro := {}
+	for d0 in base["stages"]:
+		if String(d0["stage"]) == "hydrology":
+			base_hydro = d0
+	for d1 in alt["stages"]:
+		if String(d1["stage"]) == "hydrology":
+			alt_hydro = d1
+	expect_eq(str(alt_hydro), str(base_hydro),
+		"同量化图必得同 hydrology 诊断（河网输出不受 erosion 通道影响——通道隔离锚）")
+	# 反向确证（分辨力）：生成器对同图同 cfg 同 rng 仍确定（既有确定性锚的
+	# erosion-adjacent 复核——侵蚀产物图上重跑两次逐字节一致；经 to_dict 落
+	# 可比形状——RefCounter 直 stringify 不可比）
+	var r1 := RiverGen.generate(base_map, _rng(9), _cfg())
+	var r2 := RiverGen.generate(base_map, _rng(9), _cfg())
+	expect_eq(JSON.stringify(_world_of(r1).to_dict()["rivers"]),
+		JSON.stringify(_world_of(r2).to_dict()["rivers"]),
+		"同图同 rng 重跑河网一致（生成器只读图与通道——确定性保持）")

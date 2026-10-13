@@ -6,7 +6,8 @@
 ##   template_id 身份 + terrain_route 地形路线开关（T6 拍板 2026-10-13：regions
 ##   并列路线；~~双噪声唯一路线~~ 排他表述已被 T6 执行方案取代注作废——本组
 ##   默认仍双噪声 = 既有模板零漂移）+ dimensions 尺寸组 + geography 地理组
-##   （双噪声数值）+ regions 宏观分区组（T6 S3，未验证起调值）+ hydrology 水系组
+##   （双噪声数值）+ regions 宏观分区组（T6 S3 分区骨架 + S4 孤峰/侵蚀子组，
+##   未验证起调值）+ hydrology 水系组
 ##   （WORLD-02 河口反向生长参数）+ scenario 组（聚落/势力，WORLD-03 解锁：出生
 ##   区/资源/扩张参数/河界加成）+ infrastructure 组（道路骨架，WORLD-05 解锁：
 ##   回路数/高差阈值）+ locked/preferred 约束名列表（**locked v1 格式
@@ -93,6 +94,49 @@ const REGIONS_PATH := "res://resources/world/templates/world_template_regions.tr
 ## 每条主山系的支脉数上限（支脉自主脊长出的短脊，提案 :77）
 @export var mountain_branch_count: int = 3
 
+# ---- regions 组·孤峰子组（T6 S4 解锁；仅 terrain_route == "regions" 时被
+#      composition 阶段消费。**全部数值 = 未验证起调值**（提案 :131 孤峰预算
+#      5% 起调 + T6 方案 §10 默认答案④「首版圆锥/岩峰轮廓」），调参走模板版本/
+#      GENERATOR_VERSION，不是平衡承诺）----
+
+## 孤峰影响面积预算比例（总影响面积 ≤ 有效平原面积 × 此值；有效平原 = 群山权重
+## ≤300‰ 的陆格；0 = 恒零孤峰——小图自然零座合法，提案 :82/:131）
+@export var peak_area_budget_ratio: float = 0.05
+## 孤峰影响半径（六边形环距——山脚格集 = 距中心 ≤ 此值；峰体横向尺度）
+@export var peak_influence_radius: int = 2
+## 孤峰峰高（千分整数 1..1000——连续域高度增益；圆锥轮廓顶点增益）
+@export var peak_height: int = 550
+## 最小间距相对影响半径的倍数（峰间距/避让主山系间距 = ceil(半径 × 此值)，
+## 提案 :131「相对于峰体半径的最小间距」；出生落点避让同距——S4 落点侧禁入面）
+@export var peak_spacing_radius_scale: float = 2.0
+
+# ---- regions 组·侵蚀子组（T6 S4 解锁；仅 terrain_route == "regions" 且
+#      erosion_enabled 时被 erosion 阶段消费——作用于连续高度、投影前；关闭 =
+#      阶段跳过、输出与无侵蚀版逐格一致（回退锚）。**全部数值 = 未验证起调值**
+#      （提案 :100-109 选择性侵蚀 + §首期调参起点；平原默认关 = 提案 :106
+#      「平原：弱侵蚀或关闭侵蚀」的起调档）----
+
+## 侵蚀阶段总开关（false = 跳过阶段——回退态；dual_noise 路线下本开关无效：
+## 侵蚀是 regions 路线专属阶段）
+@export var erosion_enabled: bool = false
+## 群山坡面侵蚀强度（沟壑刻蚀——mw ≥700‰ 档，提案 :104「允许更明显的沟壑」）
+@export var erosion_mountain_slope: float = 0.30
+## 宽谷/盆地侵蚀强度上限（谷底格取 min(档强度, 此值)——「限制侵蚀造成的割裂，
+## 维护可用面积」，提案 :105）
+@export var erosion_valley: float = 0.06
+## 平原侵蚀强度（默认 0 = 关——大片连贯性优先，提案 :106）
+@export var erosion_plain: float = 0.0
+## 过渡带侵蚀强度（300‰ < mw < 700‰ 档，提案 :107「分别控制细节强度」）
+@export var erosion_transition: float = 0.12
+## 海岸带侵蚀强度上限（贴海陆格取 min(档强度, 此值)——「保护整体轮廓」，提案 :107）
+@export var erosion_coast: float = 0.10
+## 侵蚀差分邻差预算（相邻格侵蚀量之差超过此值 = 破坏坡面连续的局部结果，按
+## 确定性规则减弱/回退——复查判据之一，提案 :109）
+@export var erosion_max_step: float = 0.15
+## 平原起伏预算（侵蚀后平原区连续起伏较侵蚀前最多增长此值——复查判据之二，
+## 提案 :109 起伏复查的平原面）
+@export var erosion_plain_relief_budget: float = 0.06
+
 # ---- hydrology 组：河网与水体（WORLD-02 河口反向生长；生长偏好参数 = 卡内
 #      拍板项「spike 后定默认值」——本版默认为首版实现档，调档 = 改模板不改码）----
 
@@ -178,8 +222,9 @@ static func make_default() -> WorldTemplate:
 
 
 ## 代码内 regions 路线模板（world_template_regions.tres 的对账基准——同源纪律）：
-## 地形路线 = regions（composition 阶段实做），九阶段其余开关与默认模板一致；
-## regions 参数组数值 = 未验证起调值（T6 方案 §10 默认答案②——首版自定进模板）。
+## 地形路线 = regions + 侵蚀开（composition 阶段实做 + erosion 阶段实做——S4 起
+## regions 路线的完整形态），九阶段其余开关与默认模板一致；
+## regions/孤峰/侵蚀参数组数值 = 未验证起调值（T6 方案 §10 默认答案②④）。
 static func make_regions() -> WorldTemplate:
 	var t := new()
 	t.template_id = "regions_mountains"
@@ -187,9 +232,11 @@ static func make_regions() -> WorldTemplate:
 	# 以下为 regions 路线起调值（未验证——与 world_template_regions.tres 同源锚）：
 	# sea_level 下调 = 骨架增益拉宽值域后补偿有效海面（否则平原半数沉水、陆块
 	# 破碎）；max_road_delta 2 = 山口/谷地路线的高差档（双噪声默认图 Δ1 档在
-	# 山区不可修路）
+	# 山区不可修路）；erosion_enabled = S4 起调开（关态 = regions_no_erosion 对照
+	# 形态，预览工具三路对照的「分区骨架版」入口）
 	t.sea_level = 0.18
 	t.max_road_delta = 2
+	t.erosion_enabled = true
 	return t
 
 
@@ -257,6 +304,30 @@ func validate() -> String:
 		return "模板 %s mountain_range_count=%d 非法（∈[0,8]）" % [template_id, mountain_range_count]
 	if mountain_branch_count < 0 or mountain_branch_count > 8:
 		return "模板 %s mountain_branch_count=%d 非法（∈[0,8]）" % [template_id, mountain_branch_count]
+	# ---- regions 组·孤峰/侵蚀子组硬边界（T6 S4；值未验证起调值，边界是能力面）----
+	if peak_area_budget_ratio < 0.0 or peak_area_budget_ratio > 1.0:
+		return "模板 %s peak_area_budget_ratio=%s 非法（∈[0,1]——0 = 恒零孤峰合法态）" \
+			% [template_id, str(peak_area_budget_ratio)]
+	if peak_influence_radius < 1 or peak_influence_radius > 8:
+		return "模板 %s peak_influence_radius=%d 非法（∈[1,8]）" % [template_id, peak_influence_radius]
+	if peak_height < 1 or peak_height > 1000:
+		return "模板 %s peak_height=%d 非法（千分整数 ∈[1,1000]，WorldData.IsolatedPeakData 同纲）" \
+			% [template_id, peak_height]
+	if peak_spacing_radius_scale < 1.0:
+		return "模板 %s peak_spacing_radius_scale=%s 非法（≥1——间距不小于影响半径）" \
+			% [template_id, str(peak_spacing_radius_scale)]
+	for strength_field in [["erosion_mountain_slope", erosion_mountain_slope],
+			["erosion_valley", erosion_valley], ["erosion_plain", erosion_plain],
+			["erosion_transition", erosion_transition], ["erosion_coast", erosion_coast]]:
+		var v: float = strength_field[1]
+		if v < 0.0 or v > 1.0:
+			return "模板 %s %s=%s 非法（侵蚀强度 ∈[0,1]）" % [template_id, strength_field[0], str(v)]
+	if erosion_max_step <= 0.0 or erosion_max_step > 1.0:
+		return "模板 %s erosion_max_step=%s 非法（∈(0,1] 侵蚀差分邻差预算）" \
+			% [template_id, str(erosion_max_step)]
+	if erosion_plain_relief_budget < 0.0 or erosion_plain_relief_budget > 1.0:
+		return "模板 %s erosion_plain_relief_budget=%s 非法（∈[0,1] 平原起伏预算）" \
+			% [template_id, str(erosion_plain_relief_budget)]
 	if river_count < 0:
 		return "模板 %s river_count=%d 非法（≥0——0 = 无河世界合法态）" % [template_id, river_count]
 	if river_max_edges < 1:
@@ -315,6 +386,18 @@ func to_dict() -> Dictionary:
 		"region_transition_width": region_transition_width,
 		"mountain_range_count": mountain_range_count,
 		"mountain_branch_count": mountain_branch_count,
+		"peak_area_budget_ratio": peak_area_budget_ratio,
+		"peak_influence_radius": peak_influence_radius,
+		"peak_height": peak_height,
+		"peak_spacing_radius_scale": peak_spacing_radius_scale,
+		"erosion_enabled": erosion_enabled,
+		"erosion_mountain_slope": erosion_mountain_slope,
+		"erosion_valley": erosion_valley,
+		"erosion_plain": erosion_plain,
+		"erosion_transition": erosion_transition,
+		"erosion_coast": erosion_coast,
+		"erosion_max_step": erosion_max_step,
+		"erosion_plain_relief_budget": erosion_plain_relief_budget,
 		"hydrology_enabled": hydrology_enabled,
 		"river_count": river_count,
 		"river_max_edges": river_max_edges,

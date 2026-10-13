@@ -34,6 +34,7 @@
 class_name TerrainViewData
 extends RefCounted
 
+const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
 const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
@@ -245,20 +246,26 @@ static func region_view(map: MapDataClass, world: WorldDataClass = null) -> Dict
 		"high_cells": high, "low_cells": low,
 	}
 
-# ---------------- 骨架（S3 实做：主脊/支脉/谷底四级灰度）----------------
+# ---------------- 骨架（S3 实做：主脊/支脉/谷底四级灰度 + S4 孤峰档）----------------
 
-## skeleton 视图灰度档（写死；孤峰层 S4 预留加档——值域加档不改既有档）
+## skeleton 视图灰度档（写死；T6 S4 加孤峰档——值域加档不改既有档：主脊 0.95 >
+## 孤峰 0.85 > 支脉 0.65 > 谷底 0.45 > 背景 0.18——孤峰亮于支脉暗于主脊，
+## 「形态与主山系不同」的可辨面）
 const SKELETON_BG_GRAY := 0.18
 const SKELETON_VALLEY_GRAY := 0.45
 const SKELETON_BRANCH_GRAY := 0.65
+const SKELETON_PEAK_GRAY := 0.85
 const SKELETON_SPINE_GRAY := 0.95
 
-## 骨架视图：主脊 0.95 / 支脉 0.65 / 谷底 0.45 / 背景 0.18（同格多属取最高
-## 优先级：主脊 > 支脉 > 谷底）。返回 { "view": "skeleton",
+## 骨架视图：主脊 0.95 / 孤峰 0.85 / 支脉 0.65 / 谷底 0.45 / 背景 0.18（同格
+## 多属取最高优先级：主脊 > 孤峰 > 支脉 > 谷底——峰盘与脊/支脉经 S4 间距约束
+## 结构性不重叠，主脊优先是防御性口径）。孤峰格 = 距峰中心 ≤ influence_radius
+## 的盘格（影响域派生，WorldData 不落盘山脚集——同函数两处消费的规范口径）。
+## 返回 { "view": "skeleton",
 ##   "implemented": true, "has_data": bool, "reason": String,
-##   "ranks": PackedInt32Array（-1 背景/0 谷底/1 支脉/2 主脊——秩表即图例表）,
+##   "ranks": PackedInt32Array（-1 背景/0 谷底/1 支脉/2 主脊/3 孤峰——秩表即图例表）,
 ##   "colors": PackedColorArray,
-##   "ranges"/"branches"/"valleys"/"valley_cells": int }
+##   "ranges"/"branches"/"valleys"/"valley_cells"/"peaks"/"peak_cells": int }
 static func skeleton_view(map: MapDataClass, world: WorldDataClass = null) -> Dictionary:
 	var no_data := _no_region_data_reason(world)
 	if no_data != "":
@@ -281,6 +288,17 @@ static func skeleton_view(map: MapDataClass, world: WorldDataClass = null) -> Di
 		for cid in mr.spine_cells:
 			if cid >= 0 and cid < ranks.size():
 				ranks[cid] = 2
+	var peak_cells := 0
+	for pk in world.isolated_peaks:
+		if pk.cell_id < 0 or pk.cell_id >= cells.size():
+			continue  # 界外峰由 WorldData.validate 拒——视图只读防御
+		var center := Hex.axial_of(Vector2i(pk.cell_id % map.width, pk.cell_id / map.width))
+		for i in cells.size():
+			if ranks[i] == 2:
+				continue  # 主脊优先（防御口径——间距约束下不重叠）
+			if ranks[i] < 3 and Hex.distance(center, cells[i]) <= pk.influence_radius:
+				ranks[i] = 3
+				peak_cells += 1
 	var colors := PackedColorArray()
 	colors.resize(cells.size())
 	for i in cells.size():
@@ -292,6 +310,8 @@ static func skeleton_view(map: MapDataClass, world: WorldDataClass = null) -> Di
 				g = SKELETON_BRANCH_GRAY
 			2:
 				g = SKELETON_SPINE_GRAY
+			3:
+				g = SKELETON_PEAK_GRAY
 		colors[i] = Color(g, g, g)
 	var valley_cells := 0
 	for vl in world.valleys:
@@ -303,6 +323,8 @@ static func skeleton_view(map: MapDataClass, world: WorldDataClass = null) -> Di
 		"branches": world.ridge_branches.size(),
 		"valleys": world.valleys.size(),
 		"valley_cells": valley_cells,
+		"peaks": world.isolated_peaks.size(),
+		"peak_cells": peak_cells,
 	}
 
 

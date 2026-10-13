@@ -19,7 +19,11 @@
 ##     脊线 = 界内相邻连续不重复、支脉根在父脊、山系挂群山区）、ValleyData
 ##     （格集升序）、cell_regions/cell_mountain_weights（全长/值域/与区域表
 ##     对账）——往返/旧图零迁移（缺六键 = T5 时代合法空）/拒绝锚同前四件纪律
-##     （生成行为面见 tests/test_world_pipeline.gd 的 T6 regions 块）。
+##     （生成行为面见 tests/test_world_pipeline.gd 的 T6 regions 块）；
+##   - 孤峰事实（T6 S4 解锁）：IsolatedPeakData（中心界内/影响半径 ≥1/峰高
+##     千分 1..1000/形状值域单点 CONE——枚举存在 ≠ 能力开放）、peak_by_id
+##     查询面、无分区不得有孤峰（PEAK_NO_REGIONS）——往返/旧图零迁移（缺
+##     isolated_peaks 键 = S3 时代合法空）/拒绝锚同前四件纪律。
 ## oracle 原则：期望邻接关系由 MapData/HexMath 原语独立推导（index_of / dir_between /
 ##   axial_of），不复制 WorldData 内部比较器；JSON 往返走真实文件（user:// 临时件）。
 extends "res://tests/test_case.gd"
@@ -611,3 +615,117 @@ func test_regions_facts_from_dict_shape_gates() -> void:
 	var bad_spine := good.duplicate(true)
 	(bad_spine["mountain_ranges"] as Array)[0]["spine_cells"] = [0]
 	expect(WorldDataClass.from_dict(bad_spine) == null, "单格脊线 → from_dict 拒（<2）")
+
+# ================= T6 S4：孤峰事实（isolated_peaks）=================
+
+## 孤峰 fixture：在分区世界（_regions_world 同款）上加两座孤峰——中心在右侧
+## 平原区（cell 16/17 列），半径 2/1、峰高 550/300、形状 CONE（首版值域单点）。
+func _peaks_world() -> Array:
+	var pair := _regions_world()
+	var world: WorldDataClass = pair[1]
+	var pk0 := WorldDataClass.IsolatedPeakData.new()
+	pk0.peak_id = 0
+	pk0.cell_id = 16
+	pk0.influence_radius = 2
+	pk0.peak_height = 550
+	pk0.shape = WorldDataClass.IsolatedPeakData.Shape.CONE
+	var pk1 := WorldDataClass.IsolatedPeakData.new()
+	pk1.peak_id = 1
+	pk1.cell_id = 17
+	pk1.influence_radius = 1
+	pk1.peak_height = 300
+	pk1.shape = WorldDataClass.IsolatedPeakData.Shape.CONE
+	world.isolated_peaks.append(pk0)
+	world.isolated_peaks.append(pk1)
+	return pair
+
+func test_peaks_roundtrip_and_old_world_compat() -> void:
+	var pair := _peaks_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	expect_eq(world.validate(map), "", "含孤峰分区世界合法")
+	var facts := world.to_dict()
+	var peaks: Array = facts["isolated_peaks"]
+	expect_eq(peaks.size(), 2, "孤峰序列化两条")
+	expect_eq(peaks[0]["peak_id"], 0, "首峰主键")
+	expect_eq(peaks[0]["influence_radius"], 2, "影响半径落盘")
+	expect_eq(peaks[0]["peak_height"], 550, "峰高千分整数落盘")
+	expect_eq(peaks[0]["shape"], WorldDataClass.IsolatedPeakData.Shape.CONE, "形状 CONE 落盘")
+	# JSON 文件往返（MapIO.write_world 通道）
+	var path := "user://t6_world_data_peaks.world.json"
+	expect_eq(MapIO.write_world(world, path), OK, "落盘")
+	var back := MapIO.read_world(path)
+	expect(back != null, "读回")
+	if back != null:
+		expect_eq(back.to_dict(), facts, "孤峰序列化往返逐字节一致")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	# 旧图零迁移：S3 时代形状（无 isolated_peaks 键）仍可解析 = 合法空
+	var old_shape := (_regions_world()[1] as WorldDataClass).to_dict()
+	old_shape.erase("isolated_peaks")
+	var parsed: Variant = WorldDataClass.from_dict(old_shape)
+	expect(parsed is WorldDataClass, "缺 isolated_peaks 键 = 旧图合法空（零迁移）")
+	if parsed is WorldDataClass:
+		expect((parsed as WorldDataClass).isolated_peaks.is_empty(), "旧图孤峰表空")
+	# 查询面：peak_by_id 命中/不命中
+	expect(world.peak_by_id(1) != null and world.peak_by_id(1).cell_id == 17,
+		"peak_by_id 可解析")
+	expect(world.peak_by_id(99) == null, "peak_by_id 不存在 → null")
+
+func test_peaks_shape_rules_rejected() -> void:
+	# 半径 0 → PEAK_RADIUS（零半径无影响面）
+	var p1 := _peaks_world()
+	(p1[1] as WorldDataClass).isolated_peaks[0].influence_radius = 0
+	expect((p1[1] as WorldDataClass).validate(p1[0]).contains("PEAK_RADIUS"),
+		"半径 0 → 拒")
+	# 峰高越界（0 / 1001）→ PEAK_HEIGHT
+	var p2 := _peaks_world()
+	(p2[1] as WorldDataClass).isolated_peaks[0].peak_height = 0
+	expect((p2[1] as WorldDataClass).validate(p2[0]).contains("PEAK_HEIGHT"),
+		"峰高 0 → 拒（千分整数 1..1000）")
+	var p3 := _peaks_world()
+	(p3[1] as WorldDataClass).isolated_peaks[0].peak_height = 1001
+	expect((p3[1] as WorldDataClass).validate(p3[0]).contains("PEAK_HEIGHT"),
+		"峰高 1001 → 拒")
+	# 形状非首版枚举 → PEAK_SHAPE（枚举存在 ≠ 能力开放）
+	var p4 := _peaks_world()
+	(p4[1] as WorldDataClass).isolated_peaks[0].shape = 5
+	expect((p4[1] as WorldDataClass).validate(p4[0]).contains("PEAK_SHAPE"),
+		"shape 越界 → 拒（首版值域单点 CONE）")
+	# 界外中心 → PEAK_CELL
+	var p5 := _peaks_world()
+	(p5[1] as WorldDataClass).isolated_peaks[0].cell_id = 999
+	expect((p5[1] as WorldDataClass).validate(p5[0]).contains("PEAK_CELL"),
+		"中心格界外 → 拒")
+	# 主键降序 → 规范序拒
+	var p6 := _peaks_world()
+	(p6[1] as WorldDataClass).isolated_peaks[0].peak_id = 5
+	expect((p6[1] as WorldDataClass).validate(p6[0]).contains("规范序"),
+		"主键非升序 → 拒（peak_id 升序规范序）")
+	# 无分区但有孤峰 → PEAK_NO_REGIONS（没有能力就没有数据）
+	var p7 := _peaks_world()
+	var w7: WorldDataClass = p7[1]
+	w7.terrain_regions = []
+	w7.cell_regions = []
+	w7.cell_mountain_weights = []
+	w7.mountain_ranges = []
+	w7.ridge_branches = []
+	w7.valleys = []
+	expect(w7.validate(p7[0]).contains("PEAK_NO_REGIONS"),
+		"区域表空而孤峰非空 → 拒（孤峰是 regions 路线事实）")
+
+func test_peaks_from_dict_shape_gates() -> void:
+	# from_dict 形状层：坏形状 → null 不冒充（值域单点字段形状层即拒——
+	# CrossingData.Kind.FERRY 同款纪律）
+	var good := (_peaks_world()[1] as WorldDataClass).to_dict()
+	var bad_shape := good.duplicate(true)
+	(bad_shape["isolated_peaks"] as Array)[0]["shape"] = 1
+	expect(WorldDataClass.from_dict(bad_shape) == null, "shape 非 CONE → from_dict 拒")
+	var bad_radius := good.duplicate(true)
+	(bad_radius["isolated_peaks"] as Array)[0]["influence_radius"] = 0
+	expect(WorldDataClass.from_dict(bad_radius) == null, "半径 0 → from_dict 拒")
+	var bad_height := good.duplicate(true)
+	(bad_height["isolated_peaks"] as Array)[0]["peak_height"] = 0
+	expect(WorldDataClass.from_dict(bad_height) == null, "峰高 0 → from_dict 拒")
+	var bad_missing := good.duplicate(true)
+	(bad_missing["isolated_peaks"] as Array)[0].erase("peak_height")
+	expect(WorldDataClass.from_dict(bad_missing) == null, "缺 peak_height 键 → from_dict 拒")

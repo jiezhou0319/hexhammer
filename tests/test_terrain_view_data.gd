@@ -367,6 +367,7 @@ func test_skeleton_view_rank_priority_oracle() -> void:
 	expect_eq(data["ranges"], 1, "山系数复读")
 	expect_eq(data["branches"], 1, "支脉数复读")
 	expect_eq(data["valley_cells"], 2, "谷底格计数复读")
+	expect_eq(data["peaks"], 0, "无孤峰世界 peaks=0（T6 S4 键在场——零峰合法态）")
 	var ranks: PackedInt32Array = data["ranks"]
 	var want_ranks := [2, 2, -1, 0, 1, 0]
 	for i in 6:
@@ -379,6 +380,51 @@ func test_skeleton_view_rank_priority_oracle() -> void:
 		expect_almost_eq(colors[i].r, want_gray[i], 1e-6, "骨架灰度档 %d" % i)
 	var again := Views.skeleton_view(pair[0], pair[1])
 	expect_eq(str(again["ranks"]), str(data["ranks"]), "同输入两次派生一致")
+
+func test_skeleton_view_peak_tier_oracle() -> void:
+	# T6 S4 孤峰档：同 fixture 加一座峰（中心 cell 2、半径 1 → 影响盘 {2,1,5,3?}
+	# 按 HexMath 六邻实算）；秩 3 = 孤峰（主脊 > 孤峰 > 支脉 > 谷底——主脊格
+	# （0,1）不被峰盘覆写；谷底/支脉格被峰盘升级为孤峰档）
+	var pair := _regions_view_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	var pk := WorldDataClass.IsolatedPeakData.new()
+	pk.peak_id = 0
+	pk.cell_id = 2
+	pk.influence_radius = 1
+	pk.peak_height = 550
+	world.isolated_peaks.append(pk)
+	var data := Views.skeleton_view(map, world)
+	expect_eq(data["has_data"], true, "有孤峰数据 → 出数")
+	expect_eq(data["peaks"], 1, "孤峰数复读")
+	# 期望秩独立推导：峰盘 = 距中心（cell 2 的 axial）≤1 的格；主脊格（0/1）优先
+	var center := Hex.axial_of(Vector2i(2 % map.width, 2 / map.width))
+	var cells := map.cells()
+	var ranks: PackedInt32Array = data["ranks"]
+	var want := [2, 2, -1, 0, 1, 0]  # S3 基线（test_skeleton_view_rank_priority_oracle）
+	var peak_cells := 0
+	for i in cells.size():
+		if Hex.distance(center, cells[i]) <= 1:
+			if want[i] != 2:  # 主脊优先（防御口径）
+				if want[i] != 3:
+					peak_cells += 1
+				want[i] = 3
+	expect_eq(int(data["peak_cells"]), peak_cells, "峰盘格计数与独立推导一致（%d 格）" % peak_cells)
+	for i in 6:
+		expect_eq(ranks[i], want[i], "孤峰档秩 %d（want %d）" % [i, want[i]])
+	var colors: PackedColorArray = data["colors"]
+	for i in 6:
+		var want_g := Views.SKELETON_BG_GRAY
+		match want[i]:
+			0:
+				want_g = Views.SKELETON_VALLEY_GRAY
+			1:
+				want_g = Views.SKELETON_BRANCH_GRAY
+			2:
+				want_g = Views.SKELETON_SPINE_GRAY
+			3:
+				want_g = Views.SKELETON_PEAK_GRAY
+		expect_almost_eq(colors[i].r, want_g, 1e-6, "孤峰档灰度 %d（0.85——亮于支脉暗于主脊）" % i)
 
 # ---- 辅助 ----
 

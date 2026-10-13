@@ -34,6 +34,18 @@
 ##     composition 跳过）；
 ##   - GENERATOR_VERSION：4 → 5（v5 = regions 路线首落 + 新通道 + 新事实集合；
 ##     dual_noise/legacy 逐格输出不变的登记面）。
+## **T6 S4 合同变更登记（2026-10-13，v6）**——按新合同显式更新既有断言（未删测试）：
+##   - 阶段序：十阶段 → **十一阶段**（erosion 插入 composition 与 quantize 之间
+##     ——提案 :46-57 主线序「连续高度 → 选择性侵蚀 → 六边形投影」），ten→eleven
+##     更名；composition 阶段版本 1→2（孤峰地标第四项）、erosion v1 首落；
+##   - 通道集：九通道 → 十通道（追加 erosion 于表尾；偏移沿质数序列 911）；
+##   - 默认模板诊断：skipped 段 2 → 3（+ dual_noise 路线下 erosion 路线跳过）；
+##   - GENERATOR_VERSION：5 → 6（v6 = 孤峰对象 + 选择性侵蚀 + erosion 通道 +
+##     WorldData.isolated_peaks + 聚落避让孤峰影响域；dual_noise/legacy 逐格输出
+##     不变的登记面）；
+##   - test_regions_route_channels_isolated 的 isolated_peak 断言改义：S3 的「override
+##     零产物变化」仅在零孤峰图（小图合法态）继续成立；有孤峰图上改峰布点
+##     （分区/骨架事实不变的通道分步锚——S4 合同）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -60,24 +72,30 @@ const T_FOREST := 5
 
 # ================= 九阶段序 + 阶段版本 + 具名通道（WORLD-01 ①④）=================
 
-func test_stage_order_ten_stages_fixed() -> void:
-	# Azgaar 去气候十阶段（拍板⑧ + T6 v5 增 composition）：配置→地理→地貌构图
-	#（regions 路线）→量化→河网水体→聚落→势力→道路→可玩校验→表现派生——
-	# 执行顺序即依赖图，顺序是合同（~~九阶段~~ T6 S3 合同变更登记，见文件头注）
-	var want: Array[String] = ["config", "geography", "composition", "quantize",
-		"hydrology", "settlement", "allegiance", "roads", "playability", "presentation"]
-	expect_eq(WorldPipeline.STAGES, want, "十阶段固定序（v5：composition 插入 geography 与 quantize 之间——连续域分区骨架先于量化投影）")
+func test_stage_order_eleven_stages_fixed() -> void:
+	# Azgaar 去气候十一阶段（拍板⑧ + T6 v5 增 composition + v6 增 erosion）：配置→
+	# 地理→地貌构图（regions 路线）→选择性侵蚀（S4）→量化→河网水体→聚落→势力→
+	# 道路→可玩校验→表现派生——执行顺序即依赖图，顺序是合同
+	#（~~十阶段~~ T6 S4 合同变更登记，见文件头注）
+	var want: Array[String] = ["config", "geography", "composition", "erosion",
+		"quantize", "hydrology", "settlement", "allegiance", "roads", "playability",
+		"presentation"]
+	expect_eq(WorldPipeline.STAGES, want, "十一阶段固定序（v6：erosion 插入 composition 与 quantize 之间——连续域侵蚀先于量化投影，提案 :46-57）")
 	for stage_name in want:
 		expect(WorldPipeline.STAGE_VERSIONS.has(stage_name), "阶段版本表缺 %s" % stage_name)
 		expect(int(WorldPipeline.STAGE_VERSIONS[stage_name]) >= 1, "阶段 %s 版本 ≥1" % stage_name)
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 2,
+		"composition v2（S4 孤峰地标第四项——阶段算法变更的细粒度锚）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["erosion"]), 1, "erosion v1（S4 首落）")
 
 func test_named_channels_independent_seeds() -> void:
-	# 九具名通道（geography/hydrology/poi/roads/decoration + T6 追加 layout/region/
-	# mountain/isolated_peak 表尾不重排；biome 通道删除——拍板④）
+	# 十具名通道（geography/hydrology/poi/roads/decoration + T6 追加 layout/region/
+	# mountain/isolated_peak + S4 追加 erosion 表尾不重排；biome 通道删除——拍板④）
 	expect_eq(WorldPipeline.CHANNELS, ["geography", "hydrology", "poi", "roads",
-		"decoration", "layout", "region", "mountain", "isolated_peak"],
-		"具名通道集合（提案随机性纪律 + T6 四通道追加表尾）")
-	# 偏移互异且与植被场偏移 1013、细节场偏移 2027 错开（两层随机不串流；值写死保证复现）
+		"decoration", "layout", "region", "mountain", "isolated_peak", "erosion"],
+		"具名通道集合（提案随机性纪律 + T6 四通道 + S4 erosion 追加表尾）")
+	# 偏移互异且与植被场偏移 1013、细节场偏移 2027、沟壑场偏移 3011 错开
+	#（两层随机不串流；值写死保证复现）
 	var seen := {}
 	for ch in WorldPipeline.CHANNELS:
 		var s := WorldPipeline.channel_seed(7, ch)
@@ -86,6 +104,7 @@ func test_named_channels_independent_seeds() -> void:
 		seen[s] = true
 		expect(s != 7 + 1013, "通道 %s 与植被场偏移串流" % ch)
 		expect(s != 7 + 2027, "通道 %s 与细节场偏移串流（T6 regions 细节场）" % ch)
+		expect(s != 7 + 3011, "通道 %s 与沟壑场偏移串流（T6 S4 沟壑场）" % ch)
 	# 同通道同 root 恒同值；override 整值替换；未知通道名显式哨兵
 	expect_eq(WorldPipeline.channel_seed(42, "hydrology"), WorldPipeline.channel_seed(42, "hydrology"),
 		"通道 seed 确定")
@@ -101,7 +120,7 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 	if not w["ok"]:
 		return
 	var stages: Array = w["stages"]
-	expect_eq(stages.size(), 10, "诊断数 = 十阶段（v5）")
+	expect_eq(stages.size(), 11, "诊断数 = 十一阶段（v6）")
 	var skipped_count := 0
 	for d in stages:
 		var diag: Dictionary = d
@@ -113,13 +132,19 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 			expect(String(diag.get("reason", "")).length() > 0,
 				"跳过段 %s 须带原因（空集合合法的显式面）" % diag["stage"])
 	# 默认模板 = dual_noise 路线（默认值不变 = 现有模板行为零漂移）：恒跳过段 =
-	# 表现派生 + dual_noise 路线下的 composition（~~1~~ T6 S3 合同变更登记，见头注）
-	expect_eq(skipped_count, 2, "未选用/未解锁阶段数（presentation + dual_noise 下 composition）")
+	# 表现派生 + dual_noise 路线下的 composition + dual_noise 路线下的 erosion
+	#（~~2~~ T6 S4 合同变更登记，见头注）
+	expect_eq(skipped_count, 3, "未选用/未解锁阶段数（presentation + dual_noise 下 composition/erosion）")
 	var comp_diag: Variant = _stage_of(stages, "composition")
 	expect(comp_diag != null and comp_diag.get("skipped", false),
-		"dual_noise 默认模板 composition 跳过（不产伪字段——regions 事实六集合恒空）")
+		"dual_noise 默认模板 composition 跳过（不产伪字段——regions 事实集合恒空）")
 	expect(String(comp_diag.get("reason", "")).contains("dual_noise"),
 		"composition 跳过原因具名路线（got %s）" % str(comp_diag.get("reason", "")))
+	var ero_diag: Variant = _stage_of(stages, "erosion")
+	expect(ero_diag != null and ero_diag.get("skipped", false),
+		"dual_noise 默认模板 erosion 跳过（regions 路线专属——不产伪字段）")
+	expect(String(ero_diag.get("reason", "")).contains("regions"),
+		"erosion 跳过原因具名路线（got %s）" % str(ero_diag.get("reason", "")))
 	var hydro: Variant = _stage_of(stages, "hydrology")
 	expect(hydro != null and not hydro.get("skipped", false), "默认模板水系阶段实做")
 	expect(hydro != null and hydro.get("post_quantum_valid", false) == true,
@@ -350,16 +375,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 5,
-		"GENERATOR_VERSION=5（T6 S3 regions 路线首落：STAGES 增 composition + layout/region/mountain/isolated_peak 四通道 + WorldData 分区/骨架事实六集合——dual_noise/legacy 逐格输出不变，复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 6,
+		"GENERATOR_VERSION=6（T6 S4 孤峰与选择性侵蚀：STAGES 增 erosion + erosion 通道 + WorldData.isolated_peaks + composition 第四项/孤峰布点 + 聚落避让孤峰——dual_noise/legacy 逐格输出不变，复现锚显式登记）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 5, "legacy meta 落 v5")
+		expect_eq(legacy["meta"]["generator_version"], 6, "legacy meta 落 v6")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 5, "世界 meta 落 v5")
+		expect_eq(w["world"].meta["generator_version"], 6, "世界 meta 落 v6")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）
@@ -376,13 +401,15 @@ func test_template_tres_matches_code_defaults() -> void:
 			"legacy .tres 与代码默认同源")
 		expect(not legacy_res.hydrology_enabled, "legacy 模板水系关（退化特例）")
 		expect_eq(legacy_res.terrain_route, "dual_noise", "legacy 模板钉死 dual_noise（T6 拍板③——不接 regions 路线）")
-	# regions 模板（T6 S3）：.tres 与 make_regions 同源 + 路线开关/参数组落位
+	# regions 模板（T6 S3+S4）：.tres 与 make_regions 同源 + 路线开关/参数组落位
 	var regions_res := WorldTemplateClass.load_regions()
 	expect(regions_res != null, "regions 模板 .tres 应可加载")
 	if regions_res != null:
 		expect_eq(regions_res.to_dict(), WorldTemplateClass.make_regions().to_dict(),
-			"regions .tres 与代码默认同源（起调值变更须两处同步）")
+			"regions .tres 与代码默认同源（S4 起调值变更须两处同步）")
 		expect_eq(regions_res.terrain_route, "regions", "regions 模板选 regions 路线")
+		expect(regions_res.erosion_enabled, "regions 模板侵蚀开（S4 起调——完整形态）")
+		expect(regions_res.peak_area_budget_ratio > 0.0, "regions 模板孤峰预算在档（提案 :131 五厘起调）")
 	# 缺文件路径不在此锚（load 对缺文件的引擎 ERROR 噪声会污染门禁日志——
 	# 「非预期引擎 ERROR = 异常」口径；null 双态合同沿 MapIO.read_json 先例另测）
 
@@ -655,24 +682,28 @@ func test_regions_route_no_boundary_step() -> void:
 		"连续场边界邻差有界（got %s——混合场在过渡带连续）" % str(comp["boundary_max_delta"]))
 
 func test_regions_route_channels_isolated() -> void:
-	# T6 四新通道的分步隔离锚（提案 :221 八通道的 S3 落位）：
-	# - isolated_peak：S4 前零消耗——override 它必须零产物变化（预留通道不空转）；
+	# T6 四新通道 + S4 erosion 通道的分步隔离锚（提案 :221 八通道 + T6 §2.3）：
+	# - isolated_peak：只动孤峰布点（分区/骨架/格级事实不变——S4 合同；小图
+	#   零孤峰 = override 零变化的合法态特例）；
 	# - mountain：只动骨架（regions 事实不变、cell_regions/weights 不变）；
 	# - region：只动地貌指派（布点/核心格不变——core_cells 逐字节一致）；
-	# - layout：动布点（分区几何可变）
+	# - layout：动布点（分区几何可变）。
+	# erosion 通道的隔离锚见 test_s4_erosion_channel_isolation（侵蚀只在开态消费）。
 	var t := _regions_template_small()
 	var base := WorldPipeline.generate_world(t, 7)
 	expect(base["ok"], "基线生成应成功")
 	if not base["ok"]:
 		return
 	var base_world: WorldDataClass = base["world"]
-	# isolated_peak 零消耗（S4 前预留）
+	# isolated_peak（小图 = 零孤峰合法态：override 零产物变化——S3 锚在 S4 语义
+	# 下的合法特例；有孤峰图上的「只动峰」面在 60×40 大图锚 test_s4_peaks_* 覆盖）
+	expect(base_world.isolated_peaks.is_empty(), "24×16 小图零孤峰（间距盘装不进小图平原——提案 :82 合法态）")
 	var iso := WorldPipeline.generate_world(t, 7, {"isolated_peak": 99999})
 	expect(iso["ok"], "isolated_peak override 跑应成功")
 	if iso["ok"]:
 		expect_eq((iso["world"] as WorldDataClass).meta["world_digest"],
 			base_world.meta["world_digest"],
-			"改 isolated_peak 通道零产物变化（S4 前零消耗——预留通道锚）")
+			"零孤峰图上改 isolated_peak 通道零产物变化（合法态特例——通道隔离保持）")
 	# mountain：分区事实不变、骨架可变
 	var mtn_changed := false
 	for alt in [11, 22, 33]:
@@ -719,7 +750,8 @@ func test_regions_route_channels_isolated() -> void:
 	expect(reg_changed, "改 region 通道应能改变地貌指派/权重场（指派面生效——失效报警）")
 
 func test_dual_noise_route_ignores_regions_params() -> void:
-	# 并列路线正交性锚：不选 regions = 与双噪声路线同输出（regions 参数组不消费）
+	# 并列路线正交性锚：不选 regions = 与双噪声路线同输出（regions/孤峰/侵蚀
+	# 参数组全不消费——S4 组扩面后复核）
 	var a := WorldTemplateClass.new()
 	var b := WorldTemplateClass.new()
 	b.region_count = 9
@@ -727,15 +759,29 @@ func test_dual_noise_route_ignores_regions_params() -> void:
 	b.region_transition_width = 0.9
 	b.mountain_range_count = 7
 	b.mountain_branch_count = 8
+	b.peak_area_budget_ratio = 0.5
+	b.peak_influence_radius = 5
+	b.peak_height = 900
+	b.peak_spacing_radius_scale = 3.0
+	b.erosion_enabled = true
+	b.erosion_mountain_slope = 0.9
+	b.erosion_valley = 0.5
+	b.erosion_plain = 0.4
+	b.erosion_transition = 0.6
+	b.erosion_coast = 0.3
+	b.erosion_max_step = 0.9
+	b.erosion_plain_relief_budget = 0.5
 	var ra := WorldPipeline.generate_world(a, 7)
 	var rb := WorldPipeline.generate_world(b, 7)
 	expect(ra["ok"] and rb["ok"], "两次生成应成功")
 	if not (ra["ok"] and rb["ok"]):
 		return
 	expect_eq((rb["map"] as MapDataClass).digest(), (ra["map"] as MapDataClass).digest(),
-		"dual_noise 路线不读 regions 参数（正交性——默认值不变 = 现有行为零漂移）")
+		"dual_noise 路线不读 regions/孤峰/侵蚀参数（正交性——默认值不变 = 现有行为零漂移）")
 	expect_eq(JSON.stringify((rb["world"] as WorldDataClass).to_dict()["terrain_regions"]),
 		"[]", "dual_noise 路线分区事实恒空（不产伪字段）")
+	expect((rb["world"] as WorldDataClass).isolated_peaks.is_empty(),
+		"dual_noise 路线孤峰事实恒空（不产伪字段——S4）")
 
 func test_regions_route_legacy_face_unchanged() -> void:
 	# 拍板③ legacy 锚：模板 schema 扩展（terrain_route + regions 组）后，
@@ -780,3 +826,4 @@ func _ints(src: Array) -> Array[int]:
 	var out: Array[int] = []
 	out.assign(src)
 	return out
+

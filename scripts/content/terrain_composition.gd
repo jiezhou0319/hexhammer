@@ -1,25 +1,30 @@
 ## terrain_composition.gd — 宏观分区与地貌骨架生成器（T6 S3；执行方案
 ##   docs/M1a-terrain-T6-stylized-execution-plan.md §5 + 提案
 ##   docs/evidence/风格化地图生成方案_群山平原与派系适配_修订版.md §宏观分区
-##   :61-71 / §群山与孤峰的不同职责 :73-82（孤峰项 S4，本文件恒零贡献）/
-##   §连续高度与过渡 :84-98）
-## 职责：regions 模板路线的 composition 阶段三步（每步纯函数、独立可测）：
+##   :61-71 / §群山与孤峰的不同职责 :73-82 / §连续高度与过渡 :84-98；
+##   T6 S4 增孤峰地标项——§6 + 提案 :78-82）
+## 职责：regions 模板路线的 composition 阶段四步（每步纯函数、独立可测）：
 ##   ① 宏观分区——种子布点（layout 通道）→ Voronoi 归属 → 小区域合并 →
 ##     主导地貌指派（region 通道）→ 核心格/过渡半径/连续权重场/邻接表；
 ##   ② 地貌骨架——群山区主山系（有走向脊线 + 纵向强度终止/降低，提案 :96）+
 ##     支脉 + 宽谷（mountain 通道）；平原区 = 大片低起伏（无骨架对象——缓丘由
 ##     基础场承载，提案 :68）；
-##   ③ 连续高度混合——提案 :88-94 设计表达式前三项 + 孤峰项恒零（S4 填）：
+##   ③ 连续高度混合——提案 :88-94 设计表达式：
 ##       最终高度 = 基础大陆高度（geography 双噪声归一场）
 ##                 + 群山权重 × 骨架高度（区域抬升 + 脊线核 + 宽谷下切）
 ##                 + 平原权重 × 缓丘（基础场低增益）
 ##                 + 振幅受限细节（独立细节场；平原振幅 ≤ 群山振幅——提案 :98
 ##                   平原起伏预算）
 ##     产物是连续场（写入 GenState.heights），量化/投影仍由既有 quantize 阶段
-##     独占——「先连续地形、后格级投影」纪律（提案 :102 主线序）。
-## 随机通道纪律：三通道各管一步（layout=布点、region=地貌指派、mountain=骨架），
-##   互相独立可锚（改 mountain 不动分区；改 region 不动布点）；孤峰通道
-##   （isolated_peak）本阶段零消耗——S4 接入。细节场是连续噪声（第三场），
+##     独占——「先连续地形、后格级投影」纪律（提案 :102 主线序）；
+##   ④ 孤峰地标（S4，isolated_peak 通道）——提案 :88-94 表达式第四项：
+##     显式对象（中心/影响半径/峰高/圆锥轮廓）在有效平原内按预算/间距/避让
+##     布点后叠加锥形增益。**主山系内部突出峰不自动算孤峰**（提案 :79——按对象
+##     归属判定：候选中心距一切脊/支脉格 ≥ 最小间距，骨架峰只属骨架对象）；
+##     数量由有效平原面积与预算决定，小图可零座（提案 :82）。
+## 随机通道纪律：四通道各管一步（layout=布点、region=地貌指派、mountain=骨架、
+##   isolated_peak=孤峰布点），互相独立可锚（改 mountain 不动分区；改 region 不动
+##   布点；改 isolated_peak 不动前三步任何事实）；细节场是连续噪声（第三场），
 ##   seed 偏移 2027 与植被场 1013 及全部通道偏移互质错开（两层随机不串流）。
 ## 全部数值参数 = **未验证起调值**（模板 regions 组传入；T6 方案 §10）。
 ## 纯逻辑类：RefCounted、零场景节点、不写任何数据（ADR-2；删 scripts/ui/**
@@ -64,24 +69,32 @@ const SPINE_TAPER_FLOOR := 0.15
 ## 支脉强度 = 主脊强度 × 此倍率（支脉矮于主脊，提案 :77 层次）
 const BRANCH_STRENGTH_SCALE := 0.5
 
+# ---- 孤峰固定数值（S4；未验证起调值——布点规则写死，峰参数随模板）----
+
+## 有效平原判档（群山权重 ≤ 此值的格 = 有效平原——预算分母与候选池同档；
+## 与 region/skeleton 视图的 w≤0.3「平原主导档」同阈，提案 :78「有效平原面积」）
+const EFFECTIVE_PLAIN_WEIGHT_MAX := 0.30
+
 # ---------------- 入口 ----------------
 
 ## composition 阶段唯一入口。入参：
 ##   map                已建载体（geography 阶段产出）
 ##   base_heights       geography 双噪声原始采样（本函数内归一为基础场）
 ##   base_min/base_max  基础场极值（geography 阶段产出）
-##   rngs               {"layout", "region", "mountain"} 三通道 rng
-##   cfg                模板 regions 组 + {"seed", "base_frequency"}
+##   rngs               {"layout", "region", "mountain", "isolated_peak"} 四通道 rng
+##   cfg                模板 regions 组 + {"seed", "base_frequency", "sea_level"}
 ## 返回 {"ok", "error",
 ##   "regions": Array[WorldDataClass.TerrainRegion]（region_id 升序）,
 ##   "ranges": Array[WorldDataClass.MountainRangeData],
 ##   "branches": Array[WorldDataClass.RidgeBranchData],
 ##   "valleys": Array[WorldDataClass.ValleyData],
+##   "peaks": Array[WorldDataClass.IsolatedPeakData]（peak_id 升序；可空——小图
+##     零孤峰合法态，提案 :82）,
 ##   "cell_regions": Array[int]（行长，-1 不出现——regions 路线全覆盖）,
 ##   "cell_mountain_weights": Array[int]（千分整数 0..1000）,
 ##   "heights": PackedFloat32Array（混合后连续高度——quantize 的唯一输入）,
 ##   "stats": {结构统计 + 连续场邻差诊断（max_neighbor_delta /
-##     boundary_max_delta——「过渡带无阶跃」的留证面）}}
+##     boundary_max_delta——「过渡带无阶跃」的留证面）+ 孤峰统计}}
 static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 		base_min: float, base_max: float, rngs: Dictionary, cfg: Dictionary) -> Dictionary:
 	var cell_n := map.cell_count()
@@ -117,7 +130,7 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 	if not skel["ok"]:
 		return {"ok": false, "error": "地貌骨架失败：%s" % skel["error"]}
 
-	# ③ 连续高度混合（提案 :88-94 表达式，孤峰项恒零——S4）
+	# ③ 连续高度混合（提案 :88-94 表达式前三项——第四项孤峰在 ④ 叠加）
 	var detail := _detail_field(map, int(cfg["seed"]), float(cfg["base_frequency"]))
 	var skeleton_height: PackedFloat32Array = skel["skeleton_height"]
 	var heights := PackedFloat32Array()
@@ -129,6 +142,36 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 		heights[i] = base[i] + mw * float(skeleton_height[i]) \
 			+ (1.0 - mw) * (PLAIN_ROLLING_GAIN * float(base[i])) \
 			+ detail_amp * (float(detail[i]) - 0.5)
+	var mix_min := INF
+	var mix_max := -INF
+	for v in heights:
+		mix_min = minf(mix_min, v)
+		mix_max = maxf(mix_max, v)
+
+	# ④ 孤峰地标（S4：表达式第四项——布点消耗 isolated_peak 通道）
+	var peak_result := place_isolated_peaks(map, heights, mix_min, mix_max,
+		weight_mountains, cell_region, {
+			"ranges": skel["ranges"],
+			"branches": skel["branches"],
+		}, rngs["isolated_peak"], {
+			"sea_level": float(cfg["sea_level"]),
+			"peak_area_budget_ratio": float(cfg["peak_area_budget_ratio"]),
+			"peak_influence_radius": int(cfg["peak_influence_radius"]),
+			"peak_height": int(cfg["peak_height"]),
+			"peak_spacing_radius_scale": float(cfg["peak_spacing_radius_scale"]),
+		})
+	if not peak_result["ok"]:
+		return {"ok": false, "error": "孤峰布点失败：%s" % peak_result["error"]}
+	var peaks: Array = peak_result["peaks"]
+	for pk in peaks:
+		var peak: WorldDataClass.IsolatedPeakData = pk
+		var center := _cell_of_id(map, peak.cell_id)
+		var gain := float(peak.peak_height) / 1000.0
+		for other in map.cells():
+			var d := Hex.distance(center, other)
+			if d > peak.influence_radius:
+				continue
+			heights[map.index_of(other)] += gain * cone_falloff(d, peak.influence_radius)
 
 	# 格级事实（千分整数——落盘确定形状）
 	var cell_mountain_weights: Array[int] = []
@@ -138,11 +181,13 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 
 	# 连续场邻差诊断（「过渡带无分区编号断缝」的留证面——机器断言在 tests）
 	var step := _neighbor_step_stats(map, heights, cell_region)
+	var peak_stats: Dictionary = peak_result["stats"]
 	return {"ok": true, "error": "",
 		"regions": regions,
 		"ranges": skel["ranges"],
 		"branches": skel["branches"],
 		"valleys": skel["valleys"],
+		"peaks": peaks,
 		"cell_regions": cell_region,
 		"cell_mountain_weights": cell_mountain_weights,
 		"heights": heights,
@@ -157,6 +202,9 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 			"ranges": (skel["ranges"] as Array).size(),
 			"branches": (skel["branches"] as Array).size(),
 			"valley_cells": int(skel["valley_cell_count"]),
+			"effective_plain_cells": int(peak_stats["effective_plain_cells"]),
+			"peaks": peaks.size(),
+			"peak_influence_cells": int(peak_stats["influence_cells"]),
 			"weight_high_cells": int(step["high_cells"]),
 			"weight_low_cells": int(step["low_cells"]),
 			"max_neighbor_delta": float(step["max_delta"]),
@@ -608,6 +656,147 @@ static func _walk_branch(map: MapDataClass, cell_region: Array[int], rid: int,
 	return out
 
 
+# ---------------- ④ 孤峰地标（S4）----------------
+
+## 孤峰最小间距（峰间/避让主山系/出生落点避让共用同一距离口径——提案 :78
+## 「限制与其他孤峰、主山系、起始落点的距离」的三面同距；ceil(半径 × 倍数)，
+## 提案 :131「相对于峰体半径的最小间距」）。纯函数（tests/管线共用——管线
+## settlement 阶段的落点避让面取同一值）。
+static func peak_min_spacing(radius: int, scale: float) -> int:
+	return maxi(radius, int(ceil(float(maxi(radius, 1)) * maxf(scale, 1.0))))
+
+
+## 圆锥轮廓横向衰减（峰高增益核）：falloff = clamp(1 − d/(r+1), 0, 1)²——顶点 1、
+## d ≥ r+1 归零（锥底平滑接地无硬台）；平方 = 岩峰尖顶 + 山脚零坡度接平原。
+## 手算 oracle：d=0 → 1；d=r → (1/(r+1))²；d=r+1 → 0。
+static func cone_falloff(dist: int, radius: int) -> float:
+	var r := maxi(radius, 1)
+	var t := clampf(1.0 - float(dist) / float(r + 1), 0.0, 1.0)
+	return t * t
+
+
+## 孤峰布点（S4 纯函数；随机消耗 = isolated_peak 通道的唯一消耗点）。约束四件
+## （提案 :78-82/:120/:131，全部由构造保证——S5 校验器与 tests 逐峰复查）：
+##   预算   Σ 影响格数（距中心 ≤ 半径的界内格）≤ ⌊有效平原格数 × budget_ratio⌋；
+##   间距   峰间 / 峰到一切脊线·支脉格 ≥ peak_min_spacing；
+##   避让   候选中心须为陆格且全影响盘落同一 argmax 区域（盘不跨分区边界——
+##          分区边界无阶跃的 S3 验收面不被锥体破坏）；
+##   归属   主山系内部突出峰不自动入本表（候选池结构性排除骨架近邻——骨架峰
+##          只属 MountainRangeData 对象，提案 :79 对象归属判定）。
+## 有效平原 = 群山权重 ≤ EFFECTIVE_PLAIN_WEIGHT_MAX 的陆格（预算分母兼候选池）。
+## 小图预算不足 → 零峰（合法态，提案 :82）。返回 {"ok", "error",
+##   "peaks"（cell_id 升序、peak_id 顺排 0..n-1——与 rng 收取序解耦的稳定编号）,
+##   "stats": {effective_plain_cells, budget_cells, influence_cells}}。
+static func place_isolated_peaks(map: MapDataClass, mixed_heights: PackedFloat32Array,
+		mix_min: float, mix_max: float, weight_mountains: PackedFloat32Array,
+		cell_region: Array[int], skeleton: Dictionary,
+		rng_peak: RandomNumberGenerator, cfg: Dictionary) -> Dictionary:
+	var cell_n := map.cell_count()
+	var radius := maxi(1, int(cfg["peak_influence_radius"]))
+	var spacing := peak_min_spacing(radius, float(cfg["peak_spacing_radius_scale"]))
+	var gain := float(clampi(int(cfg["peak_height"]), 1, 1000)) / 1000.0
+	var h_range := mix_max - mix_min
+	# 有效平原（预算分母兼候选池：平原主导档 ∧ 陆格——水格上的孤峰是伪地标）
+	var plain_land: Array[int] = []
+	for i in cell_n:
+		if float(weight_mountains[i]) <= EFFECTIVE_PLAIN_WEIGHT_MAX \
+				and float(mixed_heights[i]) >= mix_min + float(cfg["sea_level"]) * h_range:
+			plain_land.append(i)
+	var budget_cells := int(floor(float(plain_land.size()) * maxf(float(cfg["peak_area_budget_ratio"]), 0.0)))
+	if plain_land.is_empty() or budget_cells <= 0 or gain <= 0.0:
+		return {"ok": true, "error": "", "peaks": [],
+			"stats": {"effective_plain_cells": plain_land.size(),
+				"budget_cells": budget_cells, "influence_cells": 0}}
+	# 骨架格距离场（峰→主山系间距的查表面：多源 BFS——无障碍六边形图上 = 环距）
+	var skeleton_sources: Array[int] = []
+	for mr in skeleton["ranges"]:
+		for cid in (mr as WorldDataClass.MountainRangeData).spine_cells:
+			skeleton_sources.append(cid)
+	for br in skeleton["branches"]:
+		for cid in (br as WorldDataClass.RidgeBranchData).cells:
+			skeleton_sources.append(cid)
+	var d_skeleton := _bfs_distance_from_set(map, skeleton_sources)
+	# 分区边界距离场（逐区域：源 = 异区格——全影响盘同区的查表面）
+	var region_ids := {}
+	for rid in cell_region:
+		region_ids[rid] = true
+	var d_foreign := {}
+	for rid in region_ids:
+		var foreign: Array[int] = []
+		for i in cell_n:
+			if cell_region[i] != int(rid):
+				foreign.append(i)
+		d_foreign[int(rid)] = _bfs_distance_from_set(map, foreign)
+	# 候选池：有效平原 ∧ 距骨架 ≥ 间距 ∧ 全影响盘（含锥尾 r+1）同 argmax 区域 ∧
+	# **峰体完整落图内**（影响盘全界内——圆锥不被地图边界截断：半座孤峰是残缺
+	# 地标，且影响面积 = 完整盘 3r(r+1)+1 进预算计量，不含裁剪盘）∧ **间距盘落
+	# 有效平原内**（距中心 ≤ 间距的格全为平原陆格——「数量由有效平原面积/最小
+	# 间距/构图位置决定」的间距面：峰的让位球须由平原自身容纳；小图/窄平原装
+	# 不下间距盘 → 自然零峰，提案 :82「小地图可以没有孤峰」的结构化表达）
+	var plain_set := {}
+	for cid in plain_land:
+		plain_set[cid] = true
+	var disc_of_radius := _disc_offsets(radius)
+	var disc_of_spacing := _disc_offsets(spacing)
+	var candidates: Array[int] = []
+	for cid in plain_land:
+		if int(d_skeleton[cid]) < spacing:
+			continue
+		if int(d_foreign[cell_region[cid]][cid]) < radius + 2:
+			continue
+		var cell := _cell_of_id(map, cid)
+		var fits := true
+		for delta in disc_of_radius:
+			if not map.has_cell(cell + delta):
+				fits = false
+				break
+		if not fits:
+			continue
+		for delta in disc_of_spacing:
+			var other := cell + delta
+			if not map.has_cell(other) or not plain_set.has(map.index_of(other)):
+				fits = false
+				break
+		if not fits:
+			continue
+		candidates.append(cid)
+	var shuffled := _shuffle_ints(rng_peak, candidates)
+	var picked: Array[int] = []
+	var influence_total := 0
+	for cid in shuffled:
+		if influence_total >= budget_cells:
+			break  # 预算尽（剩余不足一格盘也停——下一峰至少 1 格）
+		var cell := _cell_of_id(map, cid)
+		var spaced := true
+		for p in picked:
+			if Hex.distance(cell, _cell_of_id(map, p)) < spacing:
+				spaced = false
+				break
+		if not spaced:
+			continue
+		var footprint := 0
+		for other in map.cells():
+			if Hex.distance(cell, other) <= radius:
+				footprint += 1
+		if influence_total + footprint > budget_cells:
+			continue  # 本峰放不下（不截断搜索——后面可能有更贴边的窄盘）
+		picked.append(cid)
+		influence_total += footprint
+	picked.sort()
+	var peaks: Array[WorldDataClass.IsolatedPeakData] = []
+	for pid in picked.size():
+		var pk := WorldDataClass.IsolatedPeakData.new()
+		pk.peak_id = pid
+		pk.cell_id = picked[pid]
+		pk.influence_radius = radius
+		pk.peak_height = int(round(gain * 1000.0))
+		pk.shape = WorldDataClass.IsolatedPeakData.Shape.CONE
+		peaks.append(pk)
+	return {"ok": true, "error": "", "peaks": peaks,
+		"stats": {"effective_plain_cells": plain_land.size(),
+			"budget_cells": budget_cells, "influence_cells": influence_total}}
+
+
 # ---------------- 纯函数小件（tests 独立锚的面）----------------
 
 ## 反距离权重核：w = 1/(1+(d/T)²)，逐项归一（Σ=1；T ≥1）。手算 oracle 可锚
@@ -623,6 +812,20 @@ static func inverse_distance_weights(dists: Array[int], transition_radius: int) 
 	var out: Array[float] = []
 	for w in raw:
 		out.append(w / total if total > 0.0 else 1.0 / float(maxi(dists.size(), 1)))
+	return out
+
+
+## 六边形盘偏移集（axial delta，环距 ≤ radius 全体；含 (0,0)；size = 3r(r+1)+1
+## ——影响盘/间距盘枚举的共用件，r=1 → 中心+六邻 7 项）。顺序固定（q 升序、
+## r 次之——确定性）。
+static func _disc_offsets(radius: int) -> Array[Vector2i]:
+	var r := maxi(0, radius)
+	var out: Array[Vector2i] = []
+	for dq in range(-r, r + 1):
+		var lo := maxi(-r, -r - dq)
+		var hi := mini(r, r - dq)
+		for dr in range(lo, hi + 1):
+			out.append(Vector2i(dq, dr))
 	return out
 
 

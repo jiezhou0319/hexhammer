@@ -388,6 +388,7 @@
 	],
 	"cell_regions": [],
 	"crossings": [],
+	"isolated_peaks": [],
 	"links": [
 		{
 			"link_id": [
@@ -848,15 +849,15 @@
 	],
 	"meta": {
 		"attempt_count": 1,
-		"config_digest": "3f0dbbb1c4b7d816cd870e3c6f3b47a4903af02b542b79280c24d411d130576e",
+		"config_digest": "44724b6de463cede5fe135879658844dbdb7c67f902679b4d75fc8fbf323f4fc",
 		"engine_version": "4.7.2-stable (official)",
 		"first_pass_valid": true,
-		"generator_version": 5,
+		"generator_version": 6,
 		"repair_count": 0,
 		"rules_version": 0,
 		"schema_version": 1,
 		"seed": 7,
-		"world_digest": "2d4c05a759d3a728aab4877118cf3eb7e5c83b44a0627cb0c915ca2b6c1cc2d6"
+		"world_digest": "b0ed318d1ed508e03db8e25d931256942d951aa40f4b1abe1f198dbc83cd549d"
 	},
 	"mountain_ranges": [],
 	"pois": [

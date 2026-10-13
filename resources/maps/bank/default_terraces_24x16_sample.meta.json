@@ -1,8 +1,8 @@
 {
 	"digest": "2fdb69210aa12f5c2bdb7f80e6ab40538eaeac2250d4939762123ddd11b24509",
-	"generator_version": 5,
+	"generator_version": 6,
 	"group": "default_terraces@24x16",
 	"kind": "seed_bank_sample",
 	"seed": 7,
-	"world_digest": "2d4c05a759d3a728aab4877118cf3eb7e5c83b44a0627cb0c915ca2b6c1cc2d6"
+	"world_digest": "b0ed318d1ed508e03db8e25d931256942d951aa40f4b1abe1f198dbc83cd549d"
 }

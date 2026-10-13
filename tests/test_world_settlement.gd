@@ -491,3 +491,66 @@ func test_allegiance_off_leaves_empty_collections() -> void:
 		if String(d["stage"]) == "allegiance":
 			alleg = d
 	expect(alleg != null and alleg.get("skipped", false), "势力段 skipped 诊断")
+
+# ================= T6 S4：出生候选避让孤峰影响域（cfg.avoid_cells）=================
+
+func test_avoid_cells_exclude_spawn_candidates() -> void:
+	# cfg.avoid_cells（管线注入 = 距孤峰中心 < 最小间距的格集）的生成器面锚：
+	# ① 缺省不传 = 行为与旧版一致（键可选）；② 避让集内的格不作出生锚点；
+	# ③ 全图避让 = NO_VALID_SPAWN 具名失败（不静默放宽）。直接驱动生成器
+	#（管线注入面在 test_world_pipeline.gd 的 S4 逐峰检查锚覆盖）
+	var t := WorldTemplateClass.new()
+	var gen := WorldPipeline.generate_world(t, 7)
+	expect(gen["ok"], "基线图生成应成功")
+	if not gen["ok"]:
+		return
+	var map: MapDataClass = gen["map"]
+	var world: WorldDataClass = gen["world"]
+	var cfg := {
+		"water_terrain_id": T_WATER,
+		"spawn_count": 3,
+		"resource_count": 0,
+		"resource_budget": 0,
+		"expansionism": [5, 4, 6],
+		"state_river_cost": 20,
+		"sea_level": t.sea_level,
+		"elevation_levels": t.elevation_levels,
+	}
+	# ① 基线（无 avoid_cells 键）
+	var rng1 := RandomNumberGenerator.new()
+	rng1.seed = 31
+	var base := SettlementGen.place_settlements(map, world, rng1, cfg)
+	expect(base["ok"], "无 avoid_cells 的放置应成功（键可选——行为不变面）")
+	if not base["ok"]:
+		return
+	var base_anchors: Array[int] = []
+	for poi in (base["pois"] as Array):
+		if (poi as WorldDataClass.POIData).kind == WorldDataClass.POIData.Kind.SETTLEMENT:
+			base_anchors.append((poi as WorldDataClass.POIData).cell_id)
+	expect_eq(base_anchors.size(), 3, "3 主城")
+	# ② 同 rng 下避让全部基线锚点 → 锚点必换（避让集内的格不作锚点）
+	var avoid_cfg := cfg.duplicate()
+	avoid_cfg["avoid_cells"] = base_anchors.duplicate()
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = 31
+	var moved := SettlementGen.place_settlements(map, world, rng2, avoid_cfg)
+	expect(moved["ok"], "避让基线锚点的放置应成功（图上仍有可行候选）")
+	if moved["ok"]:
+		for poi in (moved["pois"] as Array):
+			var pd: WorldDataClass.POIData = poi
+			if pd.kind == WorldDataClass.POIData.Kind.SETTLEMENT:
+				expect(not (avoid_cfg["avoid_cells"] as Array).has(pd.cell_id),
+					"避让集内格 %d 不作出生锚点（避让生效）" % pd.cell_id)
+	# ③ 全部陆格避让 → NO_VALID_SPAWN（不静默放宽——具名失败面）
+	var all_cfg := cfg.duplicate()
+	var all_land: Array[int] = []
+	for cell in map.cells():
+		if map.elevation_at(cell) > 0:
+			all_land.append(map.index_of(cell))
+	all_cfg["avoid_cells"] = all_land
+	var rng3 := RandomNumberGenerator.new()
+	rng3.seed = 31
+	var none := SettlementGen.place_settlements(map, world, rng3, all_cfg)
+	expect(not none["ok"], "全图避让应失败")
+	expect(String(none["error"]).contains("NO_VALID_SPAWN"),
+		"失败具名 NO_VALID_SPAWN（got %s）" % none["error"])

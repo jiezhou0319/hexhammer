@@ -14,7 +14,9 @@
 ##                           伴生自动读取——region/skeleton 视图的数据源）
 ##   seeds=<int[,int…]>      即时生成模式 seed 清单（批量 = 逐 seed 全套渲染；与 map 互斥）
 ##   template=<名>           生成模板（default_terraces 双噪声 / regions_mountains
-##                           T6 S3 分区骨架路线——S3 落地扩）
+##                           T6 S3+S4 分区骨架+孤峰+侵蚀完整路线 /
+##                           regions_no_erosion S4 关侵蚀对照形态——三路对照的
+##                           「分区骨架版」入口）
 ##   width=<int> height=<int> 尺寸覆盖（默认模板自带 60×40）
 ##   views=<csv|all>         视图清单（默认 height,slope,passability；region/
 ##                           skeleton 已随 S3 实做——无区域数据时显式报「无数据」
@@ -146,9 +148,11 @@ class Runner extends Node:
 							return {}
 						seeds.append(int(t))
 				"template":
-					if value != "default_terraces" and value != "regions_mountains":
-						_usage("template 现支持 default_terraces（双噪声）与 regions_mountains"
-							+ "（T6 S3 分区骨架路线）：%s" % value)
+					if value != "default_terraces" and value != "regions_mountains" \
+							and value != "regions_no_erosion":
+						_usage("template 现支持 default_terraces（双噪声）/ regions_mountains"
+							+ "（T6 S3+S4 分区骨架+孤峰+侵蚀）/ regions_no_erosion"
+							+ "（S4 关侵蚀对照——三路对照「分区骨架版」）：%s" % value)
 						return {}
 					cli["template"] = value
 				"width":
@@ -260,10 +264,13 @@ class Runner extends Node:
 		return path.get_file().get_basename().replace(".", "_")
 
 	## 模板构建（seed_bank._template_of 同法：代码默认 + 尺寸覆盖——.tres 同源锚在
-	## tests；regions_mountains = make_regions 代码默认（terrain_route=regions），
-	## T6 S3 分区骨架路线的即时生成入口）
+	## tests；regions_mountains = make_regions 代码默认（terrain_route=regions +
+	## 侵蚀开 = S4 完整形态）；regions_no_erosion = 同模板关侵蚀（三路对照
+	## 「分区骨架版」——T6 S4 预览入口）
 	func _template_of(template_id: String, width: int, height: int) -> WorldTemplateClass:
 		var t := WorldTemplateClass.new() if template_id == "default_terraces" 				else WorldTemplateClass.make_regions()
+		if template_id == "regions_no_erosion":
+			t.erosion_enabled = false
 		t.template_id = template_id
 		if width > 0:
 			t.width = width
@@ -617,11 +624,13 @@ class Runner extends Node:
 						int(data["low_cells"]), TerrainViewDataClass.REGION_PLAIN_GRAY,
 						TerrainViewDataClass.REGION_MOUNTAIN_GRAY])
 				"skeleton":
-					L.append("  骨架（四级灰度）：主山系=%d 支脉=%d 宽谷=%d（谷底格=%d）；灰度档 背景%.2f/谷底%.2f/支脉%.2f/主脊%.2f（孤峰层 S4 预留）" % [
+					L.append("  骨架（五级灰度）：主山系=%d 支脉=%d 宽谷=%d（谷底格=%d）孤峰=%d（影响格=%d）；灰度档 背景%.2f/谷底%.2f/支脉%.2f/孤峰%.2f/主脊%.2f（T6 S4 孤峰档——形态与主山系可辨）" % [
 						int(data["ranges"]), int(data["branches"]), int(data["valleys"]),
-						int(data["valley_cells"]), TerrainViewDataClass.SKELETON_BG_GRAY,
+						int(data["valley_cells"]), int(data["peaks"]),
+						int(data["peak_cells"]), TerrainViewDataClass.SKELETON_BG_GRAY,
 						TerrainViewDataClass.SKELETON_VALLEY_GRAY,
 						TerrainViewDataClass.SKELETON_BRANCH_GRAY,
+						TerrainViewDataClass.SKELETON_PEAK_GRAY,
 						TerrainViewDataClass.SKELETON_SPINE_GRAY])
 		var rendered: Array = []
 		for r in records:
@@ -639,7 +648,7 @@ class Runner extends Node:
 		if stability_px >= 0:
 			L.append("同视图双捕获稳定性（末视图两次捕获差分）：px=%d（静态场景应≈0；留档不设门）" % stability_px)
 		L.append("")
-		L.append("口径：三路对照「旧版」基准 = 双噪声现役路线（银行样图即产物）；「分区骨架版」= regions_mountains 模板（S3 起可渲）；「+侵蚀版」随 S4。同 seed/模板 + 同相机口径跨版本帧帧可比。")
+		L.append("口径：三路对照（提案 :237）=「旧版」default_terraces 双噪声现役路线 /「分区骨架版」regions_no_erosion（S4 形态：分区+骨架+孤峰，侵蚀关）/「+侵蚀版」regions_mountains（S4 完整形态）。同 seed/相机口径跨版本帧帧可比；骨架事实（region/skeleton 视图）侵蚀开关两态恒同——侵蚀只改连续高度不改分区骨架事实。")
 		L.append("本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。")
 		L.append("截图（同目录）：%s" % "、".join(shot_paths))
 		L.append("标识：%s" % tag)
