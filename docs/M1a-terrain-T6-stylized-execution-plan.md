@@ -233,6 +233,38 @@ S3 落卡时定是否拆分）、mountain（骨架，S3）、isolated_peak 与 e
 > 范围⑤ 聚落阶段 profile 接线（SettlementGenerator 适居度公式不动，候选表
 > 暂无下游消费者——本刀只产事实）与范围④ 开局保证模式（配置入口亦未开——
 > 「开启须进 config_hash」的要求随该批次落字）。
+>
+> **考古勘误（2026-10-13，独立复审处置——提交消息与内容不符，以本登记为准）**：
+> 上方「第一刀完成登记」的**代码载体与相关提交消息的自称不符**，后续考古**不得
+> 以那两枚提交消息为交付证据**（本仓以提交消息作交付登记的证据链，故在此显式
+> 勘误；沿 PLAN-ALIGN 取代注先例——已推送历史不重写，文档侧更正）：
+> ① **登记先行于代码**：本登记文本随 4c8cce3（17:11，自称 S0「docs-only 不写
+>   代码」）入库，而 S6 代码 19:22/20:04 才提交——登记落字时指向的是**未提交的
+>   工作树状态**（a31e7ec 消息中「未提交 S6 件」一语可互证），按提交序考古会
+>   误读 4c8cce3 为「代码已在树」。
+> ② **a31e7ec（19:22，自称「S4 交付物核验……均已随 87a1fcd 在树」）实携行为
+>   变更**：GENERATOR_VERSION 7→9（含 v9「锥体不移动归一化锚点」复审修——
+>   terrain_composition.gd/world_pipeline.gd 及其测试）**与 suitability 阶段的
+>   全部管线接线**（STAGES/通道/模板消费面），消息标题均未登记；且该提交树
+>   **不自洽**——world_pipeline.gd 已 preload
+>   `res://scripts/content/suitability_generator.gd` 而该文件此提交尚不存在
+>   （干净检出即解析失败），故其消息中「全量 32 文件 458/0 复跑」只能是对脏
+>   工作树的运行，不是对该提交树的复验。**不能把 a31e7ec 读作零改动复验**。
+> ③ **d165379（20:04，自称「S5 交付物核验……均已随 c38d910 在树」）实携 S6
+>   第一刀全部新件**（suitability_generator.gd / suitability_profile.gd /
+>   resources/world/suitability/ 两 .tres / tests/test_world_suitability.gd /
+>   world_data·world_template·三模板·预览工具改动），消息仅在括注提
+>   「generator_version 7→9 为在树 v8/v9 之自然迁移」。**S6 自洽树自 d165379
+>   起**；其消息所报「全量 32 文件 460/0+银行 smoke exit 0」的时点证据链
+>   弱（阶段门禁当时未跑），可复核口径 = d165379 之后在干净树上的复跑（见④）。
+> ④ **可复核证据（2026-10-13 复验刀，d165379 树上实跑）**：`tools/run_tests.gd`
+>   全量 **32 文件 / 460 用例 / 0 失败 exit 0**（含变异自检全拦、legacy oracle
+>   与通道隔离锚）；`tools/seed_bank.gd mode=smoke` **exit 0**（regions 组
+>   3/9，首错 REGION_DOMINANCE——S5 既有质量信号；银行样图复生成 git 零差异）；
+>   suitability 视图银行样图 map 模式真渲染冒烟 **Forward+ exit 0**（两 profile
+>   各 4 候选 / 1122 合格、拒绝计数具名；证据
+>   docs/evidence/t6/terrain_debug_*regions_mountains_60x40_sample*）。S6 交付
+>   成立与否以本条与本登记为准，不以 a31e7ec/d165379 消息为准。
 
 | 项 | 内容 |
 |---|---|
@@ -290,3 +322,7 @@ seed_bank.gd/gate_all.gd/render_probe.gd 头注与常量区、外审两份、04 
 未执行测试/探针（本阶段不写代码）。新建路径（tools/region_preview.gd 等）均为
 后续阶段拟建项，已在正文以「新建/拟建」标明——除此之外引用路径均已逐一验证
 存在。*
+
+*修订注（2026-10-13，S6 复验刀）：本文非纯 S0 快照——§8「第一刀完成登记」与
+「考古勘误」为 S6 施工/复审批次后补（交付载体与提交消息的出入见该勘误块），
+引用行号系各批次落字时点核对。*

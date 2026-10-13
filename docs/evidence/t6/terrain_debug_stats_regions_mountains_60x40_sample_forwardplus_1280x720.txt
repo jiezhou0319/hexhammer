@@ -1,0 +1,21 @@
+Hexhammer T6 调试预览 terrain_debug_views · 像素统计（S2 前置 harness——验收先于生成器改动；提案 §实施分期 P0「调试预览」「固定对照」）
+时间(UTC)：2026-10-13T12:52:01
+引擎：Godot 4.7.2-stable (official)
+渲染器（实际运行时）：forward_plus（取自 RenderingServer.get_current_rendering_method()——S-1 口径）
+渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）
+设备：adapter=NVIDIA GeForce RTX 2050 vendor=NVIDIA；OS=Windows 10.0.26200；DisplayServer=Windows
+图像尺寸：1280×720（窗口请求 1280×720，读回为准）
+图：银行样图/固定图：res://resources/maps/bank/regions_mountains_60x40_sample.json digest=c6f79f5e498acdae81b7b67a412a2c85a9648bcbfe2b0add4d245caeb7d8675c（60×40）
+相机（规定）：正交俯视数据面——包络 104.8×60.5 中心上方直视下，正交 size=65.34（纵横比 1.778 + 边距 8%），near=0.5 far=1000；basis x=(1,0,0) y=(0,0,-1) z=(0,1,0)（屏幕上=世界−Z 北，render_probe 规定相机同 basis）
+数据面：每格整六边形（vertex_xz 外顶点）顶点色；材质 UNSHADED + vertex_color albedo（灰度值=数据本身不受光照影响；8 位读回经色彩空间转换，比对用容差判定 > 14）
+像素自检阈值：非背景占比 > 取景期望填充 83.5% × 60% = 50.1%（纵横比自适应——极端狭长图不误报）；视图两两差分 > 500px（防呆阈值，首报实测见 DIFF 行）
+
+VIEW suitability：非背景 px=757036/921600（82.1%），四角背景自检 过 → PASS
+  偏好候选（T6 S6 正式版——提案 :239 预览标注口径）：profile=2；[mountain_preferring 候选=4/合格=1122 拒绝={ "AREA_BELOW_MIN": 11, "NO_WATER_IN_RANGE": 916 }；plain_preferring 候选=4/合格=1122 拒绝={ "AREA_BELOW_MIN": 11, "NO_WATER_IN_RANGE": 916 }]；候选锚按 profile 槽位取色（首版两类：红=槽0（山地偏好，make_mountain）/蓝=槽1（平原偏好，make_plain）——res://resources/world/suitability/）；标注规则 = 管线两阶段选址（硬筛选：面积/通达/水 → 评分：地貌偏好+可扩展空间+水 → 间距），无临时规则（S2 临时标注通道已由本视图取代）
+同视图双捕获稳定性（末视图两次捕获差分）：px=0（静态场景应≈0；留档不设门）
+
+口径：三路对照（提案 :237）=「旧版」default_terraces 双噪声现役路线 /「分区骨架版」regions_no_erosion（S4 形态：分区+骨架+孤峰，侵蚀关）/「+侵蚀版」regions_mountains（S4 完整形态）。同 seed/相机口径跨版本帧帧可比；骨架事实（region/skeleton 视图）侵蚀开关两态恒同——侵蚀只改连续高度不改分区骨架事实。
+本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。
+截图（同目录）：res://docs/evidence/t6/terrain_debug_suitability_regions_mountains_60x40_sample_forwardplus_1280x720.png
+标识：regions_mountains_60x40_sample_forwardplus_1280x720
+VIEWS OK
