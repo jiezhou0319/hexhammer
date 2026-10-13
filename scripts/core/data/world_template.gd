@@ -281,19 +281,55 @@ static func make_default() -> WorldTemplate:
 ## profile——faction_suitability 事实的 authored 入口）**，九阶段其余开关与默认
 ## 模板一致；regions/孤峰/侵蚀/适宜度参数组数值 = 未验证起调值（T6 方案 §10
 ## 默认答案②④ + 提案 :166）。
+## v10 视觉调参第一轮（S7 人工评审 20 seed 全数未过后的有界修复，与
+## GENERATOR_VERSION v10 / composition v4 配套——生成器侧常量见
+## terrain_composition.gd 常量区头注）：sea_level 再下调 = 基础场压缩收窄
+## 值域后有效海面吃掉大半平原带的补偿（同 v5 下调先例的理由面）；侵蚀档位
+## 下调 = S7 评审「黑色蠕虫碎斑铺满全图」的侵蚀面（平原侵蚀本就关，山档/
+## 过渡档/海岸档三档收敛，谷档维持）；plains_core_ratio_max 放宽 = 权重核
+## 平台化后平原核心纯度实增（穹状衰减时代为 0.9 起调、现在核心几乎全纯平原
+## 档——区间上限随结构实况校准，仍保留 ≥2% 非平原份额防死板）；
+## mountains_core_ratio_max 0.8→0.97 / plains_core_ratio_min 0.7→0.6 = 成片山体
+## 结构下的占比带校准（山体整片高出平原一档后山地类份额实增、低基平原核心
+## 可含湖海尾带——占比带随结构实况校准；谷地「最小可用面积 + 对外通路」的
+## 独立保证（region_min_valley_cells=4 + MOUNTAIN_VALLEY 检查）不放松，占比
+## 上限只留 ≥3% 非山地份额）。
+## v11 视觉修复第 1 轮（S7 判据 mountainsCoherent=false 的 seed
+## regions_mountains@24x16_11 有界修复，与 GENERATOR_VERSION v11 /
+## composition v5 配套）：侵蚀山档 0.15→0.12 = 坡面刻蚀把脊带边缘打成孤立
+## 高坡碎块（slope 视图散斑未连成山系）的侵蚀面收敛；mountains_core_ratio_max
+## 0.97→0.99 = 脊体加宽（2.0→2.5×T）+ 抬升上调（0.42→0.48）后山地核心纯度
+## 实增（60×40 seed 7 实测 r0 0.9832——v10 同型「占比带随结构实况校准」先例：
+## 谷地「最小可用面积 + 对外通路」的独立保证（region_min_valley_cells=4 +
+## MOUNTAIN_VALLEY 检查）不放松，占比上限只留 ≥1% 非山地份额）；其余数值
+## 不动（孤峰预算 = 该 seed 未涉判据——peaksSparse 已过，有界原则只动证据
+## 指向的面）。
 static func make_regions() -> WorldTemplate:
 	var t := new()
 	t.template_id = "regions_mountains"
 	t.terrain_route = "regions"
 	# 以下为 regions 路线起调值（未验证——与 world_template_regions.tres 同源锚）：
 	# sea_level 下调 = 骨架增益拉宽值域后补偿有效海面（否则平原半数沉水、陆块
-	# 破碎）；max_road_delta 2 = 山口/谷地路线的高差档（双噪声默认图 Δ1 档在
-	# 山区不可修路）；erosion_enabled = S4 起调开（关态 = regions_no_erosion 对照
-	# 形态，预览工具三路对照的「分区骨架版」入口）；suitability = S6 两内置
-	# profile（山地偏好/平原偏好——提案 :144/:145 矮人/人类示例的读法）
-	t.sea_level = 0.18
+	# 破碎；v10 基础场压缩后同理由再下调 0.18→0.06——水陆构图保持「低基尾带
+	# 沉水」的薄水缘）；max_road_delta 2 = 山口/谷地路线的高差档（双噪声默认图
+	# Δ1 档在山区不可修路）；erosion_enabled = S4 起调开（关态 =
+	# regions_no_erosion 对照形态，预览工具三路对照的「分区骨架版」入口）；
+	# 侵蚀三档下调 + 谷档维持 = v10 视觉调参（S7 蠕虫碎斑的侵蚀面收敛；
+	# 山档第二轮 0.20→0.15 = 坡面等高线抖动的孤立单格噪点残余压减；
+	# v11 视觉修复第 1 轮山档再收敛 0.15→0.12 = 脊带边缘孤立高坡碎块的
+	# 侵蚀面——见函数头注 v11 段）；
+	# plains_core_ratio_max 0.9→0.98 = v10 视觉调参（见函数头注）；
+	# suitability = S6 两内置 profile（山地偏好/平原偏好——提案 :144/:145
+	# 矮人/人类示例的读法）
+	t.sea_level = 0.06
 	t.max_road_delta = 2
 	t.erosion_enabled = true
+	t.erosion_mountain_slope = 0.12
+	t.erosion_transition = 0.08
+	t.erosion_coast = 0.06
+	t.plains_core_ratio_max = 0.98
+	t.mountains_core_ratio_max = 0.99
+	t.plains_core_ratio_min = 0.60
 	t.suitability_enabled = true
 	t.suitability_profiles = [SuitabilityProfile.make_mountain(),
 		SuitabilityProfile.make_plain()]

@@ -1,11 +1,11 @@
 {
 	"attempt_count": 4,
-	"digest": "82a5ea2baefeb1b19133db6225e45760abacf883f4488a2ffeb7f943dcec3f11",
-	"error": "修复上限尽：4 次 attempt 仍失败：校验错误 3 项（首错 REGION_DOMINANCE）（第 5 次尝试拒绝，WORLD-04 ②）",
-	"generator_version": 9,
+	"digest": "3b2c50f0991ed5c673d150332e6a7cf7ed6d5372813edc528605d07ddea5f4f5",
+	"error": "修复上限尽：4 次 attempt 仍失败：校验错误 4 项（首错 REGION_DOMINANCE）（第 5 次尝试拒绝，WORLD-04 ②）",
+	"generator_version": 11,
 	"group": "regions_mountains@24x16",
 	"kind": "seed_bank_failure",
 	"repair_count": 3,
 	"seed": 7,
-	"world_digest": "09d6a593697132002b94def24d1a311feb190b6e9ec11dfc14cf0ddf31bf794e"
+	"world_digest": "cc4245fcd4789592bab5fcd15c36054c459b1b9d8cd5259ae9e8661017c10020"
 }

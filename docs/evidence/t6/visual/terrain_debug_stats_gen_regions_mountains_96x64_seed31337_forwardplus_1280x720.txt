@@ -1,0 +1,33 @@
+Hexhammer T6 调试预览 terrain_debug_views · 像素统计（S2 前置 harness——验收先于生成器改动；提案 §实施分期 P0「调试预览」「固定对照」）
+时间(UTC)：2026-10-13T15:17:05
+引擎：Godot 4.7.2-stable (official)
+渲染器（实际运行时）：forward_plus（取自 RenderingServer.get_current_rendering_method()——S-1 口径）
+渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）
+设备：adapter=NVIDIA GeForce RTX 2050 vendor=NVIDIA；OS=Windows 10.0.26200；DisplayServer=Windows
+图像尺寸：1280×720（窗口请求 1280×720，读回为准）
+图：银行样图/固定图：res://docs/evidence/t6/visual/_src/gen_regions_mountains_96x64_seed31337.json digest=530898103132b06ccb20e00dd0858542261289e7edc9b7a2e98054b86cd9e1b2（96×64）
+相机（规定）：正交俯视数据面——包络 167.1×96.5 中心上方直视下，正交 size=104.22（纵横比 1.778 + 边距 8%），near=0.5 far=1000；basis x=(1,0,0) y=(0,0,-1) z=(0,1,0)（屏幕上=世界−Z 北，render_probe 规定相机同 basis）
+数据面：每格整六边形（vertex_xz 外顶点）顶点色；材质 UNSHADED + vertex_color albedo（灰度值=数据本身不受光照影响；8 位读回经色彩空间转换，比对用容差判定 > 14）
+像素自检阈值：非背景占比 > 取景期望填充 83.5% × 60% = 50.1%（纵横比自适应——极端狭长图不误报）；视图两两差分 > 500px（防呆阈值，首报实测见 DIFF 行）
+
+VIEW height：非背景 px=761496/921600（82.6%），四角背景自检 过 → PASS
+  高度灰度：高程 min=0 max=4 range=4（水格 0 档参与归一——水=最暗）
+VIEW slope：非背景 px=761496/921600（82.6%），四角背景自检 过 → PASS
+  坡度：max_slope=2（逐格最大界内邻差归一）
+VIEW region：非背景 px=761496/921600（82.6%），四角背景自检 过 → PASS
+  区域（群山权重连续场灰度）：区域=4（群山=2 平原=2）；权重 w≥0.7=2071格 w≤0.3=3888格（两档主导在场——提案「宏观可读性」的机器面）；灰度=lerp(平原0.78,群山0.30,w)
+VIEW skeleton：非背景 px=761496/921600（82.6%），四角背景自检 过 → PASS
+  骨架（五级灰度）：主山系=4 支脉=12 宽谷=4（谷底格=411）孤峰=9（影响格=169）；灰度档 背景0.18/谷底0.45/支脉0.65/孤峰0.85/主脊0.95（T6 S4 孤峰档——形态与主山系可辨）
+DIFF height↔slope：px=694715，阈值=500 → PASS
+DIFF height↔region：px=732321，阈值=500 → PASS
+DIFF height↔skeleton：px=732262，阈值=500 → PASS
+DIFF slope↔region：px=742621，阈值=500 → PASS
+DIFF slope↔skeleton：px=736446，阈值=500 → PASS
+DIFF region↔skeleton：px=728656，阈值=500 → PASS
+同视图双捕获稳定性（末视图两次捕获差分）：px=0（静态场景应≈0；留档不设门）
+
+口径：三路对照（提案 :237）=「旧版」default_terraces 双噪声现役路线 /「分区骨架版」regions_no_erosion（S4 形态：分区+骨架+孤峰，侵蚀关）/「+侵蚀版」regions_mountains（S4 完整形态）。同 seed/相机口径跨版本帧帧可比；骨架事实（region/skeleton 视图）侵蚀开关两态恒同——侵蚀只改连续高度不改分区骨架事实。
+本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。
+截图（同目录）：res://docs/evidence/t6/visual/terrain_debug_height_gen_regions_mountains_96x64_seed31337_forwardplus_1280x720.png、res://docs/evidence/t6/visual/terrain_debug_slope_gen_regions_mountains_96x64_seed31337_forwardplus_1280x720.png、res://docs/evidence/t6/visual/terrain_debug_region_gen_regions_mountains_96x64_seed31337_forwardplus_1280x720.png、res://docs/evidence/t6/visual/terrain_debug_skeleton_gen_regions_mountains_96x64_seed31337_forwardplus_1280x720.png
+标识：gen_regions_mountains_96x64_seed31337_forwardplus_1280x720
+VIEWS OK

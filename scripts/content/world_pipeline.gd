@@ -108,8 +108,23 @@ const SuitabilityGenClass := preload("res://scripts/content/suitability_generato
 ## 合法产物误判 PEAK_AREA_BUDGET；erosion 阶段极值重算改锚点不变量对账，违者
 ## 具名失败）——**dual_noise/legacy 路线逐格输出与阶段诊断零漂移**（composition/
 ## erosion 跳过、锚点仍来自 geography 场重算路径不变）；regions 模板同 seed
-## 量化图仅在锥顶超出前三项 max 的图上变化（锥顶改由 clampi 收顶档）。
-const GENERATOR_VERSION := 9
+## 量化图仅在锥顶超出前三项 max 的图上变化（锥顶改由 clampi 收顶档）；
+## v10 = T6 S7 视觉调参第一轮（S7 人工评审 20 seed 全数未过后的有界修复：
+## composition v4——基础大陆场压缩 + 区域权重核指数 2→4 + 骨架强度档上调 +
+## 细节振幅收敛；模板 regions 组起调值同步（侵蚀档位下调/sea_level 海面联动/
+## 区域占比起调值放宽），regions 模板同 seed 高度场/世界事实/校验报告属调参
+## 面可变）——**dual_noise/legacy 路线逐格输出与阶段诊断零漂移**（composition/
+## erosion 跳过、模板 geography 数值不动；默认/legacy 模板 config_digest 不变）；
+## v11 = T6 S7 视觉修复第 1 轮（S7 判据 mountainsCoherent=false 的 seed
+## regions_mountains@24x16_11 有界修复：composition v5 骨架强度档再上调（抬升
+## 0.42→0.48/脊宽 2.0→2.5/支脉长 1.5→2.5/谷带宽 1.25→1.5——小图 T=2 山系
+## 不连贯的骨架面）+ 模板 regions 组侵蚀山档 0.15→0.12（slope 视图散斑的侵蚀
+## 面）+ mountains_core_ratio_max 0.97→0.99（脊体加宽后山地核心纯度实增的
+## 占比带校准——v10 同型先例），regions 模板同 seed 高度场/世界事实/校验报告
+## 属调参面可变）——
+## **dual_noise/legacy 路线逐格输出与阶段诊断零漂移**（composition/erosion
+## 跳过、模板 geography 数值不动；默认/legacy 模板 config_digest 不变）。
+const GENERATOR_VERSION := 11
 
 ## 植被/地表掩码场 seed 偏移（与高度场同 seed 时错开通道；值 = 旧
 ## MOISTURE_SEED_OFFSET 原样继承——改名不改值，通道输出不漂移；写死常量
@@ -173,9 +188,16 @@ const STAGES: Array[String] = [
 ## T6 S4 复审修「锥体不移动归一化锚点」（composition 产物新增 field_min/
 ## field_max 锚点键；erosion 输入合同改锚点口径——海面阈/海岸带档/land_cells
 ## 计量随之同源，阶段收尾由极值重算改锚点不变量对账——锥顶超锚点的图上侵蚀
-## 输出可变，故两阶段各 +1）
+## 输出可变，故两阶段各 +1）；composition v4 = T6 S7 视觉调参第一轮（基础大陆
+## 场压缩 BASE_AMPLITUDE/BASE_LEVEL_CENTER + 区域权重核指数 2→4 + 骨架强度档
+## 上调（抬升/脊宽/支脉长）+ 细节振幅收敛——S7 人工评审 20 seed 全数未过的
+## 有界修复，常量区头注详注；erosion 算法未动维持 v2（输入场变即输出变）；
+## composition v5 = T6 S7 视觉修复第 1 轮（骨架强度档再上调：抬升 0.42→0.48 /
+## 脊宽 2.0→2.5 / 支脉长 1.5→2.5 / 谷带宽 1.25→1.5——S7 判据 mountainsCoherent
+## =false 的 seed regions_mountains@24x16_11 有界修复，常量区头注详注；
+## erosion 算法未动维持 v2（输入场变即输出变））
 const STAGE_VERSIONS := {
-	"config": 1, "geography": 1, "composition": 3, "erosion": 2, "quantize": 1,
+	"config": 1, "geography": 1, "composition": 5, "erosion": 2, "quantize": 1,
 	"hydrology": 1, "suitability": 1, "settlement": 1, "allegiance": 1, "roads": 2,
 	"playability": 3, "presentation": 1,
 }

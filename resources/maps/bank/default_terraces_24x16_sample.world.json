@@ -853,7 +853,7 @@
 		"config_digest": "e265f6bbaaa893c54e5616da25c5011b1ea247ccf988cdf911018458e3473243",
 		"engine_version": "4.7.2-stable (official)",
 		"first_pass_valid": true,
-		"generator_version": 9,
+		"generator_version": 11,
 		"repair_count": 0,
 		"rules_version": 0,
 		"schema_version": 1,

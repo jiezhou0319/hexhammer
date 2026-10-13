@@ -27,6 +27,27 @@
 ##   布点；改 isolated_peak 不动前三步任何事实）；细节场是连续噪声（第三场），
 ##   seed 偏移 2027 与植被场 1013 及全部通道偏移互质错开（两层随机不串流）。
 ## 全部数值参数 = **未验证起调值**（模板 regions 组传入；T6 方案 §10）。
+## v10 视觉调参第一轮（composition v4，S7 人工评审 20 seed 全数未过后的有界
+##   修复—— GENERATOR_VERSION+1 登记）：① 基础大陆场压缩（BASE_AMPLITUDE/
+##   BASE_LEVEL_CENTER 新常量：平原迷彩 → 成片单档开阔）；② 区域权重核指数
+##   2→4（region 视图穹状渐变 → 两档主导板块）；③ 骨架强度（抬升 0.30→0.42、
+##   脊宽 1.2→2.0、支脉长度 0.8→1.5：细脊浮纹 → 成片山体）；④ 细节振幅收敛
+##   （平原 0.05→0.025、群山 0.12→0.06：孤立单六边形噪点的主源）。配套模板
+##   侧（world_template.make_regions）：侵蚀档位下调 + sea_level 海面联动 +
+##   区域占比起调值放宽——见该文件头注。dual_noise/legacy 路线零漂移（本文件
+##   仅 regions 路线消费）。
+## v11 视觉修复第 1 轮（composition v5，S7 判据 mountainsCoherent=false 的
+##   seed regions_mountains@24x16_11 有界修复——GENERATOR_VERSION+1 登记）：
+##   小图（T=2）上山系不连贯的四面：① 抬升 0.42→0.48（区域内部基场 ±0.225
+##   跨度把 0.42 档抬升压回 1/2 档混档——山体读作斑点而非整片高原）；② 脊宽
+##   2.0→2.5（平方衰减下 w=4 的可见脊带宽仅 d≤1.5——山系读作零星短链）；③
+##   支脉长 1.5→2.5（3 格支脉在量化图上读不出层次，提案 :77 主脊+支脉体系）；
+##   ④ 谷带宽 1.25→1.5（脊体加宽后谷带随之外移收窄——保持峰簇-宽谷交替）。
+##   细节振幅不动（该 seed 判据缺结构而非噪点）；模板侧侵蚀山档 0.15→0.12
+##   （坡面刻蚀把脊带边缘打成孤立高坡碎块——slope 视图散斑未连成山系的
+##   侵蚀面）+ mountains_core_ratio_max 0.97→0.99（脊体加宽后山地核心纯度
+##   实增的占比带校准——见 world_template.make_regions 头注 v11 段）。
+##   dual_noise/legacy 路线零漂移（本文件仅 regions 路线消费）。
 ## 纯逻辑类：RefCounted、零场景节点、不写任何数据（ADR-2；删 scripts/ui/**
 ##   后 tests 全绿）。生成器配置（模板）不进世界事实（草案 §1.2 边界维持）。
 class_name TerrainComposition
@@ -46,34 +67,89 @@ const DETAIL_FREQUENCY_SCALE := 4.0
 ## 细节场 FBM 倍频数（小起伏 2 档足够——细节场不承担构图）
 const DETAIL_OCTAVES := 2
 
-# ---- 骨架固定数值（未验证起调值——写死进生成器版本管理，提案数值档随模板）----
+# ---- 基础大陆场压缩（v10 视觉调参第一轮，composition v4）----
+## 为什么：geography 双噪声场全幅 [0,1] 直进混合时，平原主导区被基础场自身的
+##   FBM 等高线带打成全值域「迷彩」（S7 人工评审 20 seed 全数未过 plainsOpen 的
+##   主因——probe 实测：陆格 ~87% 带坡、24x16 图高程档 1/2/水三色镶嵌）；提案
+##   :98「平原的细节振幅受坡度与起伏预算限制」的大陆场面——基础场压到中心
+##   ±BASE_AMPLITUDE/2 后，单区域内部高程跨度 < 半个量化档宽 ⇒ 平原成片单档
+##   （开阔），山体起伏改由骨架（脊/谷/支脉）承载。海面联动：值域收窄后有效
+##   海面（绝对档 = h_min + sea_level×range）会吃掉大半平原带——sea_level 随
+##   模板同步下调（world_template.make_regions 头注），水陆构图不变。
+## 基础场压缩振幅（0.45 起调：区域内部跨度 ≈ 0.45×局部基差 ≪ 量化档宽 range/4）
+const BASE_AMPLITUDE := 0.45
+## 压缩后基础场中心（海面/档位定位的绝对档：0.55 = 低基平原尾带沉水、主体
+##   全数落第 1 陆档的实验起调值）
+const BASE_LEVEL_CENTER := 0.55
 
-## 群山区整体抬升（mw=1 处的基础骨架高度——「群山是区域结构」的区域面）
-const MOUNTAIN_BASE_UPLIFT := 0.30
-## 平原缓丘增益（平原骨架 = 基础场 × 此值——大片低起伏，非平地）
+# ---- 区域权重核（v10 视觉调参第一轮，composition v4）----
+## 为什么：反距离核 1/(1+(d/T)^p) 在 p=2 时区域内部持续衰减（d=T 处自身核已
+##   半衰、区域中部下垂到 0.5~0.7），region 视图读作「穹状渐变」而非两档主导
+##   板块（S7 评审 evidence：20 seed 的 region 图全数 twoDominantRegions=false，
+##   视觉复核确认为核形状问题而非分区问题——权重带统计 hi/lo 合计本就 ~80%）。
+##   p=4 收紧半衰带至边界 ±0.6T：区域内部维持 ≥0.9 平台、边界仍连续渐变
+##   （无阶跃——boundary_max_delta 测试锚不变；d=T 处核值恒 0.5 与 p 无关，
+##   等距对称/归一恒等锚不受影响，仅 [0,3] T=1 远项 oracle 随新核更新）。
+const REGION_WEIGHT_KERNEL_EXPONENT := 4.0
+
+# ---- 骨架固定数值（未验证起调值——写死进生成器版本管理，提案数值档随模板；
+#      v10 视觉调参第一轮：抬升/脊宽/支脉长度上调——S7 评审「主脊内部平滑无
+#      峰簇、骨架互不相连、右侧六成无骨架」的骨架强度面）----
+
+## 群山区整体抬升（mw=1 处的基础骨架高度——「群山是区域结构」的区域面；
+## 0.30 → 0.42（v10）：山体量化后整片高出平原一档，成片群山而非细脊浮纹；
+## 0.42 → 0.48（v11 视觉修复第 1 轮）：T=2 小图上山基场 ±BASE_AMPLITUDE/2 的
+## 自身跨度（±0.225 ≈ 半个量化档宽）把 0.42 档抬升压回 1/2 档混档——区域内部
+## 读作斑点而非整片高原；+0.06 把典型基（0.55）抬进纯 2 档带，山体成片）
+const MOUNTAIN_BASE_UPLIFT := 0.48
+## 平原缓丘增益（平原骨架 = 基础场 × 此值——大片低起伏，非平地；基础场已
+## 压缩，此项在压缩场上再留 12% 缓丘）
 const PLAIN_ROLLING_GAIN := 0.12
-## 平原细节振幅上限（提案 :98 平原起伏预算的振幅面）
-const PLAIN_DETAIL_AMPLITUDE := 0.05
-## 群山细节振幅（群山细节强度可更高，提案 :98；0.12 起调——量化 Δ 预算
-## 与山体可读性的折中，未验证起调值）
-const MOUNTAIN_DETAIL_AMPLITUDE := 0.12
-## 脊线宽度 = 过渡半径 × 此倍率（山体横向尺度与过渡带同源——山前丘陵连贯）
-const RIDGE_WIDTH_SCALE := 1.2
-## 宽谷带宽 = 过渡半径 × 此倍率（谷底带宽度；提案 :68 宽谷）
-const VALLEY_SPAN_SCALE := 0.75
-## 宽谷下切深度（骨架高度在谷底的衰减比例——谷地低于两侧山肩）
-const VALLEY_CARVE := 0.70
+## 平原细节振幅上限（提案 :98 平原起伏预算的振幅面；0.05 → 0.025：
+## 量化翻转带收窄——孤立单六边形噪点的主源之一）
+const PLAIN_DETAIL_AMPLITUDE := 0.025
+## 群山细节振幅（群山细节强度可更高，提案 :98；0.12 → 0.04：S7 评审
+## 「迷彩/碎斑」的细节面收敛——骨架承担起伏后细节只留质感；第二轮再收敛
+## 0.06→0.04 = L2|L3 等高线抖动（孤立单格噪点残余主源）压减）
+const MOUNTAIN_DETAIL_AMPLITUDE := 0.04
+## 脊线宽度 = 过渡半径 × 此倍率（山体横向尺度与过渡带同源——山前丘陵连贯；
+## 1.2 → 2.0（v10）：脊体从 1-2 格细线放宽成有山肩的质量块；2.0 → 2.5
+##（v11 视觉修复第 1 轮）：平方衰减 (1−d/w)² 下 w=4 时 d=2 仅剩 0.25——
+## T=2 小图脊体可见宽（≥次档）只有 d≤1.5 的细线，量化后山系读作零星短链
+## 不成体系（S7 判据 mountainsCoherent=false 的主因）；w=5 后 d=2 衰减 0.36、
+## 配合抬升 0.48 使 d≤2 带整片上次档——脊-肩-谷横向层次可辨）
+const RIDGE_WIDTH_SCALE := 2.5
+## 宽谷带宽 = 过渡半径 × 此倍率（谷底带宽度；提案 :68 宽谷；0.75 → 1.25
+##（v10）：起下切作用于整个骨架项后，窄谷带只能切出 1-2 格线状谷——加宽后谷地
+## 成片（峰簇层次 + S5 占比区间的「山地 vs 谷地」二分有实面）；1.25 → 1.5
+##（v11 视觉修复第 1 轮）：脊体加宽（2.5×T）后谷带随之外移收窄——谷底带同步
+## 加宽保持「峰簇-宽谷」交替节奏；谷地份额回升同时压群山区山地类占比）
+const VALLEY_SPAN_SCALE := 1.5
+## 宽谷下切深度（骨架高度在谷底的衰减比例——谷地低于两侧山肩；0.70 → 0.75：
+## 谷底落回平原档，山体读作成片峰簇而非整块台地）
+const VALLEY_CARVE := 0.75
 ## 主脊纵向强度的最低档（两端终止/降低——提案 :96「避免边界被切断的山脊」：
 ## 强度向两端衰减到地板值再由横向 falloff 归零，脊线永不被硬切断）
 const SPINE_TAPER_FLOOR := 0.15
 ## 支脉强度 = 主脊强度 × 此倍率（支脉矮于主脊，提案 :77 层次）
 const BRANCH_STRENGTH_SCALE := 0.5
+## 支脉长度 = 过渡半径 × 此倍率（钳 [3,8]；0.8 → 1.5（v10）：小图支脉 2 格只是
+## 脊线毛刺，加长后支脉可读、主脊成体系；1.5 → 2.5（v11 视觉修复第 1 轮）：
+## T=2 小图 3 格支脉在量化图上仍读不出支脉层次——主山系「走向+支脉+峰簇」的
+## 体系感（提案 :77）要求支脉至少跨出脊宽带自成一读；T=2 → 5 格、T≥4 → 8 格钳）
+const BRANCH_LENGTH_SCALE := 2.5
 
 # ---- 孤峰固定数值（S4；未验证起调值——布点规则写死，峰参数随模板）----
 
 ## 有效平原判档（群山权重 ≤ 此值的格 = 有效平原——预算分母与候选池同档；
-## 与 region/skeleton 视图的 w≤0.3「平原主导档」同阈，提案 :78「有效平原面积」）
+## 与 region/skeleton 视图的 w≤0.3「平原主导档」同阈，提案 :78「有效平原面积」）。
+## v10 对齐修：判档消费**千分整数面**（round(w×1000) ≤ 300）——WorldData 落盘与
+## S5 校验侧（region_metrics/test_terrain_s4 独立推导）都是千分整数口径，浮点面
+## 直比 0.30 会在 w∈(0.3000,0.3005) 舍入带上与两侧差格（v10 权重核平台化后
+## 落带的格数变多而暴露——「分母同源」锚的漏风口封口）
 const EFFECTIVE_PLAIN_WEIGHT_MAX := 0.30
+## 有效平原判档的千分整数面（= round(EFFECTIVE_PLAIN_WEIGHT_MAX × 1000)）
+const EFFECTIVE_PLAIN_WEIGHT_MAX_PER_MILLE := 300
 
 # ---------------- 入口 ----------------
 
@@ -109,7 +185,10 @@ static func generate(map: MapDataClass, base_heights: PackedFloat32Array,
 	var base := PackedFloat32Array()
 	base.resize(cell_n)
 	for i in cell_n:
-		base[i] = (float(base_heights[i]) - base_min) / base_range if base_range > 0.0 else 0.5
+		# 基础大陆场压缩（v10：全幅场 → 中心 ±BASE_AMPLITUDE/2——平原起伏预算的
+		# 大陆场面，见常量区头注；归一后压幅，值域 [center−A/2, center+A/2])
+		var b := (float(base_heights[i]) - base_min) / base_range if base_range > 0.0 else 0.5
+		base[i] = BASE_LEVEL_CENTER + BASE_AMPLITUDE * (b - 0.5)
 
 	# ① 宏观分区
 	var part := partition(map, rngs["layout"], rngs["region"], {
@@ -375,7 +454,8 @@ static func partition(map: MapDataClass, rng_layout: RandomNumberGenerator,
 		var total := 0.0
 		for rid in region_n:
 			var d: int = region_dist[rid][i]
-			var w := 1.0 / (1.0 + pow(float(d) / float(transition_radius), 2.0))
+			var w := 1.0 / (1.0 + pow(float(d) / float(transition_radius),
+				REGION_WEIGHT_KERNEL_EXPONENT))
 			dists.append(rid)
 			vals.append(w)
 			total += w
@@ -537,7 +617,7 @@ static func build_skeleton(map: MapDataClass, regions: Array,
 				roots_taken[root_idx] = true
 				var branch_cells := _walk_branch(map, cell_region, region.region_id,
 					spine[root_idx], spine_set,
-					clampi(int(round(float(transition_radius) * 0.8)), 2, 6))
+					clampi(int(round(float(transition_radius) * BRANCH_LENGTH_SCALE)), 3, 8))
 				if branch_cells.is_empty():
 					continue
 				# 支脉强度只作用于 j≥1 的支脉格——根格（cells[0]）属主脊，强度由主脊
@@ -601,10 +681,12 @@ static func build_skeleton(map: MapDataClass, regions: Array,
 			vl.cells = valley_cells
 			valleys.append(vl)
 			valley_cell_count += valley_cells.size()
-	# 区域抬升 + 宽谷下切（骨架高度 = 抬升 + max 脊核 × (1 − 下切)）
+	# 区域抬升 + 宽谷下切（骨架高度 = (抬升 + max 脊核) × (1 − 下切)——v10 起
+	# 下切作用于整个骨架项：只削脊不削抬升时谷底恒钉在抬升档上、量化后与山体
+	# 同档，谷地读不出也就不给「山地 vs 谷地」二分留面（S5 占比区间的语义前提）
 	for i in cell_n:
-		skeleton_height[i] = MOUNTAIN_BASE_UPLIFT \
-			+ float(skeleton_height[i]) * (1.0 - VALLEY_CARVE * float(carve[i]))
+		skeleton_height[i] = (MOUNTAIN_BASE_UPLIFT + float(skeleton_height[i])) \
+			* (1.0 - VALLEY_CARVE * float(carve[i]))
 	return {"ok": true, "error": "", "ranges": ranges, "branches": branches,
 		"valleys": valleys, "skeleton_height": skeleton_height,
 		"valley_cell_count": valley_cell_count}
@@ -713,7 +795,7 @@ static func place_isolated_peaks(map: MapDataClass, mixed_heights: PackedFloat32
 	# 有效平原（预算分母兼候选池：平原主导档 ∧ 陆格——水格上的孤峰是伪地标）
 	var plain_land: Array[int] = []
 	for i in cell_n:
-		if float(weight_mountains[i]) <= EFFECTIVE_PLAIN_WEIGHT_MAX \
+		if int(round(float(weight_mountains[i]) * 1000.0)) <= EFFECTIVE_PLAIN_WEIGHT_MAX_PER_MILLE \
 				and float(mixed_heights[i]) >= mix_min + float(cfg["sea_level"]) * h_range:
 			plain_land.append(i)
 	var budget_cells := int(floor(float(plain_land.size()) * maxf(float(cfg["peak_area_budget_ratio"]), 0.0)))
@@ -813,14 +895,16 @@ static func place_isolated_peaks(map: MapDataClass, mixed_heights: PackedFloat32
 
 # ---------------- 纯函数小件（tests 独立锚的面）----------------
 
-## 反距离权重核：w = 1/(1+(d/T)²)，逐项归一（Σ=1；T ≥1）。手算 oracle 可锚
-##（d=[0,1] T=1：raw [1, 1/2] → 归一 [2/3, 1/3]）。
+## 反距离权重核：w = 1/(1+(d/T)^p)（p = REGION_WEIGHT_KERNEL_EXPONENT，v10
+##   视觉调参第一轮 2→4——区域内部平台化，见常量区头注），逐项归一（Σ=1；
+##   T ≥1）。手算 oracle 可锚（d=[0,1] T=1：raw [1, 1/2] → 归一 [2/3, 1/3]——
+##   d=T 处核值恒 0.5 与 p 无关）。
 static func inverse_distance_weights(dists: Array[int], transition_radius: int) -> Array[float]:
 	var t := maxi(1, transition_radius)
 	var raw: Array[float] = []
 	var total := 0.0
 	for d in dists:
-		var w := 1.0 / (1.0 + pow(float(d) / float(t), 2.0))
+		var w := 1.0 / (1.0 + pow(float(d) / float(t), REGION_WEIGHT_KERNEL_EXPONENT))
 		raw.append(w)
 		total += w
 	var out: Array[float] = []

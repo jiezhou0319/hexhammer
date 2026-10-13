@@ -1,0 +1,11 @@
+{
+	"attempt_count": 4,
+	"digest": "e5febd4cc517642bbd49b22c188d12c4e740eac528958c67ddc566ee36b1b411",
+	"error": "修复上限尽：4 次 attempt 仍失败：校验错误 2 项（首错 REGION_DOMINANCE）（第 5 次尝试拒绝，WORLD-04 ②）",
+	"generator_version": 9,
+	"group": "regions_mountains@60x40",
+	"kind": "seed_bank_failure",
+	"repair_count": 3,
+	"seed": 11,
+	"world_digest": "d83241f2412b2d9d1a9190c42a8bf316798898765bb99d23e9c1543cb79830fd"
+}

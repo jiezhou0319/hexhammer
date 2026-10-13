@@ -75,6 +75,34 @@
 ##     （composition/erosion 跳过、锚点仍来自 geography 场重算——登记面）；
 ##   - 阶段版本：composition 2 → 3（产物键扩容）/ erosion 1 → 2（输入合同改
 ##     锚点口径 + 收尾改锚点不变量对账——锥顶超锚点的图上侵蚀输出可变）。
+## **T6 S7 视觉调参第一轮合同变更登记（2026-10-13，v10）**——按新合同显式更新
+##   既有断言（未删测试；S7 人工评审 20 seed 全数未过 → GENERATOR_VERSION+1 的
+##   有界调参，生成器侧常量与理由见 terrain_composition.gd 常量区头注）：
+##   - GENERATOR_VERSION：9 → 10（composition v4：基础大陆场压缩 + 区域权重核
+##     指数 2→4 + 骨架强度档上调 + 细节振幅收敛 + 宽谷下切作用于整个骨架项 +
+##     有效平原判档对齐千分整数面；模板 regions 组同步（侵蚀档位/sea_level/
+##     占比带）——**dual_noise/legacy 路线逐格输出零漂移**（composition/erosion
+##     跳过、模板 geography 数值不动；默认/legacy 模板 config_digest 不变））；
+##   - test_composition_inverse_distance_weights_oracle 远项锚 [0,3] T=1：
+##     [10/11, 1/11] → [82/83, 1/83]（核指数 2→4；d=T 恒 0.5 故 [0,1]/等距
+##     锚不变）；
+##   - test_regions_route_no_boundary_step 连续场边界邻差界 0.5 → 0.65（骨架
+##     强度档上调后山前高差实增；量化 Δ≤2 与「边界不陡于内部」两面不动）。
+## **T6 S7 视觉修复第 1 轮合同变更登记（2026-10-13，v11）**——按新合同显式更新
+##   既有断言（未删测试；S7 判据 mountainsCoherent=false 的 seed
+##   regions_mountains@24x16_11 有界修复——只动证据指向的面，生成器侧常量与
+##   理由见 terrain_composition.gd / world_template.make_regions 头注 v11 段）：
+##   - GENERATOR_VERSION：10 → 11（composition v5：骨架强度档再上调——抬升
+##     0.42→0.48 / 脊宽 2.0→2.5 / 支脉长 1.5→2.5 / 谷带宽 1.25→1.5（小图 T=2
+##     山系不连贯的骨架面）；模板 regions 组侵蚀山档 0.15→0.12（slope 视图
+##     散斑的侵蚀面）+ mountains_core_ratio_max 0.97→0.99（脊体加宽后山地核心
+##     纯度实增的占比带校准——v10 同型先例，谷地最小面积/通路独立保证不放松）
+##     ——**dual_noise/legacy 路线逐格输出零漂移**（composition/
+##     erosion 跳过、模板 geography 数值不动；默认/legacy 模板 config_digest
+##     不变））；
+##   - test_stage_order…：composition 阶段版本锚 4 → 5；
+##   - 边界锚 0.65 界未动（seed 7 实测 0.561——本轮脊体加宽主要落在区域内部，
+##     山前过渡带邻差未越 v10 界；量化 Δ≤2 与「边界不陡于内部」两面不动）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -113,8 +141,8 @@ func test_stage_order_twelve_stages_fixed() -> void:
 	for stage_name in want:
 		expect(WorldPipeline.STAGE_VERSIONS.has(stage_name), "阶段版本表缺 %s" % stage_name)
 		expect(int(WorldPipeline.STAGE_VERSIONS[stage_name]) >= 1, "阶段 %s 版本 ≥1" % stage_name)
-	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 3,
-		"composition v3（v9 复审修：产物新增 field_min/field_max 归一化锚点键——锥体不回写分母）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 5,
+		"composition v5（v11 视觉修复第 1 轮：骨架强度档再上调（抬升/脊宽/支脉长/谷带宽）；v4 = v10 视觉调参第一轮；v3 = v9 复审修锚点键）")
 	expect_eq(int(WorldPipeline.STAGE_VERSIONS["erosion"]), 2,
 		"erosion v2（v9 复审修：输入合同改锚点口径 + 收尾改锚点不变量对账）")
 	expect_eq(int(WorldPipeline.STAGE_VERSIONS["playability"]), 3,
@@ -414,16 +442,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 9,
-		"GENERATOR_VERSION=9（T6 S4 复审修「锥体不移动归一化锚点」：composition 产物增 field_min/field_max 前三项极值锚点、管线 h_min/h_max 改消费锚点而非叠加锥体后重算——修复峰高近上限时锥顶抬全图 h_max、量化海面阈随之抬升致贴海平原格翻水（局部地标无声重画海岸线）与生成侧/S5 校验侧预算分母不同源两缺陷；erosion 极值重算改锚点不变量对账；dual_noise/legacy 逐格输出零漂移（composition/erosion 跳过、锚点仍来自 geography），复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 11,
+		"GENERATOR_VERSION=11（T6 S7 视觉修复第 1 轮——S7 判据 mountainsCoherent=false 的 seed regions_mountains@24x16_11 有界修复：composition v5 骨架强度档再上调（抬升 0.42→0.48/脊宽 2.0→2.5/支脉长 1.5→2.5/谷带宽 1.25→1.5——小图 T=2 山系不连贯的骨架面）+ 模板 regions 组侵蚀山档 0.15→0.12（slope 视图散斑的侵蚀面）；dual_noise/legacy 逐格输出零漂移（composition/erosion 跳过、模板 geography 数值不动），复现锚显式登记；v10 段历史见文件头注）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 9, "legacy meta 落 v9")
+		expect_eq(legacy["meta"]["generator_version"], 11, "legacy meta 落 v11")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 9, "世界 meta 落 v9")
+		expect_eq(w["world"].meta["generator_version"], 11, "世界 meta 落 v11")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）
@@ -717,8 +745,8 @@ func test_regions_route_no_boundary_step() -> void:
 	expect(float(comp["boundary_max_delta"]) <= float(comp["max_neighbor_delta"]) + 1e-6,
 		"连续场诊断：边界最大邻差不大于全图最大邻差（got %s / %s）"
 			% [str(comp["boundary_max_delta"]), str(comp["max_neighbor_delta"])])
-	expect(float(comp["boundary_max_delta"]) < 0.5,
-		"连续场边界邻差有界（got %s——混合场在过渡带连续）" % str(comp["boundary_max_delta"]))
+	expect(float(comp["boundary_max_delta"]) < 0.65,
+		"连续场边界邻差有界（got %s——混合场在过渡带连续；v10 界 0.5→0.65：骨架强度档上调（抬升 0.42+脊宽质量块）后山前高差实增，仍 ≪ 全幅 1.9——无阶跃合同以量化 Δ≤2 与「边界不陡于内部」双面承载，显式更新登记见文件头注 v10 段）" % str(comp["boundary_max_delta"]))
 
 func test_regions_route_channels_isolated() -> void:
 	# T6 四新通道 + S4 erosion 通道的分步隔离锚（提案 :221 八通道 + T6 §2.3）：
@@ -840,8 +868,10 @@ func test_regions_route_legacy_face_unchanged() -> void:
 
 func test_composition_inverse_distance_weights_oracle() -> void:
 	# 纯函数 oracle（TerrainComposition.inverse_distance_weights 手算锚）：
-	# w = 1/(1+(d/T)²) 逐项归一。d=[0,1] T=1 → raw [1, 0.5] → [2/3, 1/3]；
-	# d=[2,2] → 对称 [0.5, 0.5]；d=[0,3] T=1 → raw [1, 0.1] → [10/11, 1/11]
+	# w = 1/(1+(d/T)^p) 逐项归一（p = REGION_WEIGHT_KERNEL_EXPONENT——v10 视觉调参
+	# 2→4：d=T 处核值恒 0.5 与 p 无关，故 [0,1]/等距锚不变；远项 [0,3] 随新核
+	# 更新：raw [1, 1/82] → [82/83, 1/83]——显式更新登记，见文件头注 v10 段）。
+	# d=[0,1] T=1 → raw [1, 1/2] → [2/3, 1/3]；d=[2,2] → 对称 [0.5, 0.5]
 	var a: Array[float] = Comp.inverse_distance_weights(_ints([0, 1]), 1)
 	expect_almost_eq(a[0], 2.0 / 3.0, 1e-9, "反距离权重 [0,1] T=1 → 首项 2/3")
 	expect_almost_eq(a[1], 1.0 / 3.0, 1e-9, "反距离权重 [0,1] T=1 → 次项 1/3")
@@ -849,8 +879,8 @@ func test_composition_inverse_distance_weights_oracle() -> void:
 	expect_almost_eq(b[0], 0.5, 1e-9, "等距对称 → 均分 0.5")
 	expect_almost_eq(b[1], 0.5, 1e-9, "等距对称 → 均分 0.5")
 	var c: Array[float] = Comp.inverse_distance_weights(_ints([0, 3]), 1)
-	expect_almost_eq(c[0], 10.0 / 11.0, 1e-9, "[0,3] T=1 → 10/11")
-	expect_almost_eq(c[1], 1.0 / 11.0, 1e-9, "[0,3] T=1 → 1/11")
+	expect_almost_eq(c[0], 82.0 / 83.0, 1e-9, "[0,3] T=1 → 82/83（p=4：raw [1, 1/82]）")
+	expect_almost_eq(c[1], 1.0 / 83.0, 1e-9, "[0,3] T=1 → 1/83（p=4）")
 	# 归一化恒等：Σ=1（任意距离表）
 	for dists in [[0, 1, 2], [1, 5, 9, 14], [0, 0, 4]]:
 		var ws: Array[float] = Comp.inverse_distance_weights(_ints(dists), 3)
