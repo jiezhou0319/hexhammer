@@ -849,10 +849,10 @@
 	],
 	"meta": {
 		"attempt_count": 1,
-		"config_digest": "44724b6de463cede5fe135879658844dbdb7c67f902679b4d75fc8fbf323f4fc",
+		"config_digest": "5944c7b6574de65f99ac7b22d08aa80e1ddb1d1a43791f6186ce1e379027cfce",
 		"engine_version": "4.7.2-stable (official)",
 		"first_pass_valid": true,
-		"generator_version": 6,
+		"generator_version": 7,
 		"repair_count": 0,
 		"rules_version": 0,
 		"schema_version": 1,

@@ -1,0 +1,11 @@
+{
+	"attempt_count": 4,
+	"digest": "d42672d89851cf36453f52fd0a20e8a7f3d487adba21820bb8c052b49191f434",
+	"error": "修复上限尽：4 次 attempt 仍失败：路网生成失败：ROAD_NETWORK_DISCONNECTED：必需聚落对（格 124 ↔ 190，poi 0/4）无法连接——阻挡为地形（高差/禁入面），无河段涉入（第 5 次尝试拒绝，WORLD-04 ②）",
+	"generator_version": 7,
+	"group": "regions_mountains@96x64",
+	"kind": "seed_bank_failure",
+	"repair_count": 3,
+	"seed": 42,
+	"world_digest": "aa738d8830bbd575e43ae192c3bd8dacc6f1b4ac2b063e153d6755e951559f0c"
+}

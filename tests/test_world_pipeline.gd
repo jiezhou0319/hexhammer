@@ -46,6 +46,13 @@
 ##   - test_regions_route_channels_isolated 的 isolated_peak 断言改义：S3 的「override
 ##     零产物变化」仅在零孤峰图（小图合法态）继续成立；有孤峰图上改峰布点
 ##     （分区/骨架事实不变的通道分步锚——S4 合同）。
+## **T6 S5 合同变更登记（2026-10-13，v7）**——按新合同显式更新既有断言（未删测试）：
+##   - GENERATOR_VERSION：6 → 7（v7 = playability v3 区域验收面：模板 regions
+##     验收子组 → WorldValidator 区域检查码 REGION_DOMINANCE/CONNECTIVITY/
+##     BOUNDARY_STEP/MOUNTAIN_VALLEY/PEAK_AREA_BUDGET + region_metrics 结构化
+##     诊断——**dual_noise/legacy 逐格输出与校验报告零漂移**（区域事实恒空 →
+##     区域检查零触发）的登记面）；config_digest 键集随模板 S5 验收组扩容；
+##   - playability 阶段版本 2 → 3（阶段算法细粒度锚，test_stage_order 断言扩）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -87,6 +94,8 @@ func test_stage_order_eleven_stages_fixed() -> void:
 	expect_eq(int(WorldPipeline.STAGE_VERSIONS["composition"]), 2,
 		"composition v2（S4 孤峰地标第四项——阶段算法变更的细粒度锚）")
 	expect_eq(int(WorldPipeline.STAGE_VERSIONS["erosion"]), 1, "erosion v1（S4 首落）")
+	expect_eq(int(WorldPipeline.STAGE_VERSIONS["playability"]), 3,
+		"playability v3（S5 区域验收面接入——模板 regions 验收组 → 区域检查码 + region_metrics 诊断）")
 
 func test_named_channels_independent_seeds() -> void:
 	# 十具名通道（geography/hydrology/poi/roads/decoration + T6 追加 layout/region/
@@ -375,16 +384,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 6,
-		"GENERATOR_VERSION=6（T6 S4 孤峰与选择性侵蚀：STAGES 增 erosion + erosion 通道 + WorldData.isolated_peaks + composition 第四项/孤峰布点 + 聚落避让孤峰——dual_noise/legacy 逐格输出不变，复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 7,
+		"GENERATOR_VERSION=7（T6 S5 区域验收面：playability v3 消费模板 regions 验收子组 → 区域检查码五枚 + region_metrics 结构化诊断——dual_noise/legacy 逐格输出与校验报告零漂移（区域事实恒空），复现锚显式登记）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 6, "legacy meta 落 v6")
+		expect_eq(legacy["meta"]["generator_version"], 7, "legacy meta 落 v7")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 6, "世界 meta 落 v6")
+		expect_eq(w["world"].meta["generator_version"], 7, "世界 meta 落 v7")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）

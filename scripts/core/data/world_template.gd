@@ -6,8 +6,8 @@
 ##   template_id 身份 + terrain_route 地形路线开关（T6 拍板 2026-10-13：regions
 ##   并列路线；~~双噪声唯一路线~~ 排他表述已被 T6 执行方案取代注作废——本组
 ##   默认仍双噪声 = 既有模板零漂移）+ dimensions 尺寸组 + geography 地理组
-##   （双噪声数值）+ regions 宏观分区组（T6 S3 分区骨架 + S4 孤峰/侵蚀子组，
-##   未验证起调值）+ hydrology 水系组
+##   （双噪声数值）+ regions 宏观分区组（T6 S3 分区骨架 + S4 孤峰/侵蚀子组 +
+##   S5 验收子组——WorldValidator 区域检查码的阈值面，未验证起调值）+ hydrology 水系组
 ##   （WORLD-02 河口反向生长参数）+ scenario 组（聚落/势力，WORLD-03 解锁：出生
 ##   区/资源/扩张参数/河界加成）+ infrastructure 组（道路骨架，WORLD-05 解锁：
 ##   回路数/高差阈值）+ locked/preferred 约束名列表（**locked v1 格式
@@ -136,6 +136,42 @@ const REGIONS_PATH := "res://resources/world/templates/world_template_regions.tr
 ## 平原起伏预算（侵蚀后平原区连续起伏较侵蚀前最多增长此值——复查判据之二，
 ## 提案 :109 起伏复查的平原面）
 @export var erosion_plain_relief_budget: float = 0.06
+
+# ---- regions 组·验收子组（T6 S5 解锁；WorldValidator 区域验收五码的阈值面——
+#      「有配置才判」沿 ROAD-01 先例，管线把本组透传校验器；dual_noise 路线区域
+#      事实恒空 = 整组零消费。**全部数值 = 未验证起调值**（提案 §首期调参起点
+#      :127-133 起调区间 + §尚待确认②「分类阈值首版自定并进模板」，T6 方案 §10
+#      默认答案②），调参走模板版本/GENERATOR_VERSION，不是平衡承诺）----
+
+## 群山区核心地貌占比下限（山地类格数 / 核心格数 ≥ 此值——提案 :129 起调 60%）
+@export var mountains_core_ratio_min: float = 0.60
+## 群山区核心地貌占比上限（「山地与丘陵合计」≤ 此值——为谷地/盆地留出非山地
+## 份额；提案 :129 起调 80%）
+@export var mountains_core_ratio_max: float = 0.80
+## 平原区核心地貌占比下限（平原类格数 / 核心格数 ≥ 此值——提案 :130 起调 70%）
+@export var plains_core_ratio_min: float = 0.70
+## 平原区核心地貌占比上限（「平原与缓丘合计」≤ 此值；提案 :130 起调 90%）
+@export var plains_core_ratio_max: float = 0.90
+## 山地类分类阈值（群山权重 ≥ 此值的陆格计山地/丘陵类——§尚待确认② 分类阈值
+## 的模板面；与 regions 视图「群山主导档」同阈起调）
+@export var region_mountain_class_weight: float = 0.70
+## 山地类高程档下限（陆格高程 / elevation_levels ≥ 此值才计山地类——**分类的
+## 高程面**：宽谷/盆地经骨架下切后高程落低档，归非山地类，提案 :129「山地与
+## 丘陵合计 60%~80% + 独立保证谷地最小可用面积」的占比/谷地二分靠它成立；
+## 0.5 起调 = elevation_levels=4 下高程 ≥2 档）
+@export var region_mountain_class_elev_min: float = 0.50
+## 平原类分类阈值（群山权重 ≤ 此值的陆格计平原/缓丘类——与孤峰有效平原判档
+## TerrainComposition.EFFECTIVE_PLAIN_WEIGHT_MAX 同阈起调）
+@export var region_plain_class_weight: float = 0.30
+## 区域核心最大可用连通片下限（核心通行格的最大连通片占比 ≥ 此值——提案 :130
+## 「主要通行空间必须形成配置要求的大片连通区域」的机器面）
+@export var region_largest_component_ratio: float = 0.60
+## 分区边界高程差上限（异区相邻对量化高程差 ≤ 此值——「无区域编号导致的高度
+## 断缝」；与 S3 验收锚 Δ≤2 同口径起调）
+@export var region_boundary_max_step: int = 2
+## 群山区可用谷地下限（通行谷底格数 ≥ 此值；0 = 面积不查但对外通路仍查——
+## 通路是布尔硬约束，提案 :272 山地可用性）
+@export var region_min_valley_cells: int = 4
 
 # ---- hydrology 组：河网与水体（WORLD-02 河口反向生长；生长偏好参数 = 卡内
 #      拍板项「spike 后定默认值」——本版默认为首版实现档，调档 = 改模板不改码）----
@@ -328,6 +364,40 @@ func validate() -> String:
 	if erosion_plain_relief_budget < 0.0 or erosion_plain_relief_budget > 1.0:
 		return "模板 %s erosion_plain_relief_budget=%s 非法（∈[0,1] 平原起伏预算）" \
 			% [template_id, str(erosion_plain_relief_budget)]
+	# ---- regions 组·验收子组硬边界（T6 S5；-1 = 显式关闭该界，其余查区间）----
+	for ratio_field in [["mountains_core_ratio_min", mountains_core_ratio_min],
+			["mountains_core_ratio_max", mountains_core_ratio_max],
+			["plains_core_ratio_min", plains_core_ratio_min],
+			["plains_core_ratio_max", plains_core_ratio_max],
+			["region_largest_component_ratio", region_largest_component_ratio]]:
+		var rv: float = ratio_field[1]
+		if rv < -1.0 or rv > 1.0:
+			return "模板 %s %s=%s 非法（∈[-1,1]——-1 = 不查该界）" \
+				% [template_id, ratio_field[0], str(rv)]
+	if mountains_core_ratio_min >= 0.0 and mountains_core_ratio_max >= 0.0 \
+			and mountains_core_ratio_min > mountains_core_ratio_max:
+		return "模板 %s mountains_core_ratio 区间倒置（min %s > max %s）" \
+			% [template_id, str(mountains_core_ratio_min), str(mountains_core_ratio_max)]
+	if plains_core_ratio_min >= 0.0 and plains_core_ratio_max >= 0.0 \
+			and plains_core_ratio_min > plains_core_ratio_max:
+		return "模板 %s plains_core_ratio 区间倒置（min %s > max %s）" \
+			% [template_id, str(plains_core_ratio_min), str(plains_core_ratio_max)]
+	for class_field in [["region_mountain_class_weight", region_mountain_class_weight],
+			["region_plain_class_weight", region_plain_class_weight],
+			["region_mountain_class_elev_min", region_mountain_class_elev_min]]:
+		var cv: float = class_field[1]
+		if cv <= 0.0 or cv >= 1.0:
+			return "模板 %s %s=%s 非法（∈(0,1) 地貌分类档）" \
+				% [template_id, class_field[0], str(cv)]
+	if region_plain_class_weight >= region_mountain_class_weight:
+		return "模板 %s 分类阈值倒置（plain %s ≥ mountain %s——平原档须低于山地档）" \
+			% [template_id, str(region_plain_class_weight), str(region_mountain_class_weight)]
+	if region_boundary_max_step < -1 or region_boundary_max_step == 0:
+		return "模板 %s region_boundary_max_step=%d 非法（≥1 或 -1 = 不查）" \
+			% [template_id, region_boundary_max_step]
+	if region_min_valley_cells < -1:
+		return "模板 %s region_min_valley_cells=%d 非法（≥0 或 -1 = 不查；0 = 面积不查通路仍查）" \
+			% [template_id, region_min_valley_cells]
 	if river_count < 0:
 		return "模板 %s river_count=%d 非法（≥0——0 = 无河世界合法态）" % [template_id, river_count]
 	if river_max_edges < 1:
@@ -396,9 +466,19 @@ func to_dict() -> Dictionary:
 		"erosion_plain": erosion_plain,
 		"erosion_transition": erosion_transition,
 		"erosion_coast": erosion_coast,
-		"erosion_max_step": erosion_max_step,
-		"erosion_plain_relief_budget": erosion_plain_relief_budget,
-		"hydrology_enabled": hydrology_enabled,
+	"erosion_max_step": erosion_max_step,
+	"erosion_plain_relief_budget": erosion_plain_relief_budget,
+	"mountains_core_ratio_min": mountains_core_ratio_min,
+	"mountains_core_ratio_max": mountains_core_ratio_max,
+	"plains_core_ratio_min": plains_core_ratio_min,
+	"plains_core_ratio_max": plains_core_ratio_max,
+	"region_mountain_class_weight": region_mountain_class_weight,
+	"region_mountain_class_elev_min": region_mountain_class_elev_min,
+	"region_plain_class_weight": region_plain_class_weight,
+	"region_largest_component_ratio": region_largest_component_ratio,
+	"region_boundary_max_step": region_boundary_max_step,
+	"region_min_valley_cells": region_min_valley_cells,
+	"hydrology_enabled": hydrology_enabled,
 		"river_count": river_count,
 		"river_max_edges": river_max_edges,
 		"min_mouth_spacing": min_mouth_spacing,

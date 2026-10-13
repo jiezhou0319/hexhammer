@@ -1,9 +1,13 @@
 ## test_world_validator.gd — T5 WORLD-04 校验、有限修复与 seed 银行单测
 ##   （执行方案 docs/M1a-terrain-T2-T5-execution-plan.md §6 WORLD-04 + 数据合同
 ##   草案 §11 错误码清单 + 提案门禁矩阵/最小诊断输出 + seed 纪律）
+##   + T6 S5 区域验收面（docs/M1a-terrain-T6-stylized-execution-plan.md §7 +
+##   提案 §区域限制 :111-134 / §验收与评估 :265-276——区域检查码五枚逐码
+##   fixture、region_metrics 手算 oracle、阈值「有配置才判」门、生成图通过
+##   样本与可 diff 诊断、regions 银行组三档二十 seed 形状与跑完口径）
 ## 覆盖锚（卡表「测试锚」逐条）：
 ##   - 错误指向具体 cell/link：**每个错误码至少一个 fixture 断言 explanation 含
-##     定位**（§11 七码 + 扩格码逐个落）；
+##     定位**（§11 七码 + 扩格码 + T6 S5 区域五码逐个落）；
 ##   - 修复不动 locked：锁定区修复前后逐位一致（owner 锚定/锚定 POI 原样重发/
 ##     道路禁入三面 + attempts_trace 双世界对照）；
 ##   - attempt 上限：第 5 次尝试拒绝（4×4 物理不可行样本恒 4 次即止）；
@@ -11,9 +15,16 @@
 ##     （可加载复验）；
 ##   - 确定性：银行 seed 重跑 world_digest 一致（3 次）；
 ##   - 成功世界保存→重载仍过同样校验；
-##   - 初始 owner 与运行时征服状态分离（重生成不覆盖存档进度）。
+##   - 初始 owner 与运行时征服状态分离（重生成不覆盖存档进度）；
+##   - **T6 S5**：区域检查码逐码违规 fixture（explanation 含不合格区域编号/越阶
+##     对格/峰中心——提案 :267）、合格 fixture 零违规 + region_metrics 手算
+##     oracle、区域检查仅凭 opts 阈值开通（ROAD-01「有配置才判」）、生成图
+##     （60×40 seed 7）区域验收零违规 + playability 诊断 region_metrics 同 seed
+##     逐字可 diff + dual_noise 不落键（不产伪字段）、regions 银行组三档二十
+##     seed + smoke 跑完计数口径（退出码语义不变的数据面）。
 ## oracle 原则：错误定位断言 = 手工 fixture（期望的 cell/poi id 由构造侧给出）；
-## 修复/银行断言 = 世界事实摘要（to_dict/world_digest——不复制实现内部状态）。
+## 修复/银行断言 = 世界事实摘要（to_dict/world_digest——不复制实现内部状态）；
+## 区域指标断言 = 构造侧手算占比/片数/盘径（不抄 region_metrics 实现）。
 extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
@@ -94,6 +105,10 @@ func test_report_shape_and_error_code_list() -> void:
 			"NO_RIVER_OUTLET", "BRIDGE_ENDPOINT_INVALID", "ROAD_NETWORK_DISCONNECTED",
 			"LOCKED_CONSTRAINT_CONFLICT"]:
 		expect(WorldValidator.ERROR_CODES.has(code), "§11 错误码 %s 在册" % code)
+	# T6 S5 区域验收五码在册（扩格码清单的可枚举面）
+	for code in ["REGION_DOMINANCE", "REGION_CONNECTIVITY", "REGION_BOUNDARY_STEP",
+			"MOUNTAIN_VALLEY", "PEAK_AREA_BUDGET"]:
+		expect(WorldValidator.ERROR_CODES.has(code), "T6 S5 区域错误码 %s 在册" % code)
 	# 错误对象固定五键（{code, cell_ids, link_ids, constraint_id, explanation}）
 	var map2 := _land_map()
 	var world2 := WorldDataClass.empty()
@@ -609,3 +624,346 @@ func test_initial_owner_separated_from_runtime_conquest() -> void:
 	var keys := wa.to_dict().keys()
 	keys.sort()
 	expect(not str(keys).contains("conquer"), "WorldData 无征服字段（规则语义不进数据）")
+
+# ================= T6 S5 区域验收（提案 §区域限制 :111-134 + §验收与评估 :265-276）=================
+## fixture 底图：12×8 三带分区（列 0-5 群山区 region 0 / 列 6-11 平原区 region 1，
+## 全图皆核心——过渡带 0 格的极简形态；分类档 = 模板起调值 mcw0.7/pcw0.3/
+## elev_min0.5×levels4 → 山地类 = mw≥700∧elev≥2、平原类 = mw≤300∧陆）。
+## 合格形态：r0 山地类 36/48=0.75（行 0-1 谷地带 elev1 让出 12 格）、
+## r1 平原类 42/48=0.875（列 11 行 0-5 水 6 格）；边界 Δ=1；谷地 8 格有通路；
+## 零孤峰。全部数字手算 oracle（期望值由构造侧给出，不抄实现）。
+const REGION_OPTS := {
+	"mountains_core_ratio_min": 0.60, "mountains_core_ratio_max": 0.80,
+	"plains_core_ratio_min": 0.70, "plains_core_ratio_max": 0.90,
+	"region_mountain_class_weight": 0.70, "region_mountain_class_elev_min": 0.50,
+	"region_plain_class_weight": 0.30, "elevation_levels": 4,
+	"region_largest_component_ratio": 0.60, "region_boundary_max_step": 2,
+	"region_min_valley_cells": 4, "peak_area_budget_ratio": 0.05,
+}
+
+func _cell_at(map: MapDataClass, col: int, row: int) -> Vector2i:
+	return Hex.axial_of(Vector2i(col, row))
+
+func _water_at(map: MapDataClass, col: int, row: int) -> void:
+	map.set_elevation(_cell_at(map, col, row), 0)
+	map.set_terrain(_cell_at(map, col, row), T_WATER)
+	map.set_passable(_cell_at(map, col, row), false)
+
+## 区域 fixture（合格基座）：分区事实 + 骨架 + 格级场 + 谷地（行 0-1 列 0-3）。
+func _region_fixture_valid() -> Dictionary:
+	var map := _land_map()
+	var world := WorldDataClass.empty()
+	var r0 := WorldDataClass.TerrainRegion.new()
+	r0.region_id = 0
+	r0.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS
+	for row in 8:
+		for col in 6:
+			r0.core_cells.append(row * 12 + col)
+	r0.adjacency = [1]
+	var r1 := WorldDataClass.TerrainRegion.new()
+	r1.region_id = 1
+	r1.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.PLAINS
+	for row in 8:
+		for col in range(6, 12):
+			r1.core_cells.append(row * 12 + col)
+	r1.adjacency = [0]
+	world.terrain_regions = [r0, r1]
+	var range0 := WorldDataClass.MountainRangeData.new()
+	range0.range_id = 0
+	range0.region_id = 0
+	range0.spine_cells = [4 * 12 + 2, 4 * 12 + 3]
+	world.mountain_ranges = [range0]
+	var valley0 := WorldDataClass.ValleyData.new()
+	valley0.valley_id = 0
+	valley0.range_id = 0
+	for row in 2:
+		for col in 4:
+			valley0.cells.append(row * 12 + col)
+	world.valleys = [valley0]
+	world.cell_regions = []
+	world.cell_mountain_weights = []
+	for row in 8:
+		for col in 12:
+			world.cell_regions.append(0 if col < 6 else 1)
+			world.cell_mountain_weights.append(900 if col < 6 else 100)
+	# 高程：r0 行 2-7 elev2（山地类 36 格）、行 0-1 elev1（谷地带）；r1 elev1
+	#（平原类 42 格）+ 列 11 行 0-5 水（6 格）
+	for row in 8:
+		for col in 6:
+			map.set_elevation(_cell_at(map, col, row), 1 if row < 2 else 2)
+		for col2 in range(6, 12):
+			map.set_elevation(_cell_at(map, col2, row), 1)
+	for row2 in 6:
+		_water_at(map, 11, row2)
+	return {"map": map, "world": world}
+
+func test_region_fixture_valid_zero_violations_and_metrics_oracle() -> void:
+	# 合格图零违规 + region_metrics 手算 oracle（占比/连通片/谷地/过渡带/边界）
+	var f := _region_fixture_valid()
+	expect_eq(f["world"].validate(f["map"], -1, -1, -1), "",
+		"fixture 结构合法（分区/骨架/格级事实过 WorldData.validate——区域判罚不混入结构噪声）")
+	var report := WorldValidator.validate_report(f["map"], f["world"], REGION_OPTS)
+	expect(report["ok"], "合格 fixture 零违规（got %s）"
+		% str(_first_error(report)["explanation"] if not report["ok"] else ""))
+	var m := WorldValidator.region_metrics(f["map"], f["world"], REGION_OPTS)
+	expect_eq(int(m["region_count"]), 2, "两区域")
+	var rm0: Dictionary = (m["regions"] as Array)[0]
+	var rm1: Dictionary = (m["regions"] as Array)[1]
+	expect_eq(str(rm0["landform"]), "mountains", "r0 = 群山区")
+	expect_eq(str(rm1["landform"]), "plains", "r1 = 平原区")
+	expect_eq(float(rm0["dominant_ratio"]), 0.75, "r0 山地类占比 = 36/48（手算 oracle）")
+	expect_eq(float(rm1["dominant_ratio"]), 0.875, "r1 平原类占比 = 42/48（手算 oracle）")
+	expect_eq(int(rm0["largest_component"]), 48, "r0 全核心一片（48 格连通）")
+	expect_eq(float(rm0["largest_ratio"]), 1.0, "r0 最大可用连通片占比 = 1")
+	expect_eq(int(rm1["largest_component"]), 42, "r1 通行 42 格一片（水 6 格剔除）")
+	expect_eq(int(rm0["valley_usable"]), 8, "r0 可用谷地 = 8 格")
+	expect(bool(rm0["valley_outlet"]), "r0 谷地有对外通路（行 0-1 带东行抵平原区）")
+	expect_eq(int((m["transition"] as Dictionary)["cells"]), 0, "过渡带 0 格（极简形态——带内统计面在，值为零）")
+	expect_eq(int((m["peaks"] as Dictionary)["effective_plain_cells"]), 42,
+		"有效平原 = 42（mw≤300 ∧ 陆）")
+	expect_eq(int((m["boundary"] as Dictionary)["boundary_max_elev_delta"]), 1,
+		"异区相邻对最大 Δ = 1（elev2|elev1 边界）")
+	expect(int((m["boundary"] as Dictionary)["boundary_pairs"]) > 0, "分区边界对存在")
+
+func test_region_dominance_violation_reports_region_id() -> void:
+	# 违规图（占比出区间两个方向）：行 2-3 再降 12 格 elev1 → 24/48=0.5 < 0.60；
+	# 反向：行 0-1 全抬 elev2 → 48/48=1.0 > 0.80——explanation 恒含不合格区域编号
+	#（提案 :267「输出不合格区域编号」）
+	var low := _region_fixture_valid()
+	for row in range(2, 4):
+		for col in 6:
+			(low["map"] as MapDataClass).set_elevation(_cell_at(low["map"], col, row), 1)
+	var report := WorldValidator.validate_report(low["map"], low["world"], REGION_OPTS)
+	expect(not report["ok"], "占比跌破下限应报 REGION_DOMINANCE")
+	var hit := false
+	for e in report["errors"]:
+		if e["code"] == "REGION_DOMINANCE":
+			hit = true
+			expect_eq(e["constraint_id"], "region:0", "constraint_id 指向不合格区域")
+			expect(str(e["explanation"]).contains("区域 0"),
+				"explanation 含区域编号（got %s）" % e["explanation"])
+			expect(str(e["explanation"]).contains("0.5"),
+				"explanation 含实测占比（got %s）" % e["explanation"])
+	expect(hit, "REGION_DOMINANCE 错误在列（下限方向）")
+	var high := _region_fixture_valid()
+	for row in 2:
+		for col in 6:
+			(high["map"] as MapDataClass).set_elevation(_cell_at(high["map"], col, row), 2)
+	var report2 := WorldValidator.validate_report(high["map"], high["world"], REGION_OPTS)
+	var hit2 := false
+	for e in report2["errors"]:
+		if e["code"] == "REGION_DOMINANCE":
+			hit2 = true
+			expect(str(e["explanation"]).contains("区域 0"),
+				"上限方向 explanation 亦含区域编号")
+	expect(hit2, "REGION_DOMINANCE 错误在列（上限方向：1.0 > 0.80）")
+
+func test_region_connectivity_violation_points_at_fragmented_core() -> void:
+	# 违规图：平原区核心被水柱切开——列 8 全列水 → 通行 34 格分裂为 16（列 6-7）
+	# 与 18（列 9-10 + 列 11 行 6-7 尾巴）两片，最大片 18/34≈0.53 < 0.60
+	#（平原完整性硬约束，提案 :268）
+	var f := _region_fixture_valid()
+	for row in 8:
+		_water_at(f["map"], 8, row)
+	var report := WorldValidator.validate_report(f["map"], f["world"], REGION_OPTS)
+	expect(not report["ok"], "核心切碎应报 REGION_CONNECTIVITY")
+	var hit := false
+	for e in report["errors"]:
+		if e["code"] == "REGION_CONNECTIVITY":
+			hit = true
+			expect_eq(e["constraint_id"], "region:1", "constraint_id 指向碎片化区域")
+			expect(str(e["explanation"]).contains("区域 1"),
+				"explanation 含区域编号（got %s）" % e["explanation"])
+	expect(hit, "REGION_CONNECTIVITY 错误在列")
+	var m := WorldValidator.region_metrics(f["map"], f["world"], REGION_OPTS)
+	var rm1: Dictionary = (m["regions"] as Array)[1]
+	expect_eq(int(rm1["passable_components"]), 2, "平原核心 2 个通行连通片（16/18 手算 oracle）")
+	expect_eq(int(rm1["largest_component"]), 18, "最大片 = 18 格")
+
+func test_region_boundary_step_violation_points_at_pair() -> void:
+	# 违规图：边界对高程断缝——(5,4) 抬 elev4，邻格 (6,4) elev1 → 异区相邻对
+	# Δ=3 > 2（「无区域编号导致的高度断缝」，提案 :271）
+	var f := _region_fixture_valid()
+	(f["map"] as MapDataClass).set_elevation(_cell_at(f["map"], 5, 4), 4)
+	var report := WorldValidator.validate_report(f["map"], f["world"], REGION_OPTS)
+	expect(not report["ok"], "边界断缝应报 REGION_BOUNDARY_STEP")
+	var hit := false
+	var cell54 := 4 * 12 + 5
+	for e in report["errors"]:
+		if e["code"] == "REGION_BOUNDARY_STEP":
+			hit = true
+			expect((e["cell_ids"] as Array).has(cell54),
+				"cell_ids 指向越阶对格 %d（got %s）" % [cell54, str(e["cell_ids"])])
+			expect(str(e["explanation"]).contains("3"),
+				"explanation 含实测 Δ（got %s）" % e["explanation"])
+	expect(hit, "REGION_BOUNDARY_STEP 错误在列")
+
+func test_mountain_valley_violations_area_and_outlet() -> void:
+	# 违规图 A（谷地面积）：宽谷表清空 → 可用谷地 0 < 4（山地可用性，提案 :272）
+	var fa := _region_fixture_valid()
+	(fa["world"] as WorldDataClass).valleys = []
+	var report_a := WorldValidator.validate_report(fa["map"], fa["world"], REGION_OPTS)
+	var hit_a := false
+	for e in report_a["errors"]:
+		if e["code"] == "MOUNTAIN_VALLEY":
+			hit_a = true
+			expect(str(e["explanation"]).contains("谷地面积不足"),
+				"面积方向 explanation 具名（got %s）" % e["explanation"])
+			expect_eq(e["constraint_id"], "region:0", "constraint_id 指向群山区")
+	expect(hit_a, "MOUNTAIN_VALLEY 错误在列（面积不足方向）")
+	# 违规图 B（对外通路）：谷地改行 2 列 0-3（4 格），全部界内邻居灌水围死——
+	# BFS 出不去异区格（通路是布尔硬约束：region_min_valley_cells=0 也仍查）
+	var fb := _region_fixture_valid()
+	var world_b: WorldDataClass = fb["world"]
+	var valley_b := WorldDataClass.ValleyData.new()
+	valley_b.valley_id = 0
+	valley_b.range_id = 0
+	for col in 4:
+		valley_b.cells.append(2 * 12 + col)
+	world_b.valleys = [valley_b]
+	var map_b: MapDataClass = fb["map"]
+	var valley_set := {}
+	for cid in valley_b.cells:
+		valley_set[cid] = true
+	for cid in valley_b.cells:
+		for nb in map_b.neighbors_existing(_cell_of(map_b, cid)):
+			if not valley_set.has(map_b.index_of(nb)):
+				_water_axial(map_b, nb)
+	var report_b := WorldValidator.validate_report(map_b, world_b,
+		{"region_min_valley_cells": 0, "elevation_levels": 4})
+	var hit_b := false
+	for e in report_b["errors"]:
+		if e["code"] == "MOUNTAIN_VALLEY":
+			hit_b = true
+			expect(str(e["explanation"]).contains("对外通路"),
+				"通路方向 explanation 具名（got %s）" % e["explanation"])
+	expect(hit_b, "MOUNTAIN_VALLEY 错误在列（无对外通路方向；下限 0 = 面积不查通路仍查）")
+
+func _water_axial(map: MapDataClass, cell: Vector2i) -> void:
+	map.set_elevation(cell, 0)
+	map.set_terrain(cell, T_WATER)
+	map.set_passable(cell, false)
+
+func test_peak_area_budget_violation_points_at_peaks() -> void:
+	# 违规图：孤峰（中心 (8,4) 半径 2 → 影响盘 19 格）> ⌊有效平原 42 × 0.05⌋ = 2
+	#（孤峰稀疏性硬约束，提案 :270/:131）
+	var f := _region_fixture_valid()
+	var world: WorldDataClass = f["world"]
+	var pk := WorldDataClass.IsolatedPeakData.new()
+	pk.peak_id = 0
+	pk.cell_id = 4 * 12 + 8
+	pk.influence_radius = 2
+	pk.peak_height = 550
+	world.isolated_peaks = [pk]
+	var report := WorldValidator.validate_report(f["map"], world, REGION_OPTS)
+	expect(not report["ok"], "超预算应报 PEAK_AREA_BUDGET")
+	var hit := false
+	for e in report["errors"]:
+		if e["code"] == "PEAK_AREA_BUDGET":
+			hit = true
+			expect_eq(e["constraint_id"], "peaks:budget", "constraint_id 指向预算约束")
+			expect((e["cell_ids"] as Array).has(pk.cell_id),
+				"cell_ids 指向峰中心 %d" % pk.cell_id)
+			expect(str(e["explanation"]).contains("19"),
+				"explanation 含影响格数（got %s）" % e["explanation"])
+	expect(hit, "PEAK_AREA_BUDGET 错误在列")
+	var m := WorldValidator.region_metrics(f["map"], world, REGION_OPTS)
+	expect_eq(int((m["peaks"] as Dictionary)["influence_cells"]), 19,
+		"影响盘 = 19 格（六边形盘 3r(r+1)+1 手算 oracle）")
+
+func test_region_checks_gated_on_threshold_opts() -> void:
+	# 「有配置才判」（沿 ROAD-01 先例）：违规图 + opts 不带区域阈值 = 零区域错误
+	#——管线外调用（手工图校验/旧测试面）不受新检查面影响
+	var low := _region_fixture_valid()
+	for row in range(2, 4):
+		for col in 6:
+			(low["map"] as MapDataClass).set_elevation(_cell_at(low["map"], col, row), 1)
+	var report := WorldValidator.validate_report(low["map"], low["world"], {})
+	expect(report["ok"], "opts 空集 = 区域检查零触发（got %s）"
+		% str(_first_error(report)["code"] if not report["ok"] else ""))
+	for e in report["errors"]:
+		expect(not String(e["code"]).begins_with("REGION_")
+			and String(e["code"]) != "MOUNTAIN_VALLEY"
+			and String(e["code"]) != "PEAK_AREA_BUDGET",
+			"区域族错误不应出现（got %s）" % e["code"])
+	# 部分阈值 = 只判该面：只给连通下限 → 仅 REGION_CONNECTIVITY 可命中
+	var f2 := _region_fixture_valid()
+	for row in 8:
+		_water_at(f2["map"], 8, row)
+	var report2 := WorldValidator.validate_report(f2["map"], f2["world"],
+		{"region_largest_component_ratio": 0.60})
+	var hit2 := false
+	for e in report2["errors"]:
+		if String(e["code"]) == "REGION_CONNECTIVITY":
+			hit2 = true
+	expect(hit2, "单阈值 opts 只开通该面（连通面独立生效）")
+
+func test_regions_generated_map_zero_violations_metrics_diffable() -> void:
+	# 生成图通过面（60×40 seed 7 = 起调阈值下的通过样本——确定性面，漂移 =
+	# GENERATOR_VERSION 变更须同步改本断言）+ playability 诊断 region_metrics
+	# 结构化键 + 同 seed 两次跑逐字一致（占比/连通片/谷地面积可 diff）
+	var t := WorldTemplateClass.make_regions()
+	t.width = 60
+	t.height = 40
+	var r := WorldPipeline.generate_validated(t, 7)
+	expect(r["ok"], "60×40 regions seed 7 应通过全量校验（含区域验收面）：%s"
+		% str(r.get("error", "")).substr(0, 140))
+	if not r["ok"]:
+		return
+	expect_eq((r["validation"]["errors"] as Array).size(), 0,
+		"生成世界区域验收零违规（首过样本——阈值 = 未验证起调值）")
+	var w1 := WorldPipeline.generate_world(t, 7)
+	var w2 := WorldPipeline.generate_world(t, 7)
+	expect(w1["ok"] and w2["ok"], "两次直跑应成功")
+	if not (w1["ok"] and w2["ok"]):
+		return
+	expect_eq(str(w1["stages"]), str(w2["stages"]),
+		"同 seed 两次跑逐阶段诊断一致（region_metrics 可 diff）")
+	var play: Variant = null
+	for d in (w1["stages"] as Array):
+		if String((d as Dictionary)["stage"]) == "playability":
+			play = d
+	expect(play != null and (play as Dictionary).has("region_metrics"),
+		"regions 路线 playability 诊断携带 region_metrics 结构化键")
+	if play != null and (play as Dictionary).has("region_metrics"):
+		var rm: Dictionary = (play as Dictionary)["region_metrics"]
+		expect_eq(int(rm["region_count"]), 4, "60×40 regions = 4 区域")
+		expect((rm["regions"] as Array).size() == 4, "逐区域指标在列")
+		expect((rm["transition"] as Dictionary)["cells"] > 0, "过渡带单独统计非空")
+	# dual_noise 路线：区域事实恒空 → 诊断不落 region_metrics 键（不产伪字段）
+	var t2 := WorldTemplateClass.new()
+	t2.width = 24
+	t2.height = 16
+	var w3 := WorldPipeline.generate_world(t2, 7)
+	expect(w3["ok"], "dual_noise 直跑应成功")
+	if w3["ok"]:
+		var play3: Variant = null
+		for d in (w3["stages"] as Array):
+			if String((d as Dictionary)["stage"]) == "playability":
+				play3 = d
+		expect(play3 != null and not (play3 as Dictionary).has("region_metrics"),
+			"dual_noise playability 不落 region_metrics 键（区域事实为空 = 不产伪字段）")
+
+func test_bank_regions_group_smoke_runs_and_exit_semantics_kept() -> void:
+	# regions 模板银行组（T6 S5 三档 × 二十 seed 的 smoke 份额）：跑完口径 =
+	# passed+failed 计满 seed 数（失败 seed 是合法产物并已留证——退出码只反映
+	# 「跑完」，strict 才把失败率当异常；本断言面 = run_bank 数据口径不变）
+	var report := SeedBank.run_bank("smoke", "regions_mountains@24x16")
+	expect_eq(int(report["passed"]) + int(report["failed"]), 3,
+		"smoke 份额 = 3 seed 全部跑完计数（模板载入失败会只计 1——工厂面在此兼测；got %s"
+		% str(report["lines"]))
+	var group_line := ""
+	for line in report["lines"]:
+		if String(line).contains("regions_mountains@24x16："):
+			group_line = String(line)
+	expect(group_line != "", "组汇总行在（质量看报告不设门——拍板⑤）")
+	# 银行清单形状：三档 20 seed（提案 :263）
+	var regions_seeds := 0
+	var tiers := []
+	for group_name in SeedBank.BANK:
+		if not String(group_name).begins_with("regions_mountains@"):
+			continue
+		tiers.append(group_name)
+		regions_seeds += (SeedBank.BANK[group_name]["seeds"] as Array).size()
+	expect_eq(regions_seeds, 20, "regions 银行 20 个固定 seed（提案 :263）")
+	expect_eq(tiers.size(), 3, "小/中/大三档（§10 默认答案①——第三档大图组补齐）")

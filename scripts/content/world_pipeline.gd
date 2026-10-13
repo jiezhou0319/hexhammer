@@ -1,8 +1,8 @@
 ## world_pipeline.gd — 世界生成管线编排器（T5 WORLD-01；执行方案
 ##   docs/M1a-terrain-T2-T5-execution-plan.md §6 WORLD-01 + 主创拍板⑧
 ##   「WORLD 侧按 Azgaar 思路重构」+ 拍板④「不造气候」；T6 S3 增 composition
-##   阶段 + T6 S4 增 erosion 阶段与孤峰地标项——docs/M1a-terrain-T6-stylized-
-##   execution-plan.md §2.1/§5/§6）
+##   阶段 + T6 S4 增 erosion 阶段与孤峰地标项 + T6 S5 playability 阶段接入
+##   区域验收面——docs/M1a-terrain-T6-stylized-execution-plan.md §2.1/§5/§6/§7）
 ## 职责：Azgaar 管线骨架的**去气候十一阶段**编排——配置校验 → 地理骨架（双噪声）→
 ##   **地貌构图（T6 S3 regions 路线：宏观分区 + 骨架 + 连续高度混合 + T6 S4 孤峰
 ##   地标第四项；模板选 dual_noise 时跳过 = 既有路线零漂移）→ 选择性侵蚀
@@ -80,8 +80,14 @@ const ErosionClass := preload("res://scripts/content/terrain_erosion.gd")
 ## 第四项/孤峰布点（composition 阶段版本 2）+ 聚落候选避让孤峰影响域——
 ## **dual_noise/legacy 路线逐格输出不变**（erosion 跳过、新通道零消耗、
 ## 孤峰事实恒空、避让集恒空）；regions 模板同 seed 较 v5 属新能力面无先例
-## 可漂移；config_digest 键集随模板 S4 组扩容）。
-const GENERATOR_VERSION := 6
+## 可漂移；config_digest 键集随模板 S4 组扩容）；v7 = T6 S5 区域验收面
+## （playability v3：消费模板 regions 验收子组 → WorldValidator 区域检查码
+## REGION_DOMINANCE/CONNECTIVITY/BOUNDARY_STEP/MOUNTAIN_VALLEY/PEAK_AREA_BUDGET
+## + region_metrics 结构化诊断——占比/连通片/谷地面积同 seed 可 diff）——
+## **dual_noise/legacy 路线逐格输出与校验报告零漂移**（区域事实恒空 → 区域
+## 检查零触发；报告键集不变）；regions 模板同 seed 校验报告较 v6 属新能力面；
+## config_digest 键集随模板 S5 验收组扩容。
+const GENERATOR_VERSION := 7
 
 ## 植被/地表掩码场 seed 偏移（与高度场同 seed 时错开通道；值 = 旧
 ## MOISTURE_SEED_OFFSET 原样继承——改名不改值，通道输出不漂移；写死常量
@@ -133,10 +139,12 @@ const STAGES: Array[String] = [
 ## composition v1 = T6 S3 首落（TerrainComposition 三步：分区/骨架/连续高度混合）；
 ## composition v2 = T6 S4 孤峰地标项（高度表达式第四项 + isolated_peak 通道布点
 ## + WorldData.isolated_peaks 事实）；erosion v1 = T6 S4 首落（TerrainErosion
-## 三件：区域强度/刻蚀/复查回退）
+## 三件：区域强度/刻蚀/复查回退）；playability v3 = T6 S5 区域验收面接入
+## （模板 regions 验收子组 → 区域检查码 + region_metrics 结构化诊断——判罚与
+## 诊断同源于 WorldValidator.region_metrics 单次计算）
 const STAGE_VERSIONS := {
 	"config": 1, "geography": 1, "composition": 2, "erosion": 1, "quantize": 1,
-	"hydrology": 1, "settlement": 1, "allegiance": 1, "roads": 2, "playability": 2,
+	"hydrology": 1, "settlement": 1, "allegiance": 1, "roads": 2, "playability": 3,
 	"presentation": 1,
 }
 
@@ -1027,10 +1035,14 @@ static func _stage_roads(state: GenState, rng: RandomNumberGenerator) -> Diction
 
 ## 可玩校验 = MapConnectivity 连通性（旧行为继承——断路/孤岛只进报告）+
 ## WorldValidator 结构化报告（WORLD-04 落码：错误 {code, cell_ids, link_ids,
-## constraint_id, explanation} 指向具体对象）。**报告通道不判管线失败**：失败
-## 产物仍产出并留证（连通性口径沿旧行为；修复/拒绝在 generate_validated 与
-## seed 银行侧消费本报告——「校验失败即明确失败，不伪造达标」的分流点）。
-## 模板阈值面（Δ/桥端/预算/路网要求/锁定格）全量透传——生成配置口径。
+## constraint_id, explanation} 指向具体对象）+ **T6 S5 区域验收面**（模板
+## regions 验收子组透传 → 区域检查码五枚；区域事实为空 = 零触发，dual_noise/
+## legacy 报告零漂移）。**报告通道不判管线失败**：失败产物仍产出并留证（连通性
+## 口径沿旧行为；修复/拒绝在 generate_validated 与 seed 银行侧消费本报告——
+## 「校验失败即明确失败，不伪造达标」的分流点）。region_metrics 结构化键 =
+## WorldValidator.region_metrics 的原样落位（判罚与诊断同源单算——两处消费不
+## 各说各话）；**区域事实为空不落键**（不产伪字段），dual_noise 逐阶段诊断与
+## v6 逐字一致。
 static func _stage_playability(state: GenState, _rng: RandomNumberGenerator) -> Dictionary:
 	state.connectivity = MapConnectivityClass.check(state.map)
 	var t := state.template
@@ -1041,19 +1053,63 @@ static func _stage_playability(state: GenState, _rng: RandomNumberGenerator) -> 
 		"require_road_network": t.roads_enabled,
 		"resource_budget": t.resource_budget if t.settlement_enabled else 0,
 		"locked_cells": t.locked_cells(),
+		# T6 S5 区域验收组（模板是唯一投影源——「有配置才判」；-1 = 该界不查）
+		"mountains_core_ratio_min": t.mountains_core_ratio_min,
+		"mountains_core_ratio_max": t.mountains_core_ratio_max,
+		"plains_core_ratio_min": t.plains_core_ratio_min,
+		"plains_core_ratio_max": t.plains_core_ratio_max,
+		"region_mountain_class_weight": t.region_mountain_class_weight,
+		"region_mountain_class_elev_min": t.region_mountain_class_elev_min,
+		"region_plain_class_weight": t.region_plain_class_weight,
+		"elevation_levels": state.params.elevation_levels,
+		"region_largest_component_ratio": t.region_largest_component_ratio,
+		"region_boundary_max_step": t.region_boundary_max_step,
+		"region_min_valley_cells": t.region_min_valley_cells,
+		"peak_area_budget_ratio": t.peak_area_budget_ratio,
 	})
 	var conn: Dictionary = state.connectivity
 	var errors: Array = state.validation["errors"]
 	var codes := PackedStringArray()
 	for e in errors:
 		codes.append(String(e["code"]))
-	return {"ok": true, "error": "", "diagnostics": {
+	var diagnostics := {
 		"stage": "playability", "version": STAGE_VERSIONS["playability"],
 		"summary": "conn_ok=%s passable=%d components=%d largest=%d(%d%%) errors=%d[%s]" % [
 			str(conn["ok"]), conn["passable_total"], conn["component_count"],
 			conn["largest_size"], int(round(float(conn["largest_fraction"]) * 100.0)),
 			errors.size(), ",".join(codes)],
-	}}
+	}
+	# T6 S5：区域指标结构化键（区域事实为空 = 不落键——不产伪字段；键序固定、
+	# 比率 4 位小数——同 seed 可 diff）
+	var region_metrics := WorldValidatorClass.region_metrics(state.map, state.world, {
+		"region_mountain_class_weight": t.region_mountain_class_weight,
+		"region_mountain_class_elev_min": t.region_mountain_class_elev_min,
+		"region_plain_class_weight": t.region_plain_class_weight,
+		"elevation_levels": state.params.elevation_levels,
+	})
+	if not region_metrics.is_empty():
+		var rms: Array = region_metrics["regions"]
+		var dominance := PackedStringArray()
+		for m in rms:
+			var rm: Dictionary = m
+			dominance.append("r%d:%s" % [int(rm["region_id"]), str(rm["dominant_ratio"])])
+		diagnostics["summary"] = "%s regions=%d[%s] valley=%d peaks=%d(%s)" % [
+			diagnostics["summary"], int(region_metrics["region_count"]),
+			",".join(dominance), _valley_total_of(rms),
+			int((region_metrics["peaks"] as Dictionary)["count"]),
+			str((region_metrics["peaks"] as Dictionary)["budget_ratio"])]
+		diagnostics["region_metrics"] = region_metrics
+	return {"ok": true, "error": "", "diagnostics": diagnostics}
+
+
+## region_metrics → 群山区可用谷地格总数（摘要串用——逐区域求和，纯读）。
+static func _valley_total_of(rms: Array) -> int:
+	var total := 0
+	for m in rms:
+		var rm: Dictionary = m
+		if String(rm["landform"]) == "mountains":
+			total += int(rm["valley_usable"])
+	return total
 
 
 # ---------------- 产物组装 ----------------

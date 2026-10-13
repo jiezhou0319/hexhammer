@@ -2,12 +2,17 @@
 ##   docs/M1a-terrain-T2-T5-execution-plan.md §6 WORLD-04——「按模板 × 尺寸分组的
 ##   固定 seed 清单 + 批跑验收工具（tools/ 沿 make_fixed_maps/generate_map 先例）；
 ##   发布银行与探索性新 seed 分开统计」；提交级只跑 smoke seeds、完整银行跑
-##   定期回归（提案提交级别口径）」）
-## 银行结构：BANK = {组名: {"template_id": String, "size": "WxH", "seeds": Array[int]}}
+##   定期回归（提案提交级别口径）」；T6 S5 扩 regions 模板银行组——提案
+##   §验收与评估 :263「固定的 20 个 seed，覆盖小、中、大三档地图尺寸」）
+## 银行结构：BANK = {组名: {"template_id": String, "size": "WxH", "seeds": Array[int],
+##   "make": String（可选——"regions" = 以 WorldTemplate.make_regions 为基座，
+##   regions 路线 + 验收组起调值随 .tres 同源）}}
 ##   ——组名 = 模板 × 尺寸（分组即验收口径）；seeds 前段 = 发布银行（smoke 提交级
 ##   份额），全量 = 完整银行（定期回归）。指标数值悬置（拍板⑤）：本工具照做批跑、
 ##   数字留档不设门——退出码只反映「跑完」与工具错误，银行质量看报告（除非
-##   --strict 把失败率过半也当异常——默认关）。
+##   --strict 把失败率过半也当异常——默认关）。regions 组的失败行（REGION_* 错误
+##   码 + 不合格区域编号）是 T6 S5 的**合法产物**：区域验收面首落，阈值 = 未验证
+##   起调值，失败分布本身是 S6/S7 调参输入（小图档占比普遍出带 = 已知信号）。
 ## 产物：
 ##   - 失败样例 → FAILED_FIXTURE_DIR/world/ 子目录（世界生成失败样例与连通性
 ##     失败样例分流——tests/test_map_source.gd 的失败图断言只扫 FAILED_FIXTURE_DIR
@@ -30,6 +35,10 @@ const SMOKE_COUNT := 3
 
 ## 银行清单（模板 × 尺寸分组；seed 为固定 authored 值——增删 = 银行版本变更，
 ## 报告留档对照）。default_terraces@60x40 = 默认模板全开面（九阶段）。
+## regions_mountains 三档（T6 S5，提案 :263 二十 seed）= make_regions() 基座
+## （regions 路线 + 侵蚀开 + 验收组起调值，与 world_template_regions.tres 同源）；
+## 档值 24x16 / 60x40 / 96x64 = 未验证起调值（§10 默认答案①——沿现有两组档距
+## 补第三档大图）。seed 分布为 authored 混样（含通过/不通过两态——报告对照面）。
 const BANK := {
 	"default_terraces@60x40": {
 		"template_id": "default_terraces",
@@ -40,6 +49,24 @@ const BANK := {
 		"template_id": "default_terraces",
 		"size": "24x16",
 		"seeds": [7, 42, 7301, 11, 23],
+	},
+	"regions_mountains@24x16": {
+		"template_id": "regions_mountains",
+		"make": "regions",
+		"size": "24x16",
+		"seeds": [7, 42, 7301, 11, 23, 5, 20261013],
+	},
+	"regions_mountains@60x40": {
+		"template_id": "regions_mountains",
+		"make": "regions",
+		"size": "60x40",
+		"seeds": [7, 42, 7301, 11, 23, 5, 55],
+	},
+	"regions_mountains@96x64": {
+		"template_id": "regions_mountains",
+		"make": "regions",
+		"size": "96x64",
+		"seeds": [7, 42, 7301, 5, 101, 31337],
 	},
 }
 
@@ -116,9 +143,13 @@ static func run_bank(mode: String, only_group := "") -> Dictionary:
 	return {"lines": lines, "passed": passed, "failed": failed, "first_pass": first_pass}
 
 ## 组规格 → 模板实例（default 组 = 代码默认模板 + 组规格尺寸覆盖——.tres 同源
-## 锚在 tests；尺寸覆盖即「模板 × 尺寸分组」的尺寸面）。
+## 锚在 tests；尺寸覆盖即「模板 × 尺寸分组」的尺寸面。make="regions" 组 =
+## WorldTemplate.make_regions() 基座 + 尺寸覆盖——world_template_regions.tres
+## 的同源锚（tests/test_world_pipeline.gd 锚定两者 to_dict 一致），regions 路线
+## 与 S5 验收组起调值随之带上）。
 static func _template_of(spec: Dictionary) -> WorldTemplateClass:
-	var t := WorldTemplateClass.new()
+	var t := WorldTemplateClass.make_regions() \
+		if String(spec.get("make", "")) == "regions" else WorldTemplateClass.new()
 	t.template_id = String(spec["template_id"])
 	var size_parts := String(spec["size"]).split("x")
 	if size_parts.size() != 2 or not size_parts[0].is_valid_int() or not size_parts[1].is_valid_int():
