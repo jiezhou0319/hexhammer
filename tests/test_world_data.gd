@@ -13,7 +13,13 @@
 ##   - POI/势力归属（T5 WORLD-03 解锁，拍板⑧）：POIData 形状随 kind 钉死
 ##     （SPAWN_ZONE 七格 = 中心+六邻；聚落/资源单格）、states 主城对账、
 ##     cell_owners 值域/水格恒中立、国界跳变边派生（border_links_of）——
-##     往返/旧图零迁移/拒绝锚同前四件纪律（行为面见 tests/test_world_settlement.gd）。
+##     往返/旧图零迁移/拒绝锚同前四件纪律（行为面见 tests/test_world_settlement.gd）；
+##   - 地貌分区/骨架事实（T6 S3 解锁）：TerrainRegion（landform 两值/核心格
+##     行主序/跨区不共享/邻接对称）、MountainRangeData/RidgeBranchData（有序
+##     脊线 = 界内相邻连续不重复、支脉根在父脊、山系挂群山区）、ValleyData
+##     （格集升序）、cell_regions/cell_mountain_weights（全长/值域/与区域表
+##     对账）——往返/旧图零迁移（缺六键 = T5 时代合法空）/拒绝锚同前四件纪律
+##     （生成行为面见 tests/test_world_pipeline.gd 的 T6 regions 块）。
 ## oracle 原则：期望邻接关系由 MapData/HexMath 原语独立推导（index_of / dir_between /
 ##   axial_of），不复制 WorldData 内部比较器；JSON 往返走真实文件（user:// 临时件）。
 extends "res://tests/test_case.gd"
@@ -450,3 +456,158 @@ func test_world_data_zero_writeback_to_map() -> void:
 	expect_eq(map.digest(), before_digest, "digest 不变")
 	expect_eq(map.to_dict(), before_dict, "to_dict 不变（含 mods——WorldData 永不写入）")
 	expect_eq(map.mods.size(), 0, "mods 保持空（草案 §4/mods 铁律）")
+
+
+# ================= T6 S3：地貌分区/骨架事实 =================
+
+## 分区世界 fixture：6×4 = 24 格，2 区（左 2 列群山 / 右侧平原——odd-r 真实口径），
+## 1 条主山系（左区内 3 格脊线）+ 1 支脉（根在脊上）+ 1 宽谷（脊侧带）+
+## 格级归属/权重全长。手造 fixture（无生成器——数据层合同的手算面）。
+func _regions_world() -> Array:
+	var map := MapDataClass.new(6, 4)
+	var world := WorldDataClass.empty()
+	var rg0 := WorldDataClass.TerrainRegion.new()
+	rg0.region_id = 0
+	rg0.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS
+	rg0.core_cells = [0, 1, 6, 7, 12, 13]
+	rg0.adjacency = [1]
+	var rg1 := WorldDataClass.TerrainRegion.new()
+	rg1.region_id = 1
+	rg1.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.PLAINS
+	rg1.core_cells = [4, 5, 10, 11, 16, 17]
+	rg1.adjacency = [0]
+	world.terrain_regions.append(rg0)
+	world.terrain_regions.append(rg1)
+	var mr := WorldDataClass.MountainRangeData.new()
+	mr.range_id = 0
+	mr.region_id = 0
+	mr.spine_cells.append(0)
+	mr.spine_cells.append(1)
+	mr.spine_cells.append(2)
+	world.mountain_ranges.append(mr)
+	var br := WorldDataClass.RidgeBranchData.new()
+	br.branch_id = 0
+	br.range_id = 0
+	br.cells.append(1)
+	br.cells.append(7)
+	world.ridge_branches.append(br)
+	var vl := WorldDataClass.ValleyData.new()
+	vl.valley_id = 0
+	vl.range_id = 0
+	vl.cells.append(3)
+	vl.cells.append(8)
+	vl.cells.append(9)
+	world.valleys.append(vl)
+	var cell_regions: Array[int] = []
+	var weights: Array[int] = []
+	for i in map.cell_count():
+		cell_regions.append(0 if i % 6 < 3 else 1)
+		weights.append(900 if i % 6 < 3 else 100)
+	world.cell_regions = cell_regions
+	world.cell_mountain_weights = weights
+	return [map, world]
+
+func test_regions_facts_roundtrip_and_old_world_compat() -> void:
+	var pair := _regions_world()
+	var map: MapDataClass = pair[0]
+	var world: WorldDataClass = pair[1]
+	expect_eq(world.validate(map), "", "最小分区世界合法")
+	var facts := world.to_dict()
+	expect((facts["terrain_regions"] as Array).size() == 2, "分区序列化非空")
+	expect((facts["mountain_ranges"] as Array).size() == 1, "主山系序列化")
+	expect((facts["ridge_branches"] as Array).size() == 1, "支脉序列化")
+	expect((facts["valleys"] as Array).size() == 1, "宽谷序列化")
+	expect_eq((facts["cell_regions"] as Array).size(), map.cell_count(), "cell_regions 全长")
+	expect_eq((facts["cell_mountain_weights"] as Array).size(), map.cell_count(), "权重场全长")
+	# JSON 文件往返（真实落盘——MapIO.write_world 通道）
+	var path := "user://t6_world_data_regions.world.json"
+	expect_eq(MapIO.write_world(world, path), OK, "落盘")
+	var back := MapIO.read_world(path)
+	expect(back != null, "读回")
+	if back != null:
+		expect_eq(back.to_dict(), facts, "分区/骨架序列化往返逐字节一致")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	# 旧图零迁移：T5 时代形状（无六键）仍可解析 = 合法空
+	var old_shape := WorldDataClass.empty().to_dict()
+	for k in ["terrain_regions", "mountain_ranges", "ridge_branches", "valleys",
+			"cell_regions", "cell_mountain_weights"]:
+		old_shape.erase(k)
+	var parsed: Variant = WorldDataClass.from_dict(old_shape)
+	expect(parsed is WorldDataClass, "缺六键 = 旧图合法空（零迁移，SCHEMA_VERSION=1 维持）")
+
+func test_regions_facts_shape_rules_rejected() -> void:
+	# landform 越界枚举 → REGION_LANDFORM
+	var p1 := _regions_world()
+	(p1[1] as WorldDataClass).terrain_regions[0].dominant_landform = 7
+	expect((p1[1] as WorldDataClass).validate(p1[0]).contains("REGION_LANDFORM"),
+		"landform 越界 → 拒（首期两值）")
+	# 邻接不对称 → REGION_ADJACENCY
+	var p2 := _regions_world()
+	(p2[1] as WorldDataClass).terrain_regions[1].adjacency = []
+	expect((p2[1] as WorldDataClass).validate(p2[0]).contains("REGION_ADJACENCY"),
+		"邻接单边 → 拒（a 列 b ⇔ b 列 a）")
+	# 跨区共享核心格 → REGION_CORE_OVERLAP
+	var p3 := _regions_world()
+	var w3: WorldDataClass = p3[1]
+	w3.terrain_regions[1].core_cells = w3.terrain_regions[0].core_cells.duplicate()
+	expect(w3.validate(p3[0]).contains("REGION_CORE_OVERLAP"),
+		"核心格跨区共享 → 拒")
+	# 主山系挂平原区 → RANGE_REGION
+	var p4 := _regions_world()
+	(p4[1] as WorldDataClass).mountain_ranges[0].region_id = 1
+	expect((p4[1] as WorldDataClass).validate(p4[0]).contains("RANGE_REGION"),
+		"山系挂平原区 → 拒（平原不承载主山系）")
+	# 脊线断裂（非相邻序列）→ spine 相邻连续拒绝
+	var p5 := _regions_world()
+	(p5[1] as WorldDataClass).mountain_ranges[0].spine_cells = [0, 2, 1]
+	expect((p5[1] as WorldDataClass).validate(p5[0]).contains("互为界内邻居"),
+		"脊线非相邻序 → 拒（有序序列须相邻连续）")
+	# 支脉根不在父脊 → BRANCH_ROOT
+	var p6 := _regions_world()
+	(p6[1] as WorldDataClass).ridge_branches[0].cells = [5, 11]
+	expect((p6[1] as WorldDataClass).validate(p6[0]).contains("BRANCH_ROOT"),
+		"支脉根不在父脊 → 拒")
+	# 无分区但有骨架 → SKELETON_NO_REGIONS
+	var p7 := _regions_world()
+	var w7: WorldDataClass = p7[1]
+	w7.terrain_regions = []
+	w7.cell_regions = []
+	w7.cell_mountain_weights = []
+	expect(w7.validate(p7[0]).contains("SKELETON_NO_REGIONS"),
+		"区域表空而骨架非空 → 拒（没有能力就没有数据）")
+	# 格级长度失配 → REGION_CELL_LENGTH
+	var p8 := _regions_world()
+	(p8[1] as WorldDataClass).cell_regions.remove_at(0)
+	expect((p8[1] as WorldDataClass).validate(p8[0]).contains("REGION_CELL_LENGTH"),
+		"cell_regions 长度失配 → 拒（行主序逐格对齐）")
+	# 权重越界（千分界）→ REGION_WEIGHT_RANGE
+	var p9 := _regions_world()
+	var w9: WorldDataClass = p9[1]
+	w9.cell_mountain_weights[0] = 1001
+	expect(w9.validate(p9[0]).contains("REGION_WEIGHT_RANGE"),
+		"权重 1001 越界 → 拒（千分整数 0..1000）")
+	# 格级归属引用不存在的区域 → REGION_CELL_REF
+	var p10 := _regions_world()
+	var w10: WorldDataClass = p10[1]
+	w10.cell_regions[0] = 9
+	expect(w10.validate(p10[0]).contains("REGION_CELL_REF"),
+		"归属引用不存在区域 → 拒")
+
+func test_regions_facts_from_dict_shape_gates() -> void:
+	# from_dict 形状层（与 validate 语义层分离的纪律）：坏形状 → null 不冒充
+	var good := (_regions_world()[1] as WorldDataClass).to_dict()
+	var bad_lf := good.duplicate(true)
+	(bad_lf["terrain_regions"] as Array)[0]["dominant_landform"] = 5
+	expect(WorldDataClass.from_dict(bad_lf) == null, "landform 非两值 → from_dict 拒")
+	var bad_w := good.duplicate(true)
+	(bad_w["cell_mountain_weights"] as Array)[0] = -1
+	expect(WorldDataClass.from_dict(bad_w) == null, "权重负值 → from_dict 拒")
+	var bad_rv := good.duplicate(true)
+	(bad_rv["cell_regions"] as Array)[0] = -2
+	expect(WorldDataClass.from_dict(bad_rv) == null, "归属 < -1 → from_dict 拒")
+	var bad_core := good.duplicate(true)
+	(bad_core["terrain_regions"] as Array)[0]["core_cells"] = []
+	expect(WorldDataClass.from_dict(bad_core) == null, "空核心 → from_dict 拒（伪区域）")
+	var bad_spine := good.duplicate(true)
+	(bad_spine["mountain_ranges"] as Array)[0]["spine_cells"] = [0]
+	expect(WorldDataClass.from_dict(bad_spine) == null, "单格脊线 → from_dict 拒（<2）")

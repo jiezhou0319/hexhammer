@@ -10,13 +10,15 @@
 ##   ... -- seeds=7,42 template=default_terraces width=60 height=40 \
 ##         views=height,slope,passability out=res://docs/evidence/t6
 ## 参数表（key=value，`--` 之后；沿 tools/generate_map.gd CLI 先例）：
-##   map=<res://路径.json>   银行样图/固定图模式（MapIO.read_map；与 seeds 互斥）
+##   map=<res://路径.json>   银行样图/固定图模式（MapIO.read_map + .world.json
+##                           伴生自动读取——region/skeleton 视图的数据源）
 ##   seeds=<int[,int…]>      即时生成模式 seed 清单（批量 = 逐 seed 全套渲染；与 map 互斥）
-##   template=<名>           生成模板（现仅 default_terraces——代码默认模板 + 尺寸覆盖，
-##                           tools/seed_bank.gd 同法；regions 模板挂点随 S3 落地扩）
+##   template=<名>           生成模板（default_terraces 双噪声 / regions_mountains
+##                           T6 S3 分区骨架路线——S3 落地扩）
 ##   width=<int> height=<int> 尺寸覆盖（默认模板自带 60×40）
-##   views=<csv|all>         视图清单（默认 height,slope,passability；region/skeleton =
-##                           挂点预留，显式报「未实现」、不产图、不计失败）
+##   views=<csv|all>         视图清单（默认 height,slope,passability；region/
+##                           skeleton 已随 S3 实做——无区域数据时显式报「无数据」
+##                           不产图、不计失败）
 ##   out=<dir>               输出目录（默认 res://docs/evidence/t6——m1a evidence 先例）
 ## 渲染口径（提案「固定对照」的可复现面）：
 ##   - 相机（规定）：正交俯视**数据面**——图包络（map_focus_bounds）中心正上方直视下，
@@ -144,9 +146,9 @@ class Runner extends Node:
 							return {}
 						seeds.append(int(t))
 				"template":
-					if value != "default_terraces":
-						_usage("template 现仅支持 default_terraces（代码默认模板 + 尺寸覆盖，"
-							+ "tools/seed_bank.gd 同法；regions 模板挂点随 S3 落地扩）：%s" % value)
+					if value != "default_terraces" and value != "regions_mountains":
+						_usage("template 现支持 default_terraces（双噪声）与 regions_mountains"
+							+ "（T6 S3 分区骨架路线）：%s" % value)
 						return {}
 					cli["template"] = value
 				"width":
@@ -194,8 +196,8 @@ class Runner extends Node:
 		print("用法：godot --path hexhammer --script res://tools/terrain_debug_views.gd -- "
 			+ "map=res://resources/maps/bank/default_terraces_60x40_sample.json "
 			+ "views=height,slope,passability out=res://docs/evidence/t6")
-		print("  或：... -- seeds=7,42 template=default_terraces width=60 height=40（即时生成批量）")
-		print("  views 可选：%s（region/skeleton = 挂点预留，显式报未实现）或 all"
+		print("  或：... -- seeds=7,42 template=regions_mountains width=60 height=40（即时生成批量）")
+		print("  views 可选：%s（region/skeleton 随 S3 实做——无区域数据时显式报无数据）或 all"
 			% ", ".join(TerrainViewDataClass.VIEW_ORDER))
 		get_tree().quit(1)
 
@@ -208,9 +210,13 @@ class Runner extends Node:
 			if map == null:
 				_fail("图载入失败：%s（重跑 tools/seed_bank.gd 落盘样图？）" % cli["map"])
 				return
+			# 世界伴生文件（region/skeleton 视图数据源；缺失 = 旧图合法空——
+			# WorldData.empty()，两视图走「无区域数据」显式态）
+			var world := MapIOClass.read_world(MapIOClass.world_path_for(String(cli["map"])))
 			jobs.append({
 				"tag": _tag_of_map_path(String(cli["map"])),
 				"map": map,
+				"world": world,
 				"source": "银行样图/固定图：%s" % cli["map"],
 			})
 		else:
@@ -231,6 +237,7 @@ class Runner extends Node:
 					"tag": "gen_%s_%dx%d_seed%d" % [cli["template"], template.width,
 						template.height, int(seed_value)],
 					"map": map,
+					"world": r["world"],
 					"source": "即时生成：template=%s seed=%d（GENERATOR_VERSION=%d）"
 						% [cli["template"], int(seed_value), WorldPipelineClass.GENERATOR_VERSION],
 				})
@@ -252,9 +259,11 @@ class Runner extends Node:
 	func _tag_of_map_path(path: String) -> String:
 		return path.get_file().get_basename().replace(".", "_")
 
-	## 模板构建（seed_bank._template_of 同法：代码默认模板 + 尺寸覆盖——.tres 同源锚在 tests）
+	## 模板构建（seed_bank._template_of 同法：代码默认 + 尺寸覆盖——.tres 同源锚在
+	## tests；regions_mountains = make_regions 代码默认（terrain_route=regions），
+	## T6 S3 分区骨架路线的即时生成入口）
 	func _template_of(template_id: String, width: int, height: int) -> WorldTemplateClass:
-		var t := WorldTemplateClass.new()
+		var t := WorldTemplateClass.new() if template_id == "default_terraces" 				else WorldTemplateClass.make_regions()
 		t.template_id = template_id
 		if width > 0:
 			t.width = width
@@ -287,12 +296,21 @@ class Runner extends Node:
 		var ok := true
 		var first_settle := true
 		for view_name in views:
-			var data: Dictionary = TerrainViewDataClass.derive(String(view_name), map)
+			var data: Dictionary = TerrainViewDataClass.derive(String(view_name), map,
+				job.get("world", null))
 			if not bool(data.get("implemented", false)):
-				# 挂点视图：显式报「未实现」，不产图、不计失败（不冒充）
+				# 未实现视图：显式报「未实现」，不产图、不计失败（不冒充）
 				print("[调试视图] [未实现] 视图 %s：%s（不产图、不计失败）"
 					% [view_name, str(data.get("reason", ""))])
 				records.append({"view": String(view_name), "state": "未实现",
+					"note": str(data.get("reason", ""))})
+				continue
+			if not bool(data.get("has_data", true)):
+				# 数据面视图（region/skeleton）无事实：显式报「无数据」不产图不计失败
+				#（dual_noise 路线/旧图的合法态——S2 合同「无区域数据」显式态）
+				print("[调试视图] [无数据] 视图 %s：%s（不产图、不计失败）"
+					% [view_name, str(data.get("reason", ""))])
+				records.append({"view": String(view_name), "state": "无数据",
 					"note": str(data.get("reason", ""))})
 				continue
 			_rebuild_mesh(map, data["colors"])
@@ -567,7 +585,11 @@ class Runner extends Node:
 		L.append("")
 		for r in records:
 			if r["state"] == "未实现":
-				L.append("VIEW %s：[未实现] %s（挂点预留——S3/S4 落地后填充；不产图不计失败）" % [
+				L.append("VIEW %s：[未实现] %s（不产图不计失败）" % [
+					r["view"], r["note"]])
+				continue
+			if r["state"] == "无数据":
+				L.append("VIEW %s：[无数据] %s（dual_noise 路线/旧图合法态；不产图不计失败）" % [
 					r["view"], r["note"]])
 				continue
 			var ok_view := bool(r["bg_ok"]) and float(r["fraction"]) > float(cam_spec["min_fraction"])
@@ -588,6 +610,19 @@ class Runner extends Node:
 						int(data["largest_size"]), float(data["largest_fraction"]) * 100.0,
 						str(data["ok"]), int(data["isolated_count"]),
 						str(data["component_sizes"])])
+				"region":
+					L.append("  区域（群山权重连续场灰度）：区域=%d（群山=%d 平原=%d）；权重 w≥0.7=%d格 w≤0.3=%d格（两档主导在场——提案「宏观可读性」的机器面）；灰度=lerp(平原%.2f,群山%.2f,w)" % [
+						int(data["region_count"]), int(data["mountain_regions"]),
+						int(data["plain_regions"]), int(data["high_cells"]),
+						int(data["low_cells"]), TerrainViewDataClass.REGION_PLAIN_GRAY,
+						TerrainViewDataClass.REGION_MOUNTAIN_GRAY])
+				"skeleton":
+					L.append("  骨架（四级灰度）：主山系=%d 支脉=%d 宽谷=%d（谷底格=%d）；灰度档 背景%.2f/谷底%.2f/支脉%.2f/主脊%.2f（孤峰层 S4 预留）" % [
+						int(data["ranges"]), int(data["branches"]), int(data["valleys"]),
+						int(data["valley_cells"]), TerrainViewDataClass.SKELETON_BG_GRAY,
+						TerrainViewDataClass.SKELETON_VALLEY_GRAY,
+						TerrainViewDataClass.SKELETON_BRANCH_GRAY,
+						TerrainViewDataClass.SKELETON_SPINE_GRAY])
 		var rendered: Array = []
 		for r in records:
 			if r["state"] == "渲染":
@@ -604,7 +639,7 @@ class Runner extends Node:
 		if stability_px >= 0:
 			L.append("同视图双捕获稳定性（末视图两次捕获差分）：px=%d（静态场景应≈0；留档不设门）" % stability_px)
 		L.append("")
-		L.append("口径：三路对照「旧版」基准 = 双噪声现役路线（银行样图即产物）；S3/S4 落地后以同 seed/模板 + 同相机口径重渲对照。")
+		L.append("口径：三路对照「旧版」基准 = 双噪声现役路线（银行样图即产物）；「分区骨架版」= regions_mountains 模板（S3 起可渲）；「+侵蚀版」随 S4。同 seed/模板 + 同相机口径跨版本帧帧可比。")
 		L.append("本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。")
 		L.append("截图（同目录）：%s" % "、".join(shot_paths))
 		L.append("标识：%s" % tag)

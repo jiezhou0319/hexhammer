@@ -1,4 +1,5 @@
 {
+	"cell_mountain_weights": [],
 	"cell_owners": [
 		2,
 		2,
@@ -2401,6 +2402,7 @@
 		1,
 		1
 	],
+	"cell_regions": [],
 	"crossings": [],
 	"links": [
 		{
@@ -3150,16 +3152,17 @@
 	],
 	"meta": {
 		"attempt_count": 1,
-		"config_digest": "24ea77df5a06db8f2d4bfcdd7f59cd34f4613538afab1c2a17594d2045c333d5",
+		"config_digest": "06db131568096107cbcf21fdac3886cdb15279fe6fb2d785c4be4333183e8672",
 		"engine_version": "4.7.2-stable (official)",
 		"first_pass_valid": true,
-		"generator_version": 4,
+		"generator_version": 5,
 		"repair_count": 0,
 		"rules_version": 0,
 		"schema_version": 1,
 		"seed": 7,
-		"world_digest": "f65f9fc1dd0fd980d84ef5f41f438b7e00e89014bfce074a04c0815d6c6fdf9b"
+		"world_digest": "93a895c261e731696c1a63a04d80c0d3a1d351aabcb9cb83bb6b53f67566cffe"
 	},
+	"mountain_ranges": [],
 	"pois": [
 		{
 			"cell_id": 2200,
@@ -3261,6 +3264,7 @@
 			"role": "core_resource"
 		}
 	],
+	"ridge_branches": [],
 	"rivers": [
 		{
 			"bed_level": -1,
@@ -3472,6 +3476,8 @@
 			"state_id": 2
 		}
 	],
+	"terrain_regions": [],
+	"valleys": [],
 	"water_bodies": [
 		{
 			"inlet_links": [],

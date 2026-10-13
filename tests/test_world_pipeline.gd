@@ -1,6 +1,8 @@
 ## test_world_pipeline.gd — T5 WORLD-01 模板和阶段化生成单测（执行方案
 ##   docs/M1a-terrain-T2-T5-execution-plan.md §6 WORLD-01；主创拍板⑧ Azgaar 管线
-##   骨架去气候改造 + 拍板①双噪声唯一路线 + 修订记录三之 5/7）
+##   骨架去气候改造 + 拍板①双噪声唯一路线 + 修订记录三之 5/7）+ T6 S3 regions
+##   并列路线锚（docs/M1a-terrain-T6-stylized-execution-plan.md §5——v5 合同
+##   变更的同步测试更新见下方「T6 S3 合同变更登记」）
 ## 覆盖锚（卡表「测试锚」逐条）：
 ##   - 每阶段独立摘要可 diff（阶段输出规范序摘要 + 阶段版本号；同 seed 两次跑
 ##     逐阶段诊断 dict 逐字一致）；
@@ -10,14 +12,28 @@
 ##   - 配置冲突显式失败：冲突原因串全列不产半图；
 ##   - 具名通道独立性：改 decoration 通道不影响 hydrology 输出摘要
 ##     （「新增一棵树不消耗前面阶段 RNG」，提案随机性纪律）；
-##   - 附加面：九阶段序固定 + 阶段版本表齐备；GENERATOR_VERSION=4（WORLD-04 修复
-##     面修订：出生锚定槽序落位 + roads 通道等成本改道——复现锚显式登记）；
-##     模板 .tres 与代码默认同源（TerrainStyle 同纪律）；植被/地表
+##   - 附加面：阶段序固定 + 阶段版本表齐备；GENERATOR_VERSION 锚（复现锚显式
+##     登记）；模板 .tres 与代码默认同源（TerrainStyle 同纪律）；植被/地表
 ##     掩码通道保留且林/泥分类在用（修订记录三之 7——按字面删通道会抽掉现有
 ##     分类）；MapGenerator 退化特例行为不变 = 独立拼装单遍 oracle 逐格对照
 ##     （04 M1a-T9 细化的四步直读，不复制管线实现）；T5 完整管线（WORLD-03/05
 ##     阶段实做 + validation 报告键 + 通道独立性扩面 + locked 格式门 +
-##     generation_ms_by_stage 诊断通道 + roads 通道消耗面）。
+##     generation_ms_by_stage 诊断通道 + roads 通道消耗面）；
+##   - **T6 S3 regions 路线锚**：确定性（同 seed 同模板 world_digest 3 次一致）、
+##     四新通道隔离（layout/region/mountain 分步生效 + isolated_peak 零消耗）、
+##     分区结构（两类主导都在/邻接对称/权重千分界/格级归属值域）、过渡带无阶跃
+##     （量化图上异区相邻对 Δ ≤ 2 + composition 诊断键）、dual_noise 零漂移
+##     （composition 跳过诊断 + regions 参数不选中即不影响产物）、legacy 退化
+##     特例逐格不变（独立 oracle，锚不放宽）。
+## **T6 S3 合同变更登记（2026-10-13，v5）**——按新合同显式更新既有断言（未删测试）：
+##   - 阶段序：九阶段 → **十阶段**（composition 插入 geography 与 quantize 之间），
+##     test_stage_order_nine_stages_fixed 更名 test_stage_order_ten_stages_fixed；
+##   - 通道集：五通道 → 九通道（追加 layout/region/mountain/isolated_peak 于表尾，
+##     既有通道偏移不重排不漂移）；
+##   - 默认模板诊断：skipped 段 1 → 2（presentation 恒跳过 + dual_noise 路线下
+##     composition 跳过）；
+##   - GENERATOR_VERSION：4 → 5（v5 = regions 路线首落 + 新通道 + 新事实集合；
+##     dual_noise/legacy 逐格输出不变的登记面）。
 ## oracle 原则：单遍 oracle 在本文件内独立实现（噪声接线/归一化/量化/分类阈值
 ##   0.60/0.70 按 04 M1a-T9 细化文字重写）；世界摘要直接调 WorldData.world_digest
 ##   （数据层合同，tests/test_world_data.gd 另锚）；期望通道集/阶段序为字面常量。
@@ -44,21 +60,24 @@ const T_FOREST := 5
 
 # ================= 九阶段序 + 阶段版本 + 具名通道（WORLD-01 ①④）=================
 
-func test_stage_order_nine_stages_fixed() -> void:
-	# Azgaar 去气候九阶段（拍板⑧）：配置→地理→量化→河网水体→聚落→势力→道路→
-	# 可玩校验→表现派生——执行顺序即依赖图，顺序是合同
-	var want: Array[String] = ["config", "geography", "quantize", "hydrology",
-		"settlement", "allegiance", "roads", "playability", "presentation"]
-	expect_eq(WorldPipeline.STAGES, want, "九阶段固定序（Azgaar 去气候改造，§6 ①）")
+func test_stage_order_ten_stages_fixed() -> void:
+	# Azgaar 去气候十阶段（拍板⑧ + T6 v5 增 composition）：配置→地理→地貌构图
+	#（regions 路线）→量化→河网水体→聚落→势力→道路→可玩校验→表现派生——
+	# 执行顺序即依赖图，顺序是合同（~~九阶段~~ T6 S3 合同变更登记，见文件头注）
+	var want: Array[String] = ["config", "geography", "composition", "quantize",
+		"hydrology", "settlement", "allegiance", "roads", "playability", "presentation"]
+	expect_eq(WorldPipeline.STAGES, want, "十阶段固定序（v5：composition 插入 geography 与 quantize 之间——连续域分区骨架先于量化投影）")
 	for stage_name in want:
 		expect(WorldPipeline.STAGE_VERSIONS.has(stage_name), "阶段版本表缺 %s" % stage_name)
 		expect(int(WorldPipeline.STAGE_VERSIONS[stage_name]) >= 1, "阶段 %s 版本 ≥1" % stage_name)
 
 func test_named_channels_independent_seeds() -> void:
-	# 五具名通道（geography/hydrology/poi/roads/decoration；biome 通道删除——拍板④）
-	expect_eq(WorldPipeline.CHANNELS, ["geography", "hydrology", "poi", "roads", "decoration"],
-		"具名通道集合（提案随机性纪律）")
-	# 偏移互异且与植被场偏移 1013 错开（两层随机不串流；值写死保证复现）
+	# 九具名通道（geography/hydrology/poi/roads/decoration + T6 追加 layout/region/
+	# mountain/isolated_peak 表尾不重排；biome 通道删除——拍板④）
+	expect_eq(WorldPipeline.CHANNELS, ["geography", "hydrology", "poi", "roads",
+		"decoration", "layout", "region", "mountain", "isolated_peak"],
+		"具名通道集合（提案随机性纪律 + T6 四通道追加表尾）")
+	# 偏移互异且与植被场偏移 1013、细节场偏移 2027 错开（两层随机不串流；值写死保证复现）
 	var seen := {}
 	for ch in WorldPipeline.CHANNELS:
 		var s := WorldPipeline.channel_seed(7, ch)
@@ -66,6 +85,7 @@ func test_named_channels_independent_seeds() -> void:
 		expect(not seen.has(s), "通道 seed 撞车（偏移不互异：%s）" % ch)
 		seen[s] = true
 		expect(s != 7 + 1013, "通道 %s 与植被场偏移串流" % ch)
+		expect(s != 7 + 2027, "通道 %s 与细节场偏移串流（T6 regions 细节场）" % ch)
 	# 同通道同 root 恒同值；override 整值替换；未知通道名显式哨兵
 	expect_eq(WorldPipeline.channel_seed(42, "hydrology"), WorldPipeline.channel_seed(42, "hydrology"),
 		"通道 seed 确定")
@@ -81,7 +101,7 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 	if not w["ok"]:
 		return
 	var stages: Array = w["stages"]
-	expect_eq(stages.size(), 9, "诊断数 = 九阶段")
+	expect_eq(stages.size(), 10, "诊断数 = 十阶段（v5）")
 	var skipped_count := 0
 	for d in stages:
 		var diag: Dictionary = d
@@ -92,9 +112,14 @@ func test_stage_diagnostics_shape_and_diffable() -> void:
 			skipped_count += 1
 			expect(String(diag.get("reason", "")).length() > 0,
 				"跳过段 %s 须带原因（空集合合法的显式面）" % diag["stage"])
-	# T5 完整管线（WORLD-03/05 落地后）：唯一恒跳过段 = 表现派生（国界线 mesh
-	# 属表现层后续批）；水系/聚落/势力/道路四段实做
-	expect_eq(skipped_count, 1, "未解锁阶段数（仅 presentation）")
+	# 默认模板 = dual_noise 路线（默认值不变 = 现有模板行为零漂移）：恒跳过段 =
+	# 表现派生 + dual_noise 路线下的 composition（~~1~~ T6 S3 合同变更登记，见头注）
+	expect_eq(skipped_count, 2, "未选用/未解锁阶段数（presentation + dual_noise 下 composition）")
+	var comp_diag: Variant = _stage_of(stages, "composition")
+	expect(comp_diag != null and comp_diag.get("skipped", false),
+		"dual_noise 默认模板 composition 跳过（不产伪字段——regions 事实六集合恒空）")
+	expect(String(comp_diag.get("reason", "")).contains("dual_noise"),
+		"composition 跳过原因具名路线（got %s）" % str(comp_diag.get("reason", "")))
 	var hydro: Variant = _stage_of(stages, "hydrology")
 	expect(hydro != null and not hydro.get("skipped", false), "默认模板水系阶段实做")
 	expect(hydro != null and hydro.get("post_quantum_valid", false) == true,
@@ -325,16 +350,16 @@ func test_config_invalid_template_params_fail() -> void:
 # ================= 版本与模板资源（同源锚）=================
 
 func test_generator_version_bumped_and_in_meta() -> void:
-	expect_eq(MapGenerator.GENERATOR_VERSION, 4,
-		"GENERATOR_VERSION=4（WORLD-04 修复面修订：出生锚定槽序落位 + roads 通道等成本改道——同 seed 道路事实较 v3 可变，复现锚显式登记）")
+	expect_eq(MapGenerator.GENERATOR_VERSION, 5,
+		"GENERATOR_VERSION=5（T6 S3 regions 路线首落：STAGES 增 composition + layout/region/mountain/isolated_peak 四通道 + WorldData 分区/骨架事实六集合——dual_noise/legacy 逐格输出不变，复现锚显式登记）")
 	expect_eq(WorldPipeline.GENERATOR_VERSION, MapGenerator.GENERATOR_VERSION,
 		"版本真源驻管线，门面再导出（单一事实源）")
 	var legacy := MapGenerator.generate(MapGenParamsClass.new())
 	if legacy["ok"]:
-		expect_eq(legacy["meta"]["generator_version"], 4, "legacy meta 落 v4")
+		expect_eq(legacy["meta"]["generator_version"], 5, "legacy meta 落 v5")
 	var w := WorldPipeline.generate_world(WorldTemplateClass.new(), 7)
 	if w["ok"]:
-		expect_eq(w["world"].meta["generator_version"], 4, "世界 meta 落 v4")
+		expect_eq(w["world"].meta["generator_version"], 5, "世界 meta 落 v5")
 
 func test_template_tres_matches_code_defaults() -> void:
 	# TerrainStyle 纪律：.tres 与代码默认同源（防漂移——.tres 是 authored 面）
@@ -350,6 +375,14 @@ func test_template_tres_matches_code_defaults() -> void:
 		expect_eq(legacy_res.to_dict(), WorldTemplateClass.make_legacy().to_dict(),
 			"legacy .tres 与代码默认同源")
 		expect(not legacy_res.hydrology_enabled, "legacy 模板水系关（退化特例）")
+		expect_eq(legacy_res.terrain_route, "dual_noise", "legacy 模板钉死 dual_noise（T6 拍板③——不接 regions 路线）")
+	# regions 模板（T6 S3）：.tres 与 make_regions 同源 + 路线开关/参数组落位
+	var regions_res := WorldTemplateClass.load_regions()
+	expect(regions_res != null, "regions 模板 .tres 应可加载")
+	if regions_res != null:
+		expect_eq(regions_res.to_dict(), WorldTemplateClass.make_regions().to_dict(),
+			"regions .tres 与代码默认同源（起调值变更须两处同步）")
+		expect_eq(regions_res.terrain_route, "regions", "regions 模板选 regions 路线")
 	# 缺文件路径不在此锚（load 对缺文件的引擎 ERROR 噪声会污染门禁日志——
 	# 「非预期引擎 ERROR = 异常」口径；null 双态合同沿 MapIO.read_json 先例另测）
 
@@ -496,3 +529,254 @@ func _stage_of(stages: Array, name: String) -> Variant:
 		if String(d["stage"]) == name:
 			return d
 	return null
+
+# ================= T6 S3 regions 路线（v5 新增锚）=================
+
+const Comp := preload("res://scripts/content/terrain_composition.gd")
+
+## regions 测试图（24×16 小图——通道隔离/结构断言用；确定性面另有大图锚）
+func _regions_template_small() -> WorldTemplateClass:
+	var t := WorldTemplateClass.make_regions()
+	t.width = 24
+	t.height = 16
+	return t
+
+func test_regions_route_deterministic_same_seed_3_runs() -> void:
+	# WORLD-01 确定性锚的 regions 面：同 seed 同模板 → world_digest / map digest /
+	# 逐阶段诊断 3 次一致（含 composition 摘要与结构化键）
+	var digests: Array[String] = []
+	var stages_str := ""
+	for i in 3:
+		var w := WorldPipeline.generate_world(_regions_template_small(), 7)
+		expect(w["ok"], "regions 路线第 %d 次生成应成功：%s" % [i, str(w.get("error", ""))])
+		if not w["ok"]:
+			return
+		digests.append(String(w["world"].meta["world_digest"]))
+		if i == 0:
+			stages_str = str(w["stages"])
+		else:
+			expect_eq(str(w["stages"]), stages_str, "regions 逐阶段诊断一致（composition 摘要可 diff）")
+	expect_eq(digests[0], digests[1], "regions world_digest 一致（run 1 vs 2）")
+	expect_eq(digests[1], digests[2], "regions world_digest 一致（run 2 vs 3）")
+
+func test_regions_route_composition_stage_and_facts() -> void:
+	# composition 阶段实做面：诊断结构（非 skipped + 结构化边界键）+ 世界事实六集合
+	# 非空 + WorldData.validate 全量通过（数据层合同在管线产物上的复核）
+	var w := WorldPipeline.generate_world(_regions_template_small(), 7)
+	expect(w["ok"], "regions 路线生成应成功")
+	if not w["ok"]:
+		return
+	var world: WorldDataClass = w["world"]
+	var comp: Variant = _stage_of(w["stages"], "composition")
+	expect(comp != null and not comp.get("skipped", false), "regions 模板 composition 实做")
+	expect(comp != null and comp.get("boundary_max_delta", -1.0) >= 0.0,
+		"composition 诊断携带 boundary_max_delta 结构化键（无阶跃留证面）")
+	expect(world.terrain_regions.size() >= 2, "分区 ≥2 区域（模板硬边界保证两类主导）")
+	expect(not world.mountain_ranges.is_empty(), "主山系产出（群山区骨架）")
+	expect(not world.ridge_branches.is_empty(), "支脉产出")
+	expect(not world.cell_regions.is_empty() and world.cell_regions.size() == 24 * 16,
+		"格级归属表全长")
+	expect_eq(world.validate(w["map"], T_WATER), "", "regions 世界全量校验合法（分区/骨架/格级事实）")
+
+func test_regions_route_structure_adjacency_weights() -> void:
+	# 分区结构锚（提案 §宏观分区：空间连贯 + 邻接记录 + 连续权重场）：
+	# 两类主导都在且有可观面积、邻接对称、权重千分界、格级归属值域
+	var w := WorldPipeline.generate_world(_regions_template_small(), 7)
+	expect(w["ok"], "生成应成功")
+	if not w["ok"]:
+		return
+	var world: WorldDataClass = w["world"]
+	var mountain_regions := 0
+	var plain_regions := 0
+	for rg in world.terrain_regions:
+		if rg.dominant_landform == WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS:
+			mountain_regions += 1
+		else:
+			plain_regions += 1
+	expect(mountain_regions >= 1 and plain_regions >= 1,
+		"两类主导地貌都在（群山 %d / 平原 %d——提案首期两类）" % [mountain_regions, plain_regions])
+	for rg in world.terrain_regions:
+		expect(not rg.core_cells.is_empty(), "region %d 核心非空（分区事实至少有核心）" % rg.region_id)
+		for aid in rg.adjacency:
+			var other := world.region_by_id(aid)
+			expect(other != null, "region %d 邻接 %d 可解析" % [rg.region_id, aid])
+			if other != null:
+				expect(other.adjacency.has(rg.region_id),
+					"邻接对称：region %d 列 %d，后者须回列（提案 :63）" % [rg.region_id, aid])
+	# 权重场：千分界内 + 大片两档主导（mw≥0.7 与 mw≤0.3 都有可观格数——
+	# 「宏观可读性」目标的机器面：大片群山区与平原区同时在场）
+	var hi := 0
+	var lo := 0
+	var valid_ids := {}
+	for rg in world.terrain_regions:
+		valid_ids[rg.region_id] = true
+	for i in world.cell_mountain_weights.size():
+		var wv: int = world.cell_mountain_weights[i]
+		expect(wv >= 0 and wv <= 1000, "权重千分界 0..1000（got %d @%d）" % [wv, i])
+		if wv >= 700:
+			hi += 1
+		if wv <= 300:
+			lo += 1
+		expect(world.cell_regions[i] >= 0 and valid_ids.has(world.cell_regions[i]),
+			"格级归属值域 = region_id（got %d @%d）" % [world.cell_regions[i], i])
+	expect(hi >= 20, "大片群山主导区在场（mw≥0.7 共 %d 格）" % hi)
+	expect(lo >= 20, "大片平原主导区在场（mw≤0.3 共 %d 格）" % lo)
+
+func test_regions_route_no_boundary_step() -> void:
+	# 过渡带无阶跃（提案验收表「边界过渡」:271 的连续层前置检查）：
+	# 量化图上**异区相邻对**（cell_region 不同）的高程差 ≤ 2（elevation_levels=4
+	# 下 Δ3 = 全幅跳变 = 阶跃；山区内 Δ2 属地貌起伏合法档）+ composition 诊断
+	# boundary_max_delta ≤ 全图 max_neighbor_delta（边界不比内部更陡）
+	var w := WorldPipeline.generate_world(_regions_template_small(), 7)
+	expect(w["ok"], "生成应成功")
+	if not w["ok"]:
+		return
+	var map: MapDataClass = w["map"]
+	var world: WorldDataClass = w["world"]
+	var worst := 0
+	var checked := 0
+	for cell in map.cells():
+		var i := map.index_of(cell)
+		for nb in map.neighbors_existing(cell):
+			var j := map.index_of(nb)
+			if j <= i:
+				continue
+			if world.cell_regions[i] == world.cell_regions[j]:
+				continue
+			checked += 1
+			worst = maxi(worst, absi(map.elevation_at(cell) - map.elevation_at(nb)))
+	expect(checked > 0, "异区相邻对应存在（分区边界非空）")
+	expect(worst <= 2, "分区边界无阶跃（异区相邻对最大 Δ=%d ≤ 2——区域编号不制造高度断缝）" % worst)
+	var comp: Variant = _stage_of(w["stages"], "composition")
+	expect(float(comp["boundary_max_delta"]) <= float(comp["max_neighbor_delta"]) + 1e-6,
+		"连续场诊断：边界最大邻差不大于全图最大邻差（got %s / %s）"
+			% [str(comp["boundary_max_delta"]), str(comp["max_neighbor_delta"])])
+	expect(float(comp["boundary_max_delta"]) < 0.5,
+		"连续场边界邻差有界（got %s——混合场在过渡带连续）" % str(comp["boundary_max_delta"]))
+
+func test_regions_route_channels_isolated() -> void:
+	# T6 四新通道的分步隔离锚（提案 :221 八通道的 S3 落位）：
+	# - isolated_peak：S4 前零消耗——override 它必须零产物变化（预留通道不空转）；
+	# - mountain：只动骨架（regions 事实不变、cell_regions/weights 不变）；
+	# - region：只动地貌指派（布点/核心格不变——core_cells 逐字节一致）；
+	# - layout：动布点（分区几何可变）
+	var t := _regions_template_small()
+	var base := WorldPipeline.generate_world(t, 7)
+	expect(base["ok"], "基线生成应成功")
+	if not base["ok"]:
+		return
+	var base_world: WorldDataClass = base["world"]
+	# isolated_peak 零消耗（S4 前预留）
+	var iso := WorldPipeline.generate_world(t, 7, {"isolated_peak": 99999})
+	expect(iso["ok"], "isolated_peak override 跑应成功")
+	if iso["ok"]:
+		expect_eq((iso["world"] as WorldDataClass).meta["world_digest"],
+			base_world.meta["world_digest"],
+			"改 isolated_peak 通道零产物变化（S4 前零消耗——预留通道锚）")
+	# mountain：分区事实不变、骨架可变
+	var mtn_changed := false
+	for alt in [11, 22, 33]:
+		var m := WorldPipeline.generate_world(t, 7, {"mountain": alt})
+		if not m["ok"]:
+			continue
+		var mw: WorldDataClass = m["world"]
+		expect_eq(JSON.stringify(mw.to_dict()["terrain_regions"]),
+			JSON.stringify(base_world.to_dict()["terrain_regions"]),
+			"改 mountain 通道不影响分区事实（三步通道隔离：骨架通道不回溯分区）")
+		expect_eq(JSON.stringify(mw.to_dict()["cell_regions"]),
+			JSON.stringify(base_world.to_dict()["cell_regions"]),
+			"改 mountain 通道不影响格级归属/权重")
+		if JSON.stringify(mw.to_dict()["mountain_ranges"]) \
+				!= JSON.stringify(base_world.to_dict()["mountain_ranges"]):
+			mtn_changed = true
+			break
+	expect(mtn_changed, "改 mountain 通道应能改变骨架（override 机制在骨架面生效——失效报警）")
+	# region：布点/核心不变、地貌指派可变（core_cells 逐字节一致的结构面）
+	var reg_changed := false
+	for alt in [11, 22, 33]:
+		var rr := WorldPipeline.generate_world(t, 7, {"region": alt})
+		if not rr["ok"]:
+			continue
+		var rw: WorldDataClass = rr["world"]
+		var base_cores := []
+		for rg in base_world.terrain_regions:
+			base_cores.append(rg.core_cells)
+		var now_cores := []
+		for rg in rw.terrain_regions:
+			now_cores.append(rg.core_cells)
+		expect_eq(JSON.stringify(now_cores), JSON.stringify(base_cores),
+			"改 region 通道不影响布点/核心格（layout 通道独立——分区几何不动）")
+		var base_lf := []
+		for rg in base_world.terrain_regions:
+			base_lf.append(rg.dominant_landform)
+		var now_lf := []
+		for rg in rw.terrain_regions:
+			now_lf.append(rg.dominant_landform)
+		if str(now_lf) != str(base_lf) or JSON.stringify(rw.to_dict()["cell_mountain_weights"]) \
+				!= JSON.stringify(base_world.to_dict()["cell_mountain_weights"]):
+			reg_changed = true
+			break
+	expect(reg_changed, "改 region 通道应能改变地貌指派/权重场（指派面生效——失效报警）")
+
+func test_dual_noise_route_ignores_regions_params() -> void:
+	# 并列路线正交性锚：不选 regions = 与双噪声路线同输出（regions 参数组不消费）
+	var a := WorldTemplateClass.new()
+	var b := WorldTemplateClass.new()
+	b.region_count = 9
+	b.region_min_core_cells = 200
+	b.region_transition_width = 0.9
+	b.mountain_range_count = 7
+	b.mountain_branch_count = 8
+	var ra := WorldPipeline.generate_world(a, 7)
+	var rb := WorldPipeline.generate_world(b, 7)
+	expect(ra["ok"] and rb["ok"], "两次生成应成功")
+	if not (ra["ok"] and rb["ok"]):
+		return
+	expect_eq((rb["map"] as MapDataClass).digest(), (ra["map"] as MapDataClass).digest(),
+		"dual_noise 路线不读 regions 参数（正交性——默认值不变 = 现有行为零漂移）")
+	expect_eq(JSON.stringify((rb["world"] as WorldDataClass).to_dict()["terrain_regions"]),
+		"[]", "dual_noise 路线分区事实恒空（不产伪字段）")
+
+func test_regions_route_legacy_face_unchanged() -> void:
+	# 拍板③ legacy 锚：模板 schema 扩展（terrain_route + regions 组）后，
+	# generate_legacy 逐格输出与独立单遍 oracle 仍逐格一致（本文件 oracle 的
+	# regions 扩容面复核——legacy 模板钉死 dual_noise、composition 跳过）
+	var p := MapGenParamsClass.new()
+	p.seed = 7
+	var r := WorldPipeline.generate_legacy(p)
+	expect(r["ok"], "legacy 生成应成功")
+	if not r["ok"]:
+		return
+	var oracle := _oracle_single_pass(p)
+	var map: MapDataClass = r["map"]
+	for cell in oracle.cells():
+		expect_eq(map.elevation_at(cell), oracle.elevation_at(cell),
+			"legacy 高程逐格一致 %s（v5 后置复核）" % cell)
+
+func test_composition_inverse_distance_weights_oracle() -> void:
+	# 纯函数 oracle（TerrainComposition.inverse_distance_weights 手算锚）：
+	# w = 1/(1+(d/T)²) 逐项归一。d=[0,1] T=1 → raw [1, 0.5] → [2/3, 1/3]；
+	# d=[2,2] → 对称 [0.5, 0.5]；d=[0,3] T=1 → raw [1, 0.1] → [10/11, 1/11]
+	var a: Array[float] = Comp.inverse_distance_weights(_ints([0, 1]), 1)
+	expect_almost_eq(a[0], 2.0 / 3.0, 1e-9, "反距离权重 [0,1] T=1 → 首项 2/3")
+	expect_almost_eq(a[1], 1.0 / 3.0, 1e-9, "反距离权重 [0,1] T=1 → 次项 1/3")
+	var b: Array[float] = Comp.inverse_distance_weights(_ints([2, 2]), 1)
+	expect_almost_eq(b[0], 0.5, 1e-9, "等距对称 → 均分 0.5")
+	expect_almost_eq(b[1], 0.5, 1e-9, "等距对称 → 均分 0.5")
+	var c: Array[float] = Comp.inverse_distance_weights(_ints([0, 3]), 1)
+	expect_almost_eq(c[0], 10.0 / 11.0, 1e-9, "[0,3] T=1 → 10/11")
+	expect_almost_eq(c[1], 1.0 / 11.0, 1e-9, "[0,3] T=1 → 1/11")
+	# 归一化恒等：Σ=1（任意距离表）
+	for dists in [[0, 1, 2], [1, 5, 9, 14], [0, 0, 4]]:
+		var ws: Array[float] = Comp.inverse_distance_weights(_ints(dists), 3)
+		var total := 0.0
+		for wv in ws:
+			total += wv
+			expect(wv >= 0.0 and wv <= 1.0, "权重项 ∈ [0,1]")
+		expect_almost_eq(total, 1.0, 1e-9, "权重归一 Σ=1（%s）" % str(dists))
+
+## int 列表 → Array[int]（字面量传参的显式类型面——预载脚本 typed 形参不收窄）
+func _ints(src: Array) -> Array[int]:
+	var out: Array[int] = []
+	out.assign(src)
+	return out

@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="WorldTemplate" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/data/world_template.gd" id="1_tpl"]
+
+[resource]
+script = ExtResource("1_tpl")
+template_id = "regions_mountains"
+terrain_route = "regions"
+width = 60
+height = 40
+noise_type = 0
+frequency = 0.05
+fractal_octaves = 3
+sea_level = 0.18
+elevation_levels = 4
+vegetation_frequency = 0.12
+region_count = 4
+region_min_core_cells = 24
+region_transition_width = 0.15
+mountain_range_count = 2
+mountain_branch_count = 3
+hydrology_enabled = true
+river_count = 3
+river_max_edges = 24
+min_mouth_spacing = 6
+river_flow_level = 1
+settlement_enabled = true
+allegiance_enabled = true
+spawn_count = 3
+resource_count = 3
+resource_budget = 10
+state_expansionism = Array[int]([5, 4, 6])
+state_river_cost = 20
+roads_enabled = true
+road_loop_count = 0
+max_road_delta = 2
+max_bridge_bank_delta = 2
+locked = Array[String]([])
+preferred = Array[String]([])

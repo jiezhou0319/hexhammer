@@ -3,8 +3,10 @@
 ##   去气候重定；TerrainStyle 资源化先例 terrain_style.gd——「换 .tres = 换生成
 ##   口径，世界事实判定只认 seed+模板+版本」）
 ## 职责：把「这张图按什么口径生成」钉成一个资源（.tres，检查器可换）——
-##   template_id 身份 + dimensions 尺寸组 + geography 地理组（双噪声数值——拍板①
-##   「不做抬升/下挖，双噪声唯一路线」，故本组无路线开关）+ hydrology 水系组
+##   template_id 身份 + terrain_route 地形路线开关（T6 拍板 2026-10-13：regions
+##   并列路线；~~双噪声唯一路线~~ 排他表述已被 T6 执行方案取代注作废——本组
+##   默认仍双噪声 = 既有模板零漂移）+ dimensions 尺寸组 + geography 地理组
+##   （双噪声数值）+ regions 宏观分区组（T6 S3，未验证起调值）+ hydrology 水系组
 ##   （WORLD-02 河口反向生长参数）+ scenario 组（聚落/势力，WORLD-03 解锁：出生
 ##   区/资源/扩张参数/河界加成）+ infrastructure 组（道路骨架，WORLD-05 解锁：
 ##   回路数/高差阈值）+ locked/preferred 约束名列表（**locked v1 格式
@@ -33,6 +35,10 @@ const DEFAULT_PATH := "res://resources/world/templates/world_template_default.tr
 ## 一切可选阶段关闭（无河无聚落无路世界 = WorldData 空集合的合法态，§0）
 const LEGACY_PATH := "res://resources/world/templates/world_template_legacy.tres"
 
+## regions 路线模板（.tres）路径——T6 S3 宏观分区+地貌骨架路线的 authored 面
+##（地形路线开关 + regions 参数组；数值 = 未验证起调值，T6 方案 §10）
+const REGIONS_PATH := "res://resources/world/templates/world_template_regions.tres"
+
 # ---- 身份 ----
 
 ## 模板身份 id（进 config_digest 与阶段诊断——同 seed 不同模板必须可分辨）
@@ -43,9 +49,15 @@ const LEGACY_PATH := "res://resources/world/templates/world_template_legacy.tres
 @export var width: int = 60   # 列数
 @export var height: int = 40  # 行数
 
-# ---- geography 组：双噪声数值（语义/值域与 MapGenParams 同名字段一致；无路线
-#      开关——拍板①抬升/下挖已排除，frontier 不存在可选面）----
+# ---- geography 组：双噪声数值（语义/值域与 MapGenParams 同名字段一致）+ 地形
+#      路线开关（T6 拍板 2026-10-13：regions 模板路线为并列路线——默认 dual_noise
+#      = 现有模板行为零漂移；legacy 模板钉死 dual_noise 不接 regions 参数组）----
 
+## 地形生成路线（T6 S3）：dual_noise = 现有 FastNoiseLite 双噪声直出（默认——
+## 既有模板行为零漂移）；regions = 宏观分区 + 骨架 + 连续高度混合（composition
+## 阶段实做，WorldPipeline STAGES ③'）。默认值不变 = 未显式选路线的模板与全部
+## 既有 .tres 行为逐格一致
+@export var terrain_route: String = "dual_noise"
 ## 高度场噪声类型（FastNoiseLite 枚举；「类型」参数——不同类型直接改地貌形态）
 @export var noise_type: FastNoiseLite.NoiseType = FastNoiseLite.TYPE_SIMPLEX
 ## 高度场频率（世界单位；低频 → 平缓连绵地貌）
@@ -60,6 +72,26 @@ const LEGACY_PATH := "res://resources/world/templates/world_template_legacy.tres
 ## 林/泥地表分类在用；生态语义删除、用途不变；独立通道 seed 偏移见
 ## WorldPipeline.VEGETATION_SEED_OFFSET）
 @export var vegetation_frequency: float = 0.12
+
+# ---- regions 组：宏观分区与地貌骨架（T6 S3 解锁；仅 terrain_route == "regions"
+#      时被 composition 阶段消费——dual_noise 路线不读不验语义外的硬边界。
+#      **全部数值 = 未验证起调值**（提案 §首期调参起点 :127-133 起调参考 +
+#      T6 方案 §10 默认答案②），调参走模板版本/GENERATOR_VERSION，不是平衡承诺）----
+
+## 目标地貌区域数（宏观分区上限；实际可少于——最小核心面积约束合并小区域，
+## 小图不机械套用大图数量，提案 :63；≥2 保证群山/平原两类主导都在）
+@export var region_count: int = 4
+## 区域最小核心面积（格数下限——低于此值的分区合并进邻域，提案 :63「最小可用
+## 区域面积」的分区面）
+@export var region_min_core_cells: int = 24
+## 过渡宽度档（0..1，相对区域特征尺寸的比例——乘 sqrt(格数/区域数) 得过渡半径
+## 格数，钳 [2,16]；提案 :132「相邻较小区域特征尺寸的 10%~20% 起调」）
+@export var region_transition_width: float = 0.15
+## 每个群山主导区的主山系数上限（有走向的主脊，提案 :67；0 = 该区无主山系——
+## 退化为纯基础场抬升，合法但无骨架结构）
+@export var mountain_range_count: int = 2
+## 每条主山系的支脉数上限（支脉自主脊长出的短脊，提案 :77）
+@export var mountain_branch_count: int = 3
 
 # ---- hydrology 组：河网与水体（WORLD-02 河口反向生长；生长偏好参数 = 卡内
 #      拍板项「spike 后定默认值」——本版默认为首版实现档，调档 = 改模板不改码）----
@@ -135,17 +167,39 @@ static func load_legacy() -> WorldTemplate:
 	return load_at(LEGACY_PATH)
 
 
+static func load_regions() -> WorldTemplate:
+	return load_at(REGIONS_PATH)
+
+
 ## 代码内默认模板（.tres 的再生成/对账基准——tests 锚定两者口径一致，
 ## TerrainStyle.make_default_* 同纪律）：可选阶段全开（水系/聚落/势力/道路）。
 static func make_default() -> WorldTemplate:
 	return new()
 
 
+## 代码内 regions 路线模板（world_template_regions.tres 的对账基准——同源纪律）：
+## 地形路线 = regions（composition 阶段实做），九阶段其余开关与默认模板一致；
+## regions 参数组数值 = 未验证起调值（T6 方案 §10 默认答案②——首版自定进模板）。
+static func make_regions() -> WorldTemplate:
+	var t := new()
+	t.template_id = "regions_mountains"
+	t.terrain_route = "regions"
+	# 以下为 regions 路线起调值（未验证——与 world_template_regions.tres 同源锚）：
+	# sea_level 下调 = 骨架增益拉宽值域后补偿有效海面（否则平原半数沉水、陆块
+	# 破碎）；max_road_delta 2 = 山口/谷地路线的高差档（双噪声默认图 Δ1 档在
+	# 山区不可修路）
+	t.sea_level = 0.18
+	t.max_road_delta = 2
+	return t
+
+
 ## 代码内退化特例模板：一切可选阶段关闭——MapGenerator.generate 旧单遍行为的
-## 模板面（无河无聚落无路 = §0「段独立可交付」的合法态）。
+## 模板面（无河无聚落无路 = §0「段独立可交付」的合法态）。terrain_route 钉死
+## "dual_noise"（T6 拍板③：legacy 模板不接 regions 路线，逐格输出字节级不变）。
 static func make_legacy() -> WorldTemplate:
 	var t := new()
 	t.template_id = "legacy_single_pass"
+	t.terrain_route = "dual_noise"
 	t.hydrology_enabled = false
 	t.settlement_enabled = false
 	t.allegiance_enabled = false
@@ -184,9 +238,25 @@ func apply_to_params(seed_value: int) -> MapGenParamsClass:
 ## 管线侧汇总，本函数只查硬边界）。数值边界与 MapGenParams.validate 同源
 ## （经 apply_to_params 走一遍），另查水系/聚落/道路组专属边界与 locked 格式。
 func validate() -> String:
+	if terrain_route != "dual_noise" and terrain_route != "regions":
+		return "模板 %s terrain_route=%s 非法（dual_noise | regions 两值——T6 并列路线）" \
+			% [template_id, terrain_route]
 	var err := apply_to_params(1).validate()
 	if err != "":
 		return "模板 %s 地理参数非法：%s" % [template_id, err]
+	# ---- regions 组硬边界（T6 S3；值未验证起调值，边界是能力面不是口味面）----
+	if region_count < 2 or region_count > 16:
+		return "模板 %s region_count=%d 非法（∈[2,16]——≥2 保证两类主导都在；上限防小图机械套用）" \
+			% [template_id, region_count]
+	if region_min_core_cells < 1:
+		return "模板 %s region_min_core_cells=%d 非法（≥1）" % [template_id, region_min_core_cells]
+	if region_transition_width <= 0.0 or region_transition_width > 1.0:
+		return "模板 %s region_transition_width=%s 非法（∈(0,1] 相对特征尺寸比例）" \
+			% [template_id, str(region_transition_width)]
+	if mountain_range_count < 0 or mountain_range_count > 8:
+		return "模板 %s mountain_range_count=%d 非法（∈[0,8]）" % [template_id, mountain_range_count]
+	if mountain_branch_count < 0 or mountain_branch_count > 8:
+		return "模板 %s mountain_branch_count=%d 非法（∈[0,8]）" % [template_id, mountain_branch_count]
 	if river_count < 0:
 		return "模板 %s river_count=%d 非法（≥0——0 = 无河世界合法态）" % [template_id, river_count]
 	if river_max_edges < 1:
@@ -231,6 +301,7 @@ func validate() -> String:
 func to_dict() -> Dictionary:
 	return {
 		"template_id": template_id,
+		"terrain_route": terrain_route,
 		"width": width,
 		"height": height,
 		"noise_type": noise_type,
@@ -239,6 +310,11 @@ func to_dict() -> Dictionary:
 		"sea_level": sea_level,
 		"elevation_levels": elevation_levels,
 		"vegetation_frequency": vegetation_frequency,
+		"region_count": region_count,
+		"region_min_core_cells": region_min_core_cells,
+		"region_transition_width": region_transition_width,
+		"mountain_range_count": mountain_range_count,
+		"mountain_branch_count": mountain_branch_count,
 		"hydrology_enabled": hydrology_enabled,
 		"river_count": river_count,
 		"river_max_edges": river_max_edges,

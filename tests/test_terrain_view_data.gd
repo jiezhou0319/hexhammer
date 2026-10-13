@@ -1,45 +1,52 @@
 ## test_terrain_view_data.gd — T6 S2 前置「调试预览」数据面单测（tools/terrain_view_data.gd）
 ## 覆盖（沿 tools/land_matrix_fixtures.gd「纯逻辑件 + tests 逐行为锚定」先例）：
-##   - height/slope/passability 三实做视图的归一化口径：手工小图独立手算 oracle
-##     （值、色、退化态、图序 = cells() 固定遍历序）；
+##   - height/slope/passability 三数据无关视图的归一化口径：手工小图独立手算
+##     oracle（值、色、退化态、图序 = cells() 固定遍历序）；
 ##   - passability 与 MapConnectivity.check 的对账（分量数/口径复读、不二算）+
 ##     分级着色（大小降序秩、并列首发现序决胜——确定性锚）；
-##   - region/skeleton 挂点「显式未实现」合同（implemented=false + 具名原因，
-##     不冒充——提案「关闭尚未实现能力不产生伪字段」锚）；
-##   - derive() 分派（实做路由到位 / 挂点 / 未知名显式拒绝）。
-## oracle 原则：全部期望值手算（无生成器、无随机）；同图两次派生一致（纯函数确定性）。
+##   - region/skeleton 数据面视图（**T6 S3 合同变更**：~~挂点「显式未实现」~~
+##     转实做——按新合同显式更新断言，登记于此）：无区域数据（world 缺省/空
+##     事实）→ has_data=false + 具名「无区域数据」原因（S2 合同的显式态，
+##     不产伪字段不冒充）；有数据 → 灰度连续场（region：lerp(平原亮,群山暗,w)）
+##     / 四级秩（skeleton：主脊>支脉>谷底>背景，同格取最高）手算 oracle；
+##   - derive() 分派（实做路由到位 / 未知名显式拒绝 / world 透传）。
+## oracle 原则：全部期望值手算（无生成器、无随机；分区 fixture 手造 WorldData）；
+##   同图两次派生一致（纯函数确定性）。
 extends "res://tests/test_case.gd"
 
 const Hex := preload("res://addons/hexhammer/hex_math.gd")
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
+const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 const Views := preload("res://tools/terrain_view_data.gd")
 
-# ================= 视图清单与挂点合同 =================
+# ================= 视图清单与数据面合同 =================
 
-func test_view_order_contains_five_with_two_hooks() -> void:
+func test_view_order_five_all_implemented() -> void:
 	expect_eq(Views.VIEW_ORDER, ["height", "slope", "passability", "region", "skeleton"],
-		"视图固定序 = 提案 :236 五视图（region/skeleton 为挂点）")
-	expect_eq(Views.IMPLEMENTED_VIEWS, ["height", "slope", "passability"],
-		"实做视图恰三（region/skeleton 依赖 S3/S4 数据未落地）")
+		"视图固定序 = 提案 :236 五视图")
+	expect_eq(Views.IMPLEMENTED_VIEWS, ["height", "slope", "passability", "region", "skeleton"],
+		"实做视图 = 五（region/skeleton 随 S3 转 实做——T6 S3 合同变更，头注登记）")
 	for v in Views.VIEW_ORDER:
-		expect(Views.IMPLEMENTED_VIEWS.has(v) or ["region", "skeleton"].has(v),
+		expect(Views.IMPLEMENTED_VIEWS.has(v),
 			"视图名只允许已知五者：%s" % v)
 
-func test_region_skeleton_stubs_explicitly_unimplemented() -> void:
-	# 「未实做时显式报未实现，不冒充」的机器锚：挂点返回 implemented=false +
-	# 具名原因（防后续有人把挂点悄悄填成恒绿假数据）
+func test_region_skeleton_no_data_explicit_state() -> void:
+	# 「无区域数据不冒充」的机器锚（S2 合同的 S3 形态）：world 缺省 / 空分区事实
+	# → implemented=true + has_data=false + 具名「无区域数据」原因（dual_noise
+	# 路线/旧图的显式态——不产伪字段）
 	var map := MapDataClass.new(2, 2)
-	var region: Dictionary = Views.region_view(map)
-	expect_eq(region["view"], "region", "region 视图名回显")
-	expect_eq(region["implemented"], false, "region 挂点必须显式未实现")
-	expect(String(region["reason"]).contains("未实现"), "region 原因须具名「未实现」：%s"
-		% str(region["reason"]))
-	var skeleton: Dictionary = Views.skeleton_view(map)
-	expect_eq(skeleton["view"], "skeleton", "skeleton 视图名回显")
-	expect_eq(skeleton["implemented"], false, "skeleton 挂点必须显式未实现")
-	expect(String(skeleton["reason"]).contains("未实现"), "skeleton 原因须具名「未实现」：%s"
-		% str(skeleton["reason"]))
+	for world_v in [null, WorldDataClass.empty()]:
+		var region: Dictionary = Views.region_view(map, world_v)
+		expect_eq(region["view"], "region", "region 视图名回显")
+		expect_eq(region["implemented"], true, "region 视图已实做（S3）")
+		expect_eq(region["has_data"], false, "无区域数据 → has_data=false（不产伪字段）")
+		expect(String(region["reason"]).contains("无区域数据"), "region 原因须具名「无区域数据」：%s"
+			% str(region["reason"]))
+		var skeleton: Dictionary = Views.skeleton_view(map, world_v)
+		expect_eq(skeleton["implemented"], true, "skeleton 视图已实做（S3）")
+		expect_eq(skeleton["has_data"], false, "无区域数据 → has_data=false")
+		expect(String(skeleton["reason"]).contains("无区域数据"), "skeleton 原因须具名")
 
 # ================= 高度灰度 =================
 
@@ -271,12 +278,107 @@ func test_derive_dispatches_and_rejects_unknown() -> void:
 	expect_eq(via["values"], direct["values"], "derive('height') 路由到 height_view")
 	expect_eq(Views.derive("slope", map)["implemented"], true, "derive('slope') 实做")
 	expect_eq(Views.derive("passability", map)["implemented"], true, "derive('passability') 实做")
-	for hook in ["region", "skeleton"]:
-		var d := Views.derive(hook, map)
-		expect_eq(d["implemented"], false, "derive('%s') = 挂点未实现" % hook)
+	# region/skeleton（S3 实做）：world 缺省走「无数据」态；world 透传路由到位
+	for view_name in ["region", "skeleton"]:
+		var d := Views.derive(view_name, map)
+		expect_eq(d["implemented"], true, "derive('%s') 实做（S3）" % view_name)
+		expect_eq(d["has_data"], false, "derive('%s') 无 world → 无数据态" % view_name)
+	var pair := _regions_view_world()
+	var with_world := Views.derive("region", pair[0], pair[1])
+	expect_eq(with_world["has_data"], true, "derive('region', world) 路由到 region_view 且出数")
 	var bad := Views.derive("nope", map)
 	expect_eq(bad["implemented"], false, "未知名不实做")
 	expect(String(bad["reason"]).contains("未知视图"), "未知名原因具名")
+
+# ================= region/skeleton 视图（S3 实做——手造 WorldData oracle）=================
+
+## 视图 fixture：3×2 = 6 格，2 区各 3 格；权重手造 [900,500,100,0,500,900]
+##（群山→平原→群山的连续场）；骨架 = 主脊 [0,1] + 支脉 [1,4] + 谷底 [3,5]。
+func _regions_view_world() -> Array:
+	var map := MapDataClass.new(3, 2)
+	var world := WorldDataClass.empty()
+	var rg0 := WorldDataClass.TerrainRegion.new()
+	rg0.region_id = 0
+	rg0.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS
+	rg0.core_cells.append(0)
+	rg0.core_cells.append(3)
+	rg0.adjacency.append(1)
+	var rg1 := WorldDataClass.TerrainRegion.new()
+	rg1.region_id = 1
+	rg1.dominant_landform = WorldDataClass.TerrainRegion.DominantLandform.PLAINS
+	rg1.core_cells.append(2)
+	rg1.core_cells.append(5)
+	rg1.adjacency.append(0)
+	world.terrain_regions.append(rg0)
+	world.terrain_regions.append(rg1)
+	var mr := WorldDataClass.MountainRangeData.new()
+	mr.range_id = 0
+	mr.region_id = 0
+	mr.spine_cells.append(0)
+	mr.spine_cells.append(1)
+	world.mountain_ranges.append(mr)
+	var br := WorldDataClass.RidgeBranchData.new()
+	br.branch_id = 0
+	br.range_id = 0
+	br.cells.append(1)
+	br.cells.append(4)
+	world.ridge_branches.append(br)
+	var vl := WorldDataClass.ValleyData.new()
+	vl.valley_id = 0
+	vl.range_id = 0
+	vl.cells.append(3)
+	vl.cells.append(5)
+	world.valleys.append(vl)
+	for i in map.cell_count():
+		world.cell_regions.append(0 if i < 3 else 1)
+	for wv in [900, 500, 100, 0, 500, 900]:
+		world.cell_mountain_weights.append(wv)
+	return [map, world]
+
+func test_region_view_gray_continuous_oracle() -> void:
+	# 手算 oracle：gray = lerp(0.78, 0.30, w)——w=[0.9,0.5,0.1,0.0,0.5,0.9] →
+	# [0.348, 0.54, 0.732, 0.78, 0.54, 0.348]（灰度连续：群山暗/平原亮/过渡渐变）
+	var pair := _regions_view_world()
+	var data := Views.region_view(pair[0], pair[1])
+	expect_eq(data["has_data"], true, "有区域数据 → 出数")
+	expect_eq(data["region_count"], 2, "区域数复读")
+	expect_eq(data["mountain_regions"], 1, "群山区计数")
+	expect_eq(data["plain_regions"], 1, "平原区计数")
+	expect_eq(data["high_cells"], 2, "w≥0.7 恰 2 格（id 0/5 = 0.9）")
+	expect_eq(data["low_cells"], 2, "w≤0.3 恰 2 格（id 2/3 = 0.1/0.0——0.5 过渡档不计）")
+	var values: PackedFloat32Array = data["values"]
+	var colors: PackedColorArray = data["colors"]
+	var want_v := [0.9, 0.5, 0.1, 0.0, 0.5, 0.9]
+	for i in 6:
+		expect_almost_eq(values[i], want_v[i], 1e-6, "权重值 %d = 千分整/1000" % i)
+		var want_g := lerpf(Views.REGION_PLAIN_GRAY, Views.REGION_MOUNTAIN_GRAY, want_v[i])
+		expect_almost_eq(colors[i].r, want_g, 1e-6, "灰度 %d = lerp(平原亮,群山暗,w)" % i)
+		expect(colors[i].r == colors[i].g and colors[i].g == colors[i].b, "纯灰度三通道相等 %d" % i)
+	# 确定性
+	var again := Views.region_view(pair[0], pair[1])
+	expect_eq(str(again["colors"]), str(data["colors"]), "同输入两次派生一致")
+
+func test_skeleton_view_rank_priority_oracle() -> void:
+	# 手算 oracle：主脊 [0,1]=2、支脉 [1,4]=1（1 已是主脊——优先级主脊>支脉保持 2、
+	# 4 → 1）、谷底 [3,5]=0（5 非脊非支 → 0；2 无归属 → -1 背景）
+	var pair := _regions_view_world()
+	var data := Views.skeleton_view(pair[0], pair[1])
+	expect_eq(data["has_data"], true, "有骨架数据 → 出数")
+	expect_eq(data["ranges"], 1, "山系数复读")
+	expect_eq(data["branches"], 1, "支脉数复读")
+	expect_eq(data["valley_cells"], 2, "谷底格计数复读")
+	var ranks: PackedInt32Array = data["ranks"]
+	var want_ranks := [2, 2, -1, 0, 1, 0]
+	for i in 6:
+		expect_eq(ranks[i], want_ranks[i], "秩 %d（主脊>支脉>谷底>背景）" % i)
+	var colors: PackedColorArray = data["colors"]
+	var want_gray := [Views.SKELETON_SPINE_GRAY, Views.SKELETON_SPINE_GRAY,
+		Views.SKELETON_BG_GRAY, Views.SKELETON_VALLEY_GRAY,
+		Views.SKELETON_BRANCH_GRAY, Views.SKELETON_VALLEY_GRAY]
+	for i in 6:
+		expect_almost_eq(colors[i].r, want_gray[i], 1e-6, "骨架灰度档 %d" % i)
+	var again := Views.skeleton_view(pair[0], pair[1])
+	expect_eq(str(again["ranks"]), str(data["ranks"]), "同输入两次派生一致")
 
 # ---- 辅助 ----
 

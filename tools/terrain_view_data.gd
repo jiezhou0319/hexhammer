@@ -1,11 +1,13 @@
 ## terrain_view_data.gd — 地形调试视图数据派生（纯逻辑件；T6 S2 前置「调试预览」
 ##   harness 的数据面——docs/M1a-terrain-T6-stylized-execution-plan.md §4 S2 预览工具
 ##   先于生成器改动落地：提案 docs/evidence/风格化地图生成方案_群山平原与派系适配_修订版.md
-##   §实施分期 P0「调试预览」（:236）五视图中的数据派生三个实做 + 两个挂点）
-## 合同：纯静态函数、RefCounted、零场景节点、只读 MapData/MapConnectivity、不改入参
-##   地图（ADR-2）；双消费者 = tests/test_terrain_view_data.gd（逐行为锚定）与
-##   tools/terrain_debug_views.gd（渲染面）——派生口径变更须同步两侧测试锚
-##   （tools/land_matrix_fixtures.gd「固定 fixture 库供测试与工具共用」先例）。
+##   §实施分期 P0「调试预览」（:236）五视图的数据派生；region/skeleton 两视图
+##   随 S3 分区骨架落地（T6 §5 验收「S2 五视图中区域/骨架两视图出数」——
+##   从挂点转实做，依赖 WorldData 地貌分区/骨架事实）
+## 合同：纯静态函数、RefCounted、零场景节点、只读 MapData/MapConnectivity/
+##   WorldData、不改入参地图（ADR-2）；双消费者 = tests/test_terrain_view_data.gd
+##   （逐行为锚定）与 tools/terrain_debug_views.gd（渲染面）——派生口径变更须同步
+##   两侧测试锚（tools/land_matrix_fixtures.gd「固定 fixture 库供测试与工具共用」先例）。
 ## 视图口径（归一化规则写死——渲染确定性与跨版本可比的前提）：
 ##   - height 高度灰度：gray = (高程 − min)/(max − min)，min/max 取全图（水格 0 档
 ##     参与归一——水 = 最暗）；range = 0（常数场）→ 恒 0.5（统一中灰的显式态，
@@ -20,20 +22,27 @@
 ##     固定色板（多片断路/孤岛的分辨力）；同大小并列 → 首发现序在前（确定性）；
 ##     不可通行格 → IMPASSABLE_COLOR（近黑灰，与纯黑背景及灰度数据色 8 位差 ≥ 25
 ##     ——图幅范围恒可读）；
-##   - region/skeleton：挂点预留（依赖 S3/S4 落地的 TerrainRegion/TerrainSkeleton
-##     数据，本阶段不存在）——derive() 分派恒返回 implemented=false + 具名原因，
-##     不产伪字段（提案「关闭一个尚未实现能力不产生伪字段」锚的视图面表达）。
+##   - region 区域（S3 实做）：灰度 = 群山权重连续场——gray = lerp(平原亮 0.78,
+##     群山暗 0.30, w)，w = WorldData.cell_mountain_weights/1000（千分整数）。
+##     **纯灰度连续场**（提案 :278「统一灰度」评审口径的分区面——大片群山区/
+##     平原区两档主导 + 过渡带渐变，不靠颜色区分）；无区域事实（dual_noise 路线/
+##     旧图/无 world 伴生）→ has_data=false + 具名原因（S2 合同「无区域数据」
+##     显式态——不产伪字段）；
+##   - skeleton 骨架（S3 实做）：四级灰度结构图——谷底 0.45 / 支脉 0.65 / 主脊
+##     0.95 / 背景 0.18（同格多属取最高优先级：主脊 > 支脉 > 谷底）；同样
+##     has_data=false 显式态。孤峰层随 S4 扩（预留：值域加档不改既有档）。
 class_name TerrainViewData
 extends RefCounted
 
 const MapDataClass := preload("res://scripts/core/data/map_data.gd")
 const MapConnectivity := preload("res://scripts/content/map_connectivity.gd")
+const WorldDataClass := preload("res://scripts/core/data/world_data.gd")
 
-## 视图名固定序（CLI views=all 的展开序；region/skeleton = 挂点）
+## 视图名固定序（CLI views=all 的展开序；五视图全部实做——region/skeleton 自 S3）
 const VIEW_ORDER: Array[String] = ["height", "slope", "passability", "region", "skeleton"]
 
-## 已实做视图（region/skeleton 依赖 S3/S4 数据，未落地）
-const IMPLEMENTED_VIEWS: Array[String] = ["height", "slope", "passability"]
+## 已实做视图（S3 起 region/skeleton 转实做——数据依赖面见各视图头注）
+const IMPLEMENTED_VIEWS: Array[String] = ["height", "slope", "passability", "region", "skeleton"]
 
 ## 不可通行格色（近黑灰 ~40/255：与纯黑背景、灰度数据最暗值均差 ≥ 25/255——
 ## 判定容差（render_probe CHANNEL_TOL=14）之外，slope=0/水格 0 档纯黑数据格
@@ -186,29 +195,133 @@ static func component_color(rank: int) -> Color:
 		return COMPONENT_PALETTE[0]
 	return COMPONENT_PALETTE[1 + (rank - 1) % (COMPONENT_PALETTE.size() - 1)]
 
-# ---------------- 挂点预留（S3/S4 落地后填充）----------------
+# ---------------- 区域（S3 实做：群山权重连续场灰度）----------------
 
-## region 视图（挂点）：依赖 TerrainRegion（WorldData regions 组，S3 分区骨架）——
-## 未落地，显式 implemented=false，不产伪字段。
-static func region_view(_map: MapDataClass) -> Dictionary:
+## region 视图灰度档（写死——跨版本可比）：平原亮 / 群山暗（暗 = 高重量——
+## 与 height 视图「高 = 亮」反向，两视图并排不混淆）
+const REGION_PLAIN_GRAY := 0.78
+const REGION_MOUNTAIN_GRAY := 0.30
+
+## 区域视图：gray = lerp(平原亮, 群山暗, w)——WorldData.cell_mountain_weights
+## 千分整数驱动的**纯灰度连续场**（大片两档主导 + 过渡带渐变；提案 :278「统一
+## 灰度、不靠颜色区分」的分区面）。返回 {
+##   "view": "region", "implemented": true, "has_data": bool,
+##   "reason": String（has_data=false 时具名）,
+##   "values": PackedFloat32Array（cells() 序，w ∈ [0,1]）,
+##   "colors": PackedColorArray（灰度 Color(v,v,v)）,
+##   "region_count"/"mountain_regions"/"plain_regions": int,
+##   "high_cells"/"low_cells": int（w ≥0.7 / ≤0.3 格数——两档主导在场的证据面）}
+static func region_view(map: MapDataClass, world: WorldDataClass = null) -> Dictionary:
+	var no_data := _no_region_data_reason(world)
+	if no_data != "":
+		return {"view": "region", "implemented": true, "has_data": false,
+			"reason": no_data}
+	var cells := map.cells()
+	var values := PackedFloat32Array()
+	var colors := PackedColorArray()
+	values.resize(cells.size())
+	colors.resize(cells.size())
+	var high := 0
+	var low := 0
+	for i in cells.size():
+		var w := float(world.cell_mountain_weights[i]) / 1000.0
+		var g := lerpf(REGION_PLAIN_GRAY, REGION_MOUNTAIN_GRAY, w)
+		values[i] = w
+		colors[i] = Color(g, g, g)
+		if w >= 0.7:
+			high += 1
+		if w <= 0.3:
+			low += 1
+	var mountain_regions := 0
+	for rg in world.terrain_regions:
+		if rg.dominant_landform == WorldDataClass.TerrainRegion.DominantLandform.MOUNTAINS:
+			mountain_regions += 1
 	return {
-		"view": "region", "implemented": false,
-		"reason": "未实现：region 视图依赖 TerrainRegion（S3 分区骨架）数据，本阶段为挂点预留",
+		"view": "region", "implemented": true, "has_data": true,
+		"values": values, "colors": colors,
+		"region_count": world.terrain_regions.size(),
+		"mountain_regions": mountain_regions,
+		"plain_regions": world.terrain_regions.size() - mountain_regions,
+		"high_cells": high, "low_cells": low,
 	}
 
-## skeleton 视图（挂点）：依赖 TerrainSkeleton（山系/宽谷/盆地/孤峰，S3/S4）——
-## 未落地，显式 implemented=false，不产伪字段。
-static func skeleton_view(_map: MapDataClass) -> Dictionary:
+# ---------------- 骨架（S3 实做：主脊/支脉/谷底四级灰度）----------------
+
+## skeleton 视图灰度档（写死；孤峰层 S4 预留加档——值域加档不改既有档）
+const SKELETON_BG_GRAY := 0.18
+const SKELETON_VALLEY_GRAY := 0.45
+const SKELETON_BRANCH_GRAY := 0.65
+const SKELETON_SPINE_GRAY := 0.95
+
+## 骨架视图：主脊 0.95 / 支脉 0.65 / 谷底 0.45 / 背景 0.18（同格多属取最高
+## 优先级：主脊 > 支脉 > 谷底）。返回 { "view": "skeleton",
+##   "implemented": true, "has_data": bool, "reason": String,
+##   "ranks": PackedInt32Array（-1 背景/0 谷底/1 支脉/2 主脊——秩表即图例表）,
+##   "colors": PackedColorArray,
+##   "ranges"/"branches"/"valleys"/"valley_cells": int }
+static func skeleton_view(map: MapDataClass, world: WorldDataClass = null) -> Dictionary:
+	var no_data := _no_region_data_reason(world)
+	if no_data != "":
+		return {"view": "skeleton", "implemented": true, "has_data": false,
+			"reason": no_data}
+	var cells := map.cells()
+	var ranks := PackedInt32Array()
+	ranks.resize(cells.size())
+	for i in cells.size():
+		ranks[i] = -1
+	for vl in world.valleys:
+		for cid in vl.cells:
+			if cid >= 0 and cid < ranks.size() and ranks[cid] < 0:
+				ranks[cid] = 0
+	for br in world.ridge_branches:
+		for cid in br.cells:
+			if cid >= 0 and cid < ranks.size() and ranks[cid] < 1:
+				ranks[cid] = 1
+	for mr in world.mountain_ranges:
+		for cid in mr.spine_cells:
+			if cid >= 0 and cid < ranks.size():
+				ranks[cid] = 2
+	var colors := PackedColorArray()
+	colors.resize(cells.size())
+	for i in cells.size():
+		var g := SKELETON_BG_GRAY
+		match ranks[i]:
+			0:
+				g = SKELETON_VALLEY_GRAY
+			1:
+				g = SKELETON_BRANCH_GRAY
+			2:
+				g = SKELETON_SPINE_GRAY
+		colors[i] = Color(g, g, g)
+	var valley_cells := 0
+	for vl in world.valleys:
+		valley_cells += vl.cells.size()
 	return {
-		"view": "skeleton", "implemented": false,
-		"reason": "未实现：skeleton 视图依赖 TerrainSkeleton（S3 骨架/S4 孤峰）数据，本阶段为挂点预留",
+		"view": "skeleton", "implemented": true, "has_data": true,
+		"ranks": ranks, "colors": colors,
+		"ranges": world.mountain_ranges.size(),
+		"branches": world.ridge_branches.size(),
+		"valleys": world.valleys.size(),
+		"valley_cells": valley_cells,
 	}
+
+
+## 无区域数据原因（region/skeleton 共用）：无 world 伴生 / 区域事实为空——
+## dual_noise 路线与旧图的显式态（S2 合同：显式报「无区域数据」不产伪字段）。
+static func _no_region_data_reason(world: WorldDataClass) -> String:
+	if world == null:
+		return "无区域数据（未提供 WorldData——银行样图缺 .world.json 伴生或调用方未传）"
+	if world.terrain_regions.is_empty():
+		return "无区域数据（dual_noise 路线/旧图——regions 模板路线才产分区事实）"
+	return ""
 
 # ---------------- 统一分派 ----------------
 
-## 视图名单一分派（渲染/CLI 唯一入口）：实做视图各归其位；挂点/未知名 →
-## implemented=false（原因具名——调用方显式报「未实现」，不冒充）。
-static func derive(view_name: String, map: MapDataClass) -> Dictionary:
+## 视图名单一分派（渲染/CLI 唯一入口）：实做视图各归其位（region/skeleton 自
+## S3 转实做——数据面见各视图头注）；未知名 → implemented=false（原因具名——
+## 调用方显式报「未实现」，不冒充）。world 缺省 = 数据面视图走 has_data=false。
+static func derive(view_name: String, map: MapDataClass,
+		world: WorldDataClass = null) -> Dictionary:
 	match view_name:
 		"height":
 			return height_view(map)
@@ -217,9 +330,9 @@ static func derive(view_name: String, map: MapDataClass) -> Dictionary:
 		"passability":
 			return passability_view(map)
 		"region":
-			return region_view(map)
+			return region_view(map, world)
 		"skeleton":
-			return skeleton_view(map)
+			return skeleton_view(map, world)
 		_:
 			return {
 				"view": view_name, "implemented": false,

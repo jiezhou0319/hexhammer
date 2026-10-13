@@ -1,8 +1,11 @@
 ## world_data.gd — 世界事实层容器 + 邻接边索引 + 河段/水体/道路/桥/POI/势力归属
-##   （M1a T2 首物 → T3 水系 → T4 道路桥 → T5 聚落势力解锁；执行方案
-##   docs/M1a-terrain-T2-T5-execution-plan.md §2.5 + §2.2/§2.3/§2.4（格边重议已拍，
-##   §2.6 全关）+ §4 WATER-01/03 + §5 ROAD-01/02 + §6 WORLD-03/05 + §7 + 数据合同
-##   草案 docs/M1a-terrain-data-contract-draft.md §3~§12）
+##   + 地貌分区/骨架事实（T6 S3 解锁；执行方案 docs/M1a-terrain-T6-stylized-execution-plan.md
+##   §2.1/§5 + 提案 docs/evidence/风格化地图生成方案_群山平原与派系适配_修订版.md
+##   §数据与确定性合同 :189-199 TerrainRegion/TerrainSkeleton——名称按「可与现有
+##   工程适配」授权落本表；此前批次见 docs/M1a-terrain-T2-T5-execution-plan.md
+##   §2.5 + §2.2/§2.3/§2.4（格边重议已拍，§2.6 全关）+ §4 WATER-01/03 +
+##   §5 ROAD-01/02 + §6 WORLD-03/05 + §7 + 数据合同草案
+##   docs/M1a-terrain-data-contract-draft.md §3~§12）
 ## 职责：格子数据（MapData）旁边的**第四伴生文件 `<name>.world.json`** 载体——
 ##   NeighborLinkData 邻接边表（link_id = (min,max) 格稳定 ID 对）+ RiverReachData
 ##   格边河段（§2.2 重写表：河 = 共享边有序序列，ADR-14）+ WaterBodyData 湖/海
@@ -288,6 +291,82 @@ class StateData:
 	var expansionism := 1
 
 
+## 地貌区域（T6 S3，提案 :190-193 TerrainRegion 适配）：宏观分区的**终态事实**——
+## 空间连贯区域的身份/主导地貌/核心格/邻接表。首期仅两类主导（群山/平原）+ 连续
+## 过渡带（提案 :65-71）；过渡带不属任何核心（core_cells 只收核心格），连续权重场
+## 落格级事实 cell_regions/cell_mountain_weights（不逐区域存 mask——两主导型下
+## 权重场是单标量场，逐区域 per-cell 权重是冗余形状）。生成期中间产物（Voronoi
+## 归属、距离场）不落盘（沿「生长过程不落盘」先例，WORLD-02）。
+class TerrainRegion:
+	extends RefCounted
+
+	## 主导地貌（首期两值；序列化按 int 落盘）
+	enum DominantLandform { MOUNTAINS, PLAINS }
+
+	## 主键（terrain_regions 表 region_id 升序为规范序；生成器 0 起）
+	var region_id: int = ID_NONE
+
+	## DominantLandform.MOUNTAINS / PLAINS（首期仅两值——海域开口/高原等后续扩展）
+	var dominant_landform: int = DominantLandform.MOUNTAINS
+
+	## 核心格（行主序规范序 = 升序，不重复）：过渡带之外的归属格；不同区域核心
+	## 不共享格（validate 查）。空核心非法——分区事实至少有种子格
+	var core_cells: Array[int] = []
+
+	## 邻接区域 id 列表（升序、无自环；对称性 = a 列 b ⇔ b 列 a，validate 查——
+	## 提案 :63「记录区域之间的邻接关系」）
+	var adjacency: Array[int] = []
+
+
+## 主山系（T6 S3，提案 :77「群山对象」+ TerrainSkeleton.mountain_ranges 适配）：
+## 有走向的山系脊线 = **有序格序列**（首尾 = 山系两端锚点，相邻格互为界内邻居）；
+## 纵向强度（两端终止/降低——提案 :96）是生成期参数不落盘，脊线序列本身即结构
+## 事实。支脉独立成表（RidgeBranchData 挂 range_id），不嵌套存储。
+class MountainRangeData:
+	extends RefCounted
+
+	## 主键（mountain_ranges 表 range_id 升序为规范序）
+	var range_id: int = ID_NONE
+
+	## 所属地貌区域引用（对账：可解析且 dominant_landform == MOUNTAINS——
+	## 平原区不承载主山系，提案 :67）
+	var region_id: int = ID_NONE
+
+	## 主脊有序格序列（界内、相邻连续、不重复；≥2 格）
+	var spine_cells: Array[int] = []
+
+
+## 支脉（T6 S3，提案 :77 主山系「支脉」项 + TerrainSkeleton.ridge_branches 适配）：
+## 从主脊长出的短脊——根格（cells[0]）须落在所属主山系脊线上（validate 查）。
+class RidgeBranchData:
+	extends RefCounted
+
+	## 主键（ridge_branches 表 branch_id 升序为规范序）
+	var branch_id: int = ID_NONE
+
+	## 所属主山系引用（对账：可解析）
+	var range_id: int = ID_NONE
+
+	## 支脉有序格序列（界内、相邻连续、不重复；cells[0] ∈ 父脊线）
+	var cells: Array[int] = []
+
+
+## 宽谷（T6 S3，提案 :68/:77「宽谷」项 + TerrainSkeleton.valleys 适配）：山系两侧
+## 谷底格集（无序集合，行主序规范序落盘）——群山内部可用谷地的数据面（派系
+## 候选/区域验收的上游事实；占比/连通指标属 S5 校验器不进本表）。
+class ValleyData:
+	extends RefCounted
+
+	## 主键（valleys 表 valley_id 升序为规范序）
+	var valley_id: int = ID_NONE
+
+	## 所属主山系引用（宽谷沿山系两侧展开——对账：可解析）
+	var range_id: int = ID_NONE
+
+	## 谷底格集（行主序规范序 = 升序、界内、不重复）
+	var cells: Array[int] = []
+
+
 ## 邻接边表（link_id 升序为规范序——摘要可比较的前提，草案 §2.1）
 var links: Array[NeighborLinkData] = []
 
@@ -312,6 +391,29 @@ var states: Array[StateData] = []
 ## 格级 owner 表（与格子表同长、行主序对齐；-1 = 中立/水，否则 state_id）。
 ## 国界不落盘——border_links_of 由本表派生（跳变边集合，§6 ③）
 var cell_owners: Array[int] = []
+
+## 地貌区域表（T6 S3 regions 路线解锁；region_id 升序规范序）。dual_noise 路线
+## 恒空（关闭未实现能力不产伪字段）；regions 路线 ≥2（模板硬边界保证）
+var terrain_regions: Array[TerrainRegion] = []
+
+## 主山系表（T6 S3；range_id 升序规范序）
+var mountain_ranges: Array[MountainRangeData] = []
+
+## 支脉表（T6 S3；branch_id 升序规范序）
+var ridge_branches: Array[RidgeBranchData] = []
+
+## 宽谷表（T6 S3；valley_id 升序规范序）
+var valleys: Array[ValleyData] = []
+
+## 格级地貌归属表（与格子表同长、行主序对齐；-1 = 无分区事实，否则 region_id；
+## 值 = 该格归一化权重场的 argmax 区域——过渡带格也归属（权重连续、归属取主导））
+var cell_regions: Array[int] = []
+
+## 格级群山权重场（千分整数 0..1000，与 cell_regions 同长对齐；= 归一化
+## Σ(群山区域权重)×1000 四舍五入——连续高度混合的权重场事实，提案 :86「区域
+## 边界用连续权重场表达」的落盘面。千分整数 = 序列化确定形状（float 往返精度
+## 面回避）；生成期浮场精度只进诊断不进事实）
+var cell_mountain_weights: Array[int] = []
 
 ## WorldMeta（草案 §10 字段集的占位形状；attempt/repair/first_pass 落码进 WORLD-04）。
 ## 手工固定图默认口径：seed=0、generator_version=0、rules_version=0（视觉模式）、
@@ -475,6 +577,22 @@ func state_by_id(state_id: int) -> StateData:
 	return null
 
 
+## region_id → 地貌区域（不存在 → null；T6 S3 只读面——预览视图/校验器共用）。
+func region_by_id(region_id: int) -> TerrainRegion:
+	for rg in terrain_regions:
+		if rg.region_id == region_id:
+			return rg
+	return null
+
+
+## range_id → 主山系（不存在 → null）。
+func mountain_range_by_id(range_id: int) -> MountainRangeData:
+	for mr in mountain_ranges:
+		if mr.range_id == range_id:
+			return mr
+	return null
+
+
 ## 指定 kind 的 POI 列表（poi_id 升序——表序即规范序）。
 func pois_of_kind(kind: int) -> Array[POIData]:
 	var out: Array[POIData] = []
@@ -598,7 +716,10 @@ func validate(map: MapDataClass, water_terrain_id := -1,
 	var recon_err := _validate_reconciliation(map, river_claim)
 	if recon_err != "":
 		return recon_err
-	return _validate_settlement(map)
+	var settle_err := _validate_settlement(map)
+	if settle_err != "":
+		return settle_err
+	return _validate_terrain_regions(map)
 
 
 ## 河段四条 + 结构完整性（WATER-01 ②；角点级无环 = 修订记录三之 4）。
@@ -1083,6 +1204,172 @@ func _validate_settlement(map: MapDataClass) -> String:
 	return ""
 
 
+## 地貌分区/骨架面（T6 S3，提案 :189-199）：区域表规范序/landform 值域/核心格
+## 形状与跨区域不共享/邻接对称、主山系与支脉的有序序列形状（界内/相邻/不重复）
+## 与归属对账（山系属群山区、支脉根在父脊上、宽谷挂山系）、格级事实（cell_regions/
+## cell_mountain_weights）长度/值域/与区域表的对账。占比/连通/可用性指标属 S5
+## 校验器面（WorldValidator），本层只钉结构事实。
+func _validate_terrain_regions(map: MapDataClass) -> String:
+	# ---- terrain_regions：主键/规范序/landform/核心格/邻接 ----
+	# 先收全量主键再查引用（邻接可指向表中后位区域——单遍边查边收会误报）
+	var region_ids := {}
+	for rg in terrain_regions:
+		region_ids[rg.region_id] = true
+	var prev_id := ID_NONE
+	var core_owner := {}  # core cell → region_id（跨区域不共享的查表面）
+	for ri in terrain_regions.size():
+		var rg := terrain_regions[ri]
+		if rg.region_id < 0:
+			return "terrain_regions[%d] region_id=%d 非法（负主键）" % [ri, rg.region_id]
+		if prev_id != ID_NONE and rg.region_id <= prev_id:
+			return "terrain_regions[%d] 破坏规范序（须按 region_id 严格升序——含主键重复）" % ri
+		prev_id = rg.region_id
+		if rg.dominant_landform != TerrainRegion.DominantLandform.MOUNTAINS \
+				and rg.dominant_landform != TerrainRegion.DominantLandform.PLAINS:
+			return "REGION_LANDFORM：terrain_regions[%d]（region %d）dominant_landform=%d 非法（MOUNTAINS/PLAINS 两值——首期仅两类主导）" \
+				% [ri, rg.region_id, rg.dominant_landform]
+		if rg.core_cells.is_empty():
+			return "REGION_CORE_EMPTY：terrain_regions[%d]（region %d）core_cells 为空（分区事实至少有种子格）" \
+				% [ri, rg.region_id]
+		var prev_cell := ID_NONE
+		for ci in rg.core_cells.size():
+			var cid := rg.core_cells[ci]
+			if cid < 0 or cid >= map.cell_count():
+				return "terrain_regions[%d]（region %d）core_cells[%d]=%d 指向界外格（图共 %d 格）" \
+					% [ri, rg.region_id, ci, cid, map.cell_count()]
+			if prev_cell != ID_NONE and cid <= prev_cell:
+				return "terrain_regions[%d]（region %d）core_cells 破坏行主序规范序（含重复格 %d）" \
+					% [ri, rg.region_id, cid]
+			prev_cell = cid
+			if core_owner.has(cid):
+				return "REGION_CORE_OVERLAP：格 %d 同为核心格于 region %d 与 %d（不同区域核心不共享）" \
+					% [cid, int(core_owner[cid]), rg.region_id]
+			core_owner[cid] = rg.region_id
+		var prev_adj := ID_NONE
+		for ai in rg.adjacency.size():
+			var aid := rg.adjacency[ai]
+			if aid < 0 or not region_ids.has(aid):
+				return "REGION_ADJACENCY：terrain_regions[%d]（region %d）adjacency[%d]=%s 引用不存在的区域" \
+					% [ri, rg.region_id, ai, str(aid)]
+			if aid == rg.region_id:
+				return "REGION_ADJACENCY：terrain_regions[%d]（region %d）adjacency 含自环" % [ri, rg.region_id]
+			if prev_adj != ID_NONE and aid <= prev_adj:
+				return "terrain_regions[%d]（region %d）adjacency 破坏升序规范序（含重复 %d）" \
+					% [ri, rg.region_id, aid]
+			prev_adj = aid
+	# 邻接对称（提案 :63「记录区域之间的邻接关系」的机器面：a 列 b ⇔ b 列 a）
+	for rg in terrain_regions:
+		for aid in rg.adjacency:
+			var other := region_by_id(aid)
+			if not other.adjacency.has(rg.region_id):
+				return "REGION_ADJACENCY：region %d 列邻接 %d 但后者未回列（邻接须对称）" \
+					% [rg.region_id, aid]
+	# ---- mountain_ranges / ridge_branches / valleys：骨架结构与归属对账 ----
+	if terrain_regions.is_empty() and not (mountain_ranges.is_empty() \
+			and ridge_branches.is_empty() and valleys.is_empty()):
+		return "SKELETON_NO_REGIONS：区域表为空但骨架非空（无分区事实不得有骨架——没有能力就没有数据）"
+	var range_ids := {}
+	prev_id = ID_NONE
+	for mi in mountain_ranges.size():
+		var mr := mountain_ranges[mi]
+		if mr.range_id < 0:
+			return "mountain_ranges[%d] range_id=%d 非法（负主键）" % [mi, mr.range_id]
+		if prev_id != ID_NONE and mr.range_id <= prev_id:
+			return "mountain_ranges[%d] 破坏规范序（须按 range_id 严格升序——含主键重复）" % mi
+		prev_id = mr.range_id
+		range_ids[mr.range_id] = true
+		var owner := region_by_id(mr.region_id)
+		if owner == null:
+			return "RANGE_REGION：mountain_ranges[%d]（range %d）region_id=%d 引用不存在的区域" \
+				% [mi, mr.range_id, mr.region_id]
+		if owner.dominant_landform != TerrainRegion.DominantLandform.MOUNTAINS:
+			return "RANGE_REGION：mountain_ranges[%d]（range %d）挂在非群山区 region %d（平原区不承载主山系）" \
+				% [mi, mr.range_id, mr.region_id]
+		var spine_err := _ordered_cell_path_check(map, mr.spine_cells, "mountain_ranges[%d]（range %d）spine_cells" % [mi, mr.range_id], 2)
+		if spine_err != "":
+			return spine_err
+	prev_id = ID_NONE
+	for bi in ridge_branches.size():
+		var br := ridge_branches[bi]
+		if br.branch_id < 0:
+			return "ridge_branches[%d] branch_id=%d 非法（负主键）" % [bi, br.branch_id]
+		if prev_id != ID_NONE and br.branch_id <= prev_id:
+			return "ridge_branches[%d] 破坏规范序（须按 branch_id 严格升序——含主键重复）" % bi
+		prev_id = br.branch_id
+		if not range_ids.has(br.range_id):
+			return "BRANCH_RANGE：ridge_branches[%d]（branch %d）range_id=%d 引用不存在的主山系" \
+				% [bi, br.branch_id, br.range_id]
+		var branch_err := _ordered_cell_path_check(map, br.cells, "ridge_branches[%d]（branch %d）cells" % [bi, br.branch_id], 1)
+		if branch_err != "":
+			return branch_err
+		var parent := mountain_range_by_id(br.range_id)
+		if not parent.spine_cells.has(br.cells[0]):
+			return "BRANCH_ROOT：ridge_branches[%d]（branch %d）根格 %d 不在父脊线上（支脉自主脊长出）" \
+				% [bi, br.branch_id, br.cells[0]]
+	prev_id = ID_NONE
+	for vi in valleys.size():
+		var vl := valleys[vi]
+		if vl.valley_id < 0:
+			return "valleys[%d] valley_id=%d 非法（负主键）" % [vi, vl.valley_id]
+		if prev_id != ID_NONE and vl.valley_id <= prev_id:
+			return "valleys[%d] 破坏规范序（须按 valley_id 严格升序——含主键重复）" % vi
+		prev_id = vl.valley_id
+		if not range_ids.has(vl.range_id):
+			return "VALLEY_RANGE：valleys[%d]（valley %d）range_id=%d 引用不存在的主山系" \
+				% [vi, vl.valley_id, vl.range_id]
+		var prev_cell := ID_NONE
+		for ci in vl.cells.size():
+			var cid := vl.cells[ci]
+			if cid < 0 or cid >= map.cell_count():
+				return "valleys[%d]（valley %d）cells[%d]=%d 指向界外格" % [vi, vl.valley_id, ci, cid]
+			if prev_cell != ID_NONE and cid <= prev_cell:
+				return "valleys[%d]（valley %d）cells 破坏行主序规范序（含重复格 %d）" \
+					% [vi, vl.valley_id, cid]
+			prev_cell = cid
+	# ---- 格级事实：cell_regions / cell_mountain_weights ----
+	if not cell_regions.is_empty() or not cell_mountain_weights.is_empty():
+		if terrain_regions.is_empty():
+			return "OWNER_NO_REGIONS：cell_regions/cell_mountain_weights 非空但区域表为空（无分区事实不得有格级归属）"
+		if cell_regions.size() != map.cell_count():
+			return "REGION_CELL_LENGTH：cell_regions 长度 %d ≠ 格子数 %d（行主序逐格对齐）" \
+				% [cell_regions.size(), map.cell_count()]
+		if cell_mountain_weights.size() != cell_regions.size():
+			return "REGION_WEIGHT_LENGTH：cell_mountain_weights 长度 %d ≠ cell_regions 长度 %d（逐格对齐）" \
+				% [cell_mountain_weights.size(), cell_regions.size()]
+		for cid in cell_regions.size():
+			var rv := cell_regions[cid]
+			if rv != ID_NONE and not region_ids.has(rv):
+				return "REGION_CELL_REF：cell_regions[%d]=%d 引用不存在的区域（值域 = {-1} ∪ region_id）" \
+					% [cid, rv]
+			var w := cell_mountain_weights[cid]
+			if w < 0 or w > 1000:
+				return "REGION_WEIGHT_RANGE：cell_mountain_weights[%d]=%d 越界（千分整数 0..1000）" % [cid, w]
+	return ""
+
+
+## 有序格序列形状检查（主脊/支脉共用）：非空下界 min_cells、界内、行进相邻
+##（相邻两格互为界内邻居）、不重复。
+func _ordered_cell_path_check(map: MapDataClass, cells: Array[int],
+		label: String, min_cells: int) -> String:
+	if cells.size() < min_cells:
+		return "%s 长度 %d < %d（有序脊线至少 %d 格）" % [label, cells.size(), min_cells, min_cells]
+	var seen := {}
+	for k in cells.size():
+		var cid := cells[k]
+		if cid < 0 or cid >= map.cell_count():
+			return "%s[%d]=%d 指向界外格（图共 %d 格）" % [label, k, cid, map.cell_count()]
+		if seen.has(cid):
+			return "%s 重复格 %d（脊线格不重复）" % [label, cid]
+		seen[cid] = true
+		if k == 0:
+			continue
+		var prev := cells[k - 1]
+		if Hex.dir_between(_cell_of_id(map, prev), _cell_of_id(map, cid)) < 0:
+			return "%s[%d]→[%d]（%s→%s）不互为界内邻居（有序序列须相邻连续）" \
+				% [label, k - 1, k, str(_cell_of_id(map, prev)), str(_cell_of_id(map, cid))]
+	return ""
+
+
 ## 稳定角点 ID（修订记录三之 4）：物理角点 (cell, vertex) 的三个格表示——
 ## (c,k) = (N_k(c), (k+4)%6) = (N_{k−1}(c), (k+2)%6)（顶点角 30°−60°·i 的三角推得）——
 ## 取**界内**表示的最小 index_of·6+顶点。任一表示出发同值（与生成路径无关）；
@@ -1197,6 +1484,35 @@ func to_dict() -> Dictionary:
 			"capital_poi_id": s.capital_poi_id,
 			"expansionism": s.expansionism,
 		})
+	var out_regions: Array = []
+	for rg in terrain_regions:
+		out_regions.append({
+			"region_id": rg.region_id,
+			"dominant_landform": rg.dominant_landform,
+			"core_cells": rg.core_cells.duplicate(),
+			"adjacency": rg.adjacency.duplicate(),
+		})
+	var out_ranges: Array = []
+	for mr in mountain_ranges:
+		out_ranges.append({
+			"range_id": mr.range_id,
+			"region_id": mr.region_id,
+			"spine_cells": mr.spine_cells.duplicate(),
+		})
+	var out_branches: Array = []
+	for br in ridge_branches:
+		out_branches.append({
+			"branch_id": br.branch_id,
+			"range_id": br.range_id,
+			"cells": br.cells.duplicate(),
+		})
+	var out_valleys: Array = []
+	for vl in valleys:
+		out_valleys.append({
+			"valley_id": vl.valley_id,
+			"range_id": vl.range_id,
+			"cells": vl.cells.duplicate(),
+		})
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"links": out_links,
@@ -1207,6 +1523,12 @@ func to_dict() -> Dictionary:
 		"pois": out_pois,
 		"states": out_states,
 		"cell_owners": cell_owners.duplicate(),
+		"terrain_regions": out_regions,
+		"mountain_ranges": out_ranges,
+		"ridge_branches": out_branches,
+		"valleys": out_valleys,
+		"cell_regions": cell_regions.duplicate(),
+		"cell_mountain_weights": cell_mountain_weights.duplicate(),
 		"meta": meta.duplicate(true),
 	}
 
@@ -1282,6 +1604,38 @@ static func from_dict(data: Dictionary) -> WorldData:
 			if not _is_int(ov) or int(ov) < -1:
 				return null
 			out.cell_owners.append(int(ov))
+	# 地貌分区/骨架事实（T6 S3）：缺键 = 旧图合法空（零迁移——T5 时代 .world.json
+	# 无此六键；与 states/cell_owners 同纪律）
+	if data.has("terrain_regions"):
+		var regions_err := _regions_from_dict(data["terrain_regions"], out)
+		if regions_err:
+			return null
+	if data.has("mountain_ranges"):
+		var ranges_err := _ranges_from_dict(data["mountain_ranges"], out)
+		if ranges_err:
+			return null
+	if data.has("ridge_branches"):
+		var branches_err := _branches_from_dict(data["ridge_branches"], out)
+		if branches_err:
+			return null
+	if data.has("valleys"):
+		var valleys_err := _valleys_from_dict(data["valleys"], out)
+		if valleys_err:
+			return null
+	if data.has("cell_regions"):
+		if not (data["cell_regions"] is Array):
+			return null
+		for rv in (data["cell_regions"] as Array):
+			if not _is_int(rv) or int(rv) < -1:
+				return null
+			out.cell_regions.append(int(rv))
+	if data.has("cell_mountain_weights"):
+		if not (data["cell_mountain_weights"] is Array):
+			return null
+		for wv in (data["cell_mountain_weights"] as Array):
+			if not _is_int(wv) or int(wv) < 0 or int(wv) > 1000:
+				return null
+			out.cell_mountain_weights.append(int(wv))
 	var m := (data["meta"] as Dictionary)
 	for k in ["schema_version", "seed", "generator_version", "rules_version",
 			"attempt_count", "repair_count"]:
@@ -1512,6 +1866,132 @@ static func _states_from_dict(src: Variant, out: WorldData) -> bool:
 		s.capital_poi_id = int(d["capital_poi_id"])
 		s.expansionism = int(d["expansionism"])
 		out.states.append(s)
+	return false
+
+
+## terrain_regions 数组 → TerrainRegion（形状校验：主键非负、landform 两值、
+## core_cells 非空非负 int 数组、adjacency 非负 int 数组——规范序/邻接对称/核心
+## 不共享/界内属 validate 语义层）。
+static func _regions_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["region_id", "dominant_landform", "core_cells", "adjacency"]):
+			return true
+		for k in ["region_id", "dominant_landform"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["region_id"]) < 0:
+			return true
+		var lf := int(d["dominant_landform"])
+		if lf != TerrainRegion.DominantLandform.MOUNTAINS \
+				and lf != TerrainRegion.DominantLandform.PLAINS:
+			return true
+		if not (d["core_cells"] is Array) or not (d["adjacency"] is Array):
+			return true
+		if (d["core_cells"] as Array).is_empty():
+			return true  # 分区事实至少有种子格（空核心 = 伪区域）
+		var rg := TerrainRegion.new()
+		rg.region_id = int(d["region_id"])
+		rg.dominant_landform = lf
+		for cv in (d["core_cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			rg.core_cells.append(int(cv))
+		for av in (d["adjacency"] as Array):
+			if not _is_int(av) or int(av) < 0:
+				return true
+			rg.adjacency.append(int(av))
+		out.terrain_regions.append(rg)
+	return false
+
+
+## mountain_ranges 数组 → MountainRangeData（形状校验：主键/区域引用非负 int、
+## spine_cells ≥2 非负 int 数组——相邻连续/归属对账属 validate 语义层）。
+static func _ranges_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["range_id", "region_id", "spine_cells"]):
+			return true
+		for k in ["range_id", "region_id"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["range_id"]) < 0 or int(d["region_id"]) < 0:
+			return true
+		if not (d["spine_cells"] is Array) or (d["spine_cells"] as Array).size() < 2:
+			return true
+		var mr := MountainRangeData.new()
+		mr.range_id = int(d["range_id"])
+		mr.region_id = int(d["region_id"])
+		for cv in (d["spine_cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			mr.spine_cells.append(int(cv))
+		out.mountain_ranges.append(mr)
+	return false
+
+
+## ridge_branches 数组 → RidgeBranchData（形状校验同纪律；cells ≥1——支脉根格
+## 即最小形状）。
+static func _branches_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["branch_id", "range_id", "cells"]):
+			return true
+		for k in ["branch_id", "range_id"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["branch_id"]) < 0 or int(d["range_id"]) < 0:
+			return true
+		if not (d["cells"] is Array) or (d["cells"] as Array).is_empty():
+			return true
+		var br := RidgeBranchData.new()
+		br.branch_id = int(d["branch_id"])
+		br.range_id = int(d["range_id"])
+		for cv in (d["cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			br.cells.append(int(cv))
+		out.ridge_branches.append(br)
+	return false
+
+
+## valleys 数组 → ValleyData（形状校验同纪律；cells ≥1——空宽谷 = 伪对象）。
+static func _valleys_from_dict(src: Variant, out: WorldData) -> bool:
+	if not (src is Array):
+		return true
+	for entry in (src as Array):
+		if not (entry is Dictionary):
+			return true
+		var d: Dictionary = entry
+		if not d.has_all(["valley_id", "range_id", "cells"]):
+			return true
+		for k in ["valley_id", "range_id"]:
+			if not _is_int(d[k]):
+				return true
+		if int(d["valley_id"]) < 0 or int(d["range_id"]) < 0:
+			return true
+		if not (d["cells"] is Array) or (d["cells"] as Array).is_empty():
+			return true
+		var vl := ValleyData.new()
+		vl.valley_id = int(d["valley_id"])
+		vl.range_id = int(d["range_id"])
+		for cv in (d["cells"] as Array):
+			if not _is_int(cv) or int(cv) < 0:
+				return true
+			vl.cells.append(int(cv))
+		out.valleys.append(vl)
 	return false
 
 # ---------------- 内部 ----------------
