@@ -30,14 +30,25 @@
 ##   引擎必吐「process does not exist」ERROR，与真 SCRIPT ERROR 混流污染日志。三态
 ##   口径：正常输出转发 / 故意故障 = FAIL 行（变异自检预期，勿当事故）/ **非预期
 ##   引擎 ERROR = 异常**（门禁日志应零 ERROR，出现即须排查）。
+## v3.2（2026-10-13，T6 批环境前置「门禁慢机适配」，非提案内容）：默认子进程超时档
+##   20s → 90s。**超时档语义 = 防死循环看门狗，不是性能门**——档值只须盖住最重正常
+##   文件并留 ≥2× 余量，不构成对测试耗时的约束；20s 是快机（门禁 384/0 基线机）上的
+##   定值，慢机实测最重文件 test_world_pipeline.gd 子进程 33~41s（含引擎启动，17 用例
+##   0 失败），20s 档把健康文件误判 N-3 超时（本机复现：runner exit 1，唯一非 fixture
+##   FAIL 行即该文件被杀）。90s ≈ 慢机实测 41s 的 2.2×（≥2× 余量口径；任务书示例
+##   60s 按实测 41s 不足 2× 故不取）。**hang 样本专用 3s 短档不动**（FIXTURE_EXPECT
+##   指定档，变异自检耗时不变——防死循环拦截延迟不随默认档放宽）；判定链零改动，
+##   快机行为不变（更晚杀进程只对真死循环生效）。
 ## 失败打印「文件:用例:原因」（子进程报告原样转发，格式与 v1/v2 一致）。
 extends SceneTree
 
 const TESTS_ROOT := "res://tests"
 const RUN_ONE := "res://tools/run_one.gd"
 const FIXTURES_ROOT := "res://tools/runner_fixtures"
-## 子进程单文件超时（N-3）：含引擎启动；正常单文件 ≤ 数秒，20s 为宽松上限
-const CHILD_TIMEOUT_MS := 20000
+## 子进程单文件超时（N-3）：含引擎启动；语义 = 防死循环看门狗**非性能门**——
+## 档值对最重正常文件留 ≥2× 余量（v3.2：慢机实测 test_world_pipeline.gd ~41s → 90s；
+## hang 样本走 FIXTURE_EXPECT 专用 3s 档，不吃本默认档）
+const CHILD_TIMEOUT_MS := 90000
 ## 轮询间隔（秒）：进程存活/超时/管道排空的最小检查粒度
 const POLL_SEC := 0.025
 

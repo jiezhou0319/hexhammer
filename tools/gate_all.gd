@@ -8,7 +8,7 @@
 ##   ... --script res://tools/gate_all.gd -- --with-probe
 ## 步骤（顺序固定——前步失败不阻断后续，汇总逐项列退出码）：
 ##   1. 干净工作树导入（--import）
-##   2. 单测 + 故障自检（tools/run_tests.gd，v3.1）
+##   2. 单测 + 故障自检（tools/run_tests.gd，v3.2）
 ##   3. 场景检查 ×3（picking / highlight / camera，各自独立子进程）
 ##   4. 渲染探针（tools/render_probe.gd，非 headless 真渲染；渲染器标识取运行时值）
 ## 三态口径（沿 runner v3.1）：正常输出转发 / 故意故障 FAIL 行（变异自检预期）/
@@ -19,7 +19,7 @@ const PROBE_SCRIPT := "res://tools/render_probe.gd"
 ## 头四步（headless 子进程，顺序执行）
 const STEPS_HEADLESS: Array = [
 	["1/5 干净导入", ["--headless", "--path", ".", "--import"]],
-	["2/5 单测+故障自检（runner v3.1）", ["--headless", "--path", ".", "--script", "res://tools/run_tests.gd"]],
+	["2/5 单测+故障自检（runner v3.2）", ["--headless", "--path", ".", "--script", "res://tools/run_tests.gd"]],
 	["3/5 场景检查·拾取", ["--headless", "--path", ".", "--script", "res://tools/picking_scene_check.gd"]],
 	["4/5 场景检查·高亮", ["--headless", "--path", ".", "--script", "res://tools/highlight_scene_check.gd"]],
 	["5/5 场景检查·相机", ["--headless", "--path", ".", "--script", "res://tools/camera_scene_check.gd"]],
