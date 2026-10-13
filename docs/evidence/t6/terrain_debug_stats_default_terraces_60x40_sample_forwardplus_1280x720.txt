@@ -1,5 +1,5 @@
 Hexhammer T6 调试预览 terrain_debug_views · 像素统计（S2 前置 harness——验收先于生成器改动；提案 §实施分期 P0「调试预览」「固定对照」）
-时间(UTC)：2026-10-13T03:37:46
+时间(UTC)：2026-10-13T09:46:18
 引擎：Godot 4.7.2-stable (official)
 渲染器（实际运行时）：forward_plus（取自 RenderingServer.get_current_rendering_method()——S-1 口径）
 渲染器（工程配置值）：forward_plus（仅对照；CLI --rendering-method 覆盖/驱动回退会使配置 ≠ 实际）
@@ -21,7 +21,7 @@ DIFF height↔passability：px=697153，阈值=500 → PASS
 DIFF slope↔passability：px=756092，阈值=500 → PASS
 同视图双捕获稳定性（末视图两次捕获差分）：px=0（静态场景应≈0；留档不设门）
 
-口径：三路对照「旧版」基准 = 双噪声现役路线（银行样图即产物）；S3/S4 落地后以同 seed/模板 + 同相机口径重渲对照。
+口径：三路对照（提案 :237）=「旧版」default_terraces 双噪声现役路线 /「分区骨架版」regions_no_erosion（S4 形态：分区+骨架+孤峰，侵蚀关）/「+侵蚀版」regions_mountains（S4 完整形态）。同 seed/相机口径跨版本帧帧可比；骨架事实（region/skeleton 视图）侵蚀开关两态恒同——侵蚀只改连续高度不改分区骨架事实。
 本文件全部结论仅覆盖「渲染器（实际运行时）」一行所列后端；其余后端未测。
 截图（同目录）：res://docs/evidence/t6/terrain_debug_height_default_terraces_60x40_sample_forwardplus_1280x720.png、res://docs/evidence/t6/terrain_debug_slope_default_terraces_60x40_sample_forwardplus_1280x720.png、res://docs/evidence/t6/terrain_debug_passability_default_terraces_60x40_sample_forwardplus_1280x720.png
 标识：default_terraces_60x40_sample_forwardplus_1280x720
